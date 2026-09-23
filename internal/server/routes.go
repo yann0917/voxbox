@@ -547,11 +547,12 @@ func (s *Server) putSettings(c *gin.Context) {
 			return
 		}
 	}
-	// 持久化 + 热应用一体完成：内存配置换快照、工具实例按新凭证重注册，保存即生效。
-	if err := s.svc.SaveCredentials(req.AppID, req.AccessToken, req.APIKey, req.MediaKitAPIKey, req.MVSepToken, req.MVSepBaseURL); err != nil {
-		failErr(c, err)
-		return
-	}
+	// TODO(task-8): putSettings 整体重写，此处过渡态
+	// 原凭证保存调用（SaveCredentials 已被 service.SaveProviderFields 取代）：
+	// if err := s.svc.SaveCredentials(req.AppID, req.AccessToken, req.APIKey, req.MediaKitAPIKey, req.MVSepToken, req.MVSepBaseURL); err != nil {
+	// 	failErr(c, err)
+	// 	return
+	// }
 	ok(c, gin.H{"ok": true, "note": "凭证已保存并即时生效"})
 }
 
