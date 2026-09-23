@@ -25,6 +25,9 @@ type Config struct {
 	// Storage 是其选中项的拍平视图：切换启用类型互不覆盖，切回即恢复。
 	StorageChannels map[string]StorageConfig
 	MVSep           MVSepConfig
+	// Qianwen 千问平台（platform.qianwenai.com）凭证：语音合成/识别共用一个 API Key，
+	// BaseURL 固定官方 maas.qianwenaiapi.com，不提供覆写。
+	Qianwen QianwenConfig
 }
 
 type ServerConfig struct {
@@ -54,6 +57,9 @@ type MVSepConfig struct {
 	APIToken string
 	BaseURL  string
 }
+
+// QianwenConfig 千问平台凭证：语音合成/识别共用一个 API Key。
+type QianwenConfig struct{ APIKey string }
 
 // StorageConfig 对象存储（大文件中转）：语音识别/人声分离/妙记等 URL-only 工具的本地文件
 // 会在任务执行时转存到该桶并取预签名 URL 提交上游。Provider 留空表示未启用；
@@ -219,6 +225,7 @@ func configFromViper(v *viper.Viper) *Config {
 			APIToken: strings.TrimSpace(v.GetString("mvsep.api_token")),
 			BaseURL:  strings.TrimSpace(v.GetString("mvsep.base_url")),
 		},
+		Qianwen: QianwenConfig{APIKey: strings.TrimSpace(v.GetString("qianwen.api_key"))},
 	}
 }
 

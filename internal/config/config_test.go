@@ -222,3 +222,24 @@ func TestStorageChannelSelection(t *testing.T) {
 		t.Fatalf("re-enabled flattened view = %+v", cfg.Storage)
 	}
 }
+
+// TestLoadQianwen 读取 qianwen.api_key 凭证（VOXBOX_HOME 指向临时目录，t.Setenv
+// 测试结束自动还原，无需手动 Unsetenv）。
+func TestLoadQianwen(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VOXBOX_HOME", dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".voxbox"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	yaml := "qianwen:\n  api_key: sk-test-123\n"
+	if err := os.WriteFile(filepath.Join(dir, ".voxbox", "config.yaml"), []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Qianwen.APIKey != "sk-test-123" {
+		t.Errorf("Qianwen.APIKey = %q, 期望 sk-test-123", cfg.Qianwen.APIKey)
+	}
+}
