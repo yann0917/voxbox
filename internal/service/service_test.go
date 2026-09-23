@@ -299,6 +299,28 @@ func TestSaveProviderFields(t *testing.T) {
 	if _, ok := svc.Registry().Get("qianwen", "tts"); !ok {
 		t.Error("qianwen.tts 应已注册（Task 7 newWithRoot 注册）")
 	}
+
+	// 6) text 字段空串=清空（与 secret 留空不改相对）：app_id 提交空串后，
+	//    内存快照与 config.Load() 落盘均应为空。
+	if err := svc.SaveProviderFields("volcengine", map[string]string{"app_id": "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.Config().Volc.Speech.AppID; got != "a" {
+		t.Fatalf("app_id = %q, want a", got)
+	}
+	if err := svc.SaveProviderFields("volcengine", map[string]string{"app_id": ""}); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.Config().Volc.Speech.AppID; got != "" {
+		t.Errorf("text 字段空串提交应清空快照: app_id = %q", got)
+	}
+	disk, err = config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := disk.Volc.Speech.AppID; got != "" {
+		t.Errorf("text 字段空串提交应清空落盘: app_id = %q", got)
+	}
 }
 
 // TestQianwenConnection：未配置直接报未配置。

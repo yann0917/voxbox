@@ -184,7 +184,9 @@ func (s *Service) SaveProviderFields(name string, fields map[string]string) erro
 	return nil
 }
 
-// applyCardFields 把提交字段套进内存快照（secret 留空不覆盖）。
+// applyCardFields 把提交字段套进内存快照。语义与落盘一致（SaveProviderFields）：
+// text/select 字段提交值即生效（空串=清空，如 app_id 留空、接入线路回落主站）；
+// 只有 secret 字段保留「空串=不修改」守卫。
 func applyCardFields(nc *config.Config, name string, fields map[string]string) {
 	get := func(k string) (string, bool) {
 		v, ok := fields[k]
@@ -192,7 +194,8 @@ func applyCardFields(nc *config.Config, name string, fields map[string]string) {
 	}
 	switch name {
 	case "volcengine":
-		if v, ok := get("app_id"); ok && v != "" {
+		// app_id 是 text 字段：提交值即生效，空串=清空（播客凭证对可整体撤销）。
+		if v, ok := get("app_id"); ok {
 			nc.Volc.Speech.AppID = v
 		}
 		if v, ok := get("access_token"); ok && v != "" {
@@ -209,6 +212,7 @@ func applyCardFields(nc *config.Config, name string, fields map[string]string) {
 		if v, ok := get("api_token"); ok && v != "" {
 			nc.MVSep.APIToken = v
 		}
+		// base_url 是 select 字段：空串=主站（合法取值），不设守卫。
 		if v, ok := get("base_url"); ok {
 			nc.MVSep.BaseURL = v
 		}

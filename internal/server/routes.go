@@ -51,9 +51,10 @@ func (s *Server) Handler() http.Handler {
 		api.POST("/tasks/:id/rerun", s.rerunTask)
 		api.GET("/artifacts/:id/stream", s.streamArtifact)
 		api.GET("/artifacts/:id/download", s.downloadArtifact)
-		// 设置读写分离：GET 返回的是掩码后凭证（登录用户可见），写入/连通性测试仅 admin。
+		// 设置读写分离：GET 返回的卡态不含 secret 明文（登录用户可见），写入/连通性测试仅 admin。
 		api.GET("/settings", s.getSettings)
-		api.PUT("/settings", s.requireAdmin(), s.putSettings)
+		api.PUT("/settings/providers/:name", s.requireAdmin(), s.putProviderSettings)
+		api.PUT("/settings/storage", s.requireAdmin(), s.putStorageSettings)
 		api.POST("/settings/test-connection", s.requireAdmin(), s.testConnection)
 		api.GET("/voices", s.listVoices)
 		api.GET("/dicts", s.listDicts)
@@ -457,14 +458,7 @@ func (s *Server) getSettings(c *gin.Context) {
 	cfg := s.svc.Config()
 	st := cfg.Storage
 	ok(c, gin.H{
-		"volc": gin.H{
-			"speech": gin.H{
-				"app_id":           cfg.Volc.Speech.AppID,
-				"has_access_token": cfg.Volc.Speech.AccessToken != "",
-				"api_key":          cfg.Volc.Speech.APIKey,
-			},
-			"mediakit": gin.H{"has_api_key": cfg.Volc.MediaKit.APIKey != ""},
-		},
+		"providers": s.svc.ProviderStates(cfg),
 		// secret_key 不回传（回传 has_secret_key 供设置页展示「已配置」）。
 		"storage": gin.H{
 			"provider":       st.Provider,
@@ -477,11 +471,6 @@ func (s *Server) getSettings(c *gin.Context) {
 			"enabled":        s.svc.StorageClient() != nil,
 			// 各存储类型独立配置段：设置页切换存储类型时按段换显已存值，互不覆盖。
 			"channels": storageChannelsPayload(cfg.StorageChannels),
-		},
-		// mvsep token 不回传（has_api_token 供设置页展示）；base_url 非敏感原样返回（空=主站）。
-		"mvsep": gin.H{
-			"has_api_token": cfg.MVSep.APIToken != "",
-			"base_url":      cfg.MVSep.BaseURL,
 		},
 		"data_dir": cfg.DataDir,
 	})
@@ -504,16 +493,8 @@ func storageChannelsPayload(channels map[string]config.StorageConfig) gin.H {
 	return out
 }
 
-type putSettingsReq struct {
-	AppID          string `json:"app_id"`
-	AccessToken    string `json:"access_token"`
-	APIKey         string `json:"api_key"`
-	MediaKitAPIKey string `json:"mediakit_api_key"`
-	MVSepToken     string `json:"mvsep_api_token"` // 留空=不修改
-	MVSepBaseURL   string `json:"mvsep_base_url"`  // 显式提交：空串=回落主站
-
-	// 对象存储段（可选提交；前端设置页整表提交，旧客户端不传即不改动）。
-	Storage *putStorageReq `json:"storage"`
+type putProviderSettingsReq struct {
+	Fields map[string]string `json:"fields"`
 }
 
 type putStorageReq struct {
@@ -526,49 +507,70 @@ type putStorageReq struct {
 	Prefix    string `json:"prefix"`
 }
 
-func (s *Server) putSettings(c *gin.Context) {
-	var req putSettingsReq
+// putProviderSettings 按卡保存凭证：声明校验 + 落盘 + 热重注册在 SaveProviderFields 内一体完成。
+func (s *Server) putProviderSettings(c *gin.Context) {
+	var req putProviderSettingsReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, CodeBadRequest, "参数错误")
 		return
 	}
-	// 对象存储段先行校验持久化：失败时不改凭证，整表保存原子观感。
-	if req.Storage != nil {
-		if err := s.svc.SaveStorage(config.StorageConfig{
-			Provider:  req.Storage.Provider,
-			Endpoint:  req.Storage.Endpoint,
-			Region:    req.Storage.Region,
-			Bucket:    req.Storage.Bucket,
-			AccessKey: req.Storage.AccessKey,
-			SecretKey: req.Storage.SecretKey,
-			Prefix:    req.Storage.Prefix,
-		}); err != nil {
-			fail(c, CodeBadRequest, err.Error())
-			return
-		}
+	if err := s.svc.SaveProviderFields(c.Param("name"), req.Fields); err != nil {
+		failErr(c, err)
+		return
 	}
-	// TODO(task-8): putSettings 整体重写，此处过渡态
-	// 原凭证保存调用（SaveCredentials 已被 service.SaveProviderFields 取代）：
-	// if err := s.svc.SaveCredentials(req.AppID, req.AccessToken, req.APIKey, req.MediaKitAPIKey, req.MVSepToken, req.MVSepBaseURL); err != nil {
-	// 	failErr(c, err)
-	// 	return
-	// }
 	ok(c, gin.H{"ok": true, "note": "凭证已保存并即时生效"})
 }
 
+// putStorageSettings 对象存储独立保存端点（body 与旧 PUT /api/settings 的 storage 分支一致）。
+func (s *Server) putStorageSettings(c *gin.Context) {
+	var req putStorageReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, CodeBadRequest, "参数错误")
+		return
+	}
+	if err := s.svc.SaveStorage(config.StorageConfig{
+		Provider:  req.Provider,
+		Endpoint:  req.Endpoint,
+		Region:    req.Region,
+		Bucket:    req.Bucket,
+		AccessKey: req.AccessKey,
+		SecretKey: req.SecretKey,
+		Prefix:    req.Prefix,
+	}); err != nil {
+		fail(c, CodeBadRequest, err.Error())
+		return
+	}
+	ok(c, gin.H{"ok": true, "note": "存储配置已保存"})
+}
+
+// providerTest 卡探活结果（test-connection 的 results 数组元素）。
+type providerTest struct {
+	Name    string `json:"name"`
+	OK      bool   `json:"ok"`
+	Message string `json:"message"`
+}
+
 func (s *Server) testConnection(c *gin.Context) {
-	msg, connOK := s.svc.TestSpeechConnection()
-	// 顶层 ok/message 保持语音探测结果不变（向后兼容）；mediakit 段为 MediaKit 独立凭证探测；
-	// mvsep 段为 MVSep token 探测（顺带回今日免费额度）；storage 段为对象存储探活
-	//（HeadBucket，不发数据请求不产生费用）。
-	mkMsg, mkOK := s.svc.TestMediaKitConnection()
-	mvMsg, mvOK := s.svc.TestMVSepConnection()
+	// 按卡动态探测：volcengine 极短合成、mediakit 鉴权探测、mvsep token+免费额度、
+	// qianwen 极短合成；storage 桶探活（HeadBucket 不计费）。
+	tests := []struct {
+		name string
+		fn   func() (string, bool)
+	}{
+		{"volcengine", s.svc.TestSpeechConnection},
+		{"mediakit", s.svc.TestMediaKitConnection},
+		{"mvsep", s.svc.TestMVSepConnection},
+		{"qianwen", s.svc.TestQianwenConnection},
+	}
+	results := make([]providerTest, 0, len(tests))
+	for _, tt := range tests {
+		msg, okv := tt.fn()
+		results = append(results, providerTest{Name: tt.name, OK: okv, Message: msg})
+	}
 	stMsg, stOK := s.svc.TestStorageConnection()
 	ok(c, gin.H{
-		"ok": connOK, "message": msg,
-		"mediakit": gin.H{"ok": mkOK, "message": mkMsg},
-		"mvsep":    gin.H{"ok": mvOK, "message": mvMsg},
-		"storage":  gin.H{"ok": stOK, "message": stMsg},
+		"results": results,
+		"storage": gin.H{"ok": stOK, "message": stMsg},
 	})
 }
 
