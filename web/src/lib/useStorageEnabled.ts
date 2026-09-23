@@ -11,11 +11,33 @@ export interface StorageChannelShape {
   prefix: string;
 }
 
+/** 凭证卡字段（secret 只回传 has_value）。 */
+export interface ProviderFieldShape {
+  key: string;
+  label: string;
+  kind: "text" | "secret" | "select";
+  value?: string;
+  has_value?: boolean;
+  options?: { value: string; label: string }[];
+  placeholder?: string;
+  hint?: string;
+  required?: boolean;
+}
+
+/** 凭证卡/能力卡（云端=凭证卡，本地=只读能力展示）。 */
+export interface ProviderShape {
+  name: string;
+  title: string;
+  description: string;
+  kind: "cloud" | "local";
+  order: number;
+  configured: boolean;
+  tools_count: number;
+  fields: ProviderFieldShape[];
+}
+
 export interface SettingsShape {
-  volc: {
-    speech: { app_id: string; has_access_token: boolean; api_key: string };
-    mediakit: { has_api_key: boolean };
-  };
+  providers: ProviderShape[];
   storage?: {
     provider: string;
     endpoint: string;
@@ -28,22 +50,40 @@ export interface SettingsShape {
     /** 各存储类型独立配置（键=provider 名）：切换类型按段换显，互不覆盖。 */
     channels: Record<string, StorageChannelShape>;
   };
-  mvsep?: { has_api_token: boolean; base_url: string };
   data_dir: string;
 }
 
 /**
- * 对象存储配置与启用态（与设置页共用 ["settings"] 缓存：设置页保存后此 hook 自动刷新）。
- * enabled = provider 已配置且连接参数齐全，URL-only 工具页据此展示「本地上传」通道。
+ * 设置读取（与设置页共用 ["settings"] 缓存：设置页保存后自动刷新）。
  */
-export function useStorageEnabled() {
-  const q = useQuery({
+export function useSettings() {
+  return useQuery({
     queryKey: ["settings"],
     queryFn: () => fetchJSON<SettingsShape>("/api/settings"),
   });
+}
+
+/**
+ * 对象存储配置与启用态：enabled = provider 已配置且连接参数齐全，
+ * URL-only 工具页据此展示「本地上传」通道。
+ */
+export function useStorageEnabled() {
+  const q = useSettings();
   return {
     storage: q.data?.storage,
     enabled: !!q.data?.storage?.enabled,
     isLoading: q.isLoading,
   };
+}
+
+/** 全部卡（云端+本地）。 */
+export function useProviders() {
+  const q = useSettings();
+  return { providers: q.data?.providers ?? [], isLoading: q.isLoading, refetch: q.refetch };
+}
+
+/** 指定厂商是否已配置凭证（undefined=设置未加载完成）。 */
+export function useProviderConfigured(name: string) {
+  const q = useSettings();
+  return q.data?.providers.find((p) => p.name === name)?.configured;
 }
