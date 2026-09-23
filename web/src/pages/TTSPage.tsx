@@ -3,11 +3,15 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ArrowUpRight, AudioLines, Radio, ScrollText } from "lucide-react";
 import { Card, CardBody, MicroLabel, PageHeader, Tabs, type TabItem } from "../ui";
 import { PRICE_SNAPSHOT_DATE, TTS_CHANNELS } from "../lib/pricing";
+import { useProviderConfigured } from "../lib/useStorageEnabled";
 import TTSSyncPanel from "./tts/TTSSyncPanel";
 import TTSStreamPanel from "./tts/TTSStreamPanel";
 import TTSLongPanel from "./tts/TTSLongPanel";
+import QianwenTTSPanel from "./tts/QianwenTTSPanel";
 
 type TabKey = "sync" | "stream" | "long";
+/** 合成引擎：火山三通道 / 千问非流式（/tts?engine=qianwen，默认火山） */
+type Engine = "volcengine" | "qianwen";
 
 const CHANNEL_ICONS: Record<TabKey, ReactNode> = {
   sync: <AudioLines size={13} strokeWidth={1.75} />,
@@ -21,18 +25,33 @@ const TAB_ITEMS: TabItem<TabKey>[] = TTS_CHANNELS.map((c) => ({
   icon: CHANNEL_ICONS[c.key],
 }));
 
-/** 语音合成聚合页：同步 / 流式 / 长文本三通道以 Tab 切换。
- *  三条通道接口代际与计费方式不同（详见各 Tab 说明条与「计费测算」页），
+const ENGINE_TABS: TabItem<Engine>[] = [
+  { value: "volcengine", label: "火山引擎" },
+  { value: "qianwen", label: "千问平台" },
+];
+
+/** 语音合成聚合页：引擎 Tab 切换（火山三通道 / 千问非流式）。
+ *  火山侧三条通道接口代际与计费方式不同（详见各 Tab 说明条与「计费测算」页），
  *  按官方接口差异拆分实现，页面层仅做组织。 */
 export default function TTSPage() {
   const [params, setParams] = useSearchParams();
+  const engine: Engine = params.get("engine") === "qianwen" ? "qianwen" : "volcengine";
+  // undefined = 设置未加载完成，与未配置同走引导卡（保守态）
+  const qianwenReady = useProviderConfigured("qianwen");
+
   const tab: TabKey = TTS_CHANNELS.some((c) => c.key === params.get("tab"))
     ? (params.get("tab") as TabKey)
     : "sync";
   const info = TTS_CHANNELS.find((c) => c.key === tab)!;
 
+  const switchEngine = (v: Engine) => {
+    // 火山为默认态；切千问仅保留 engine 参数，通道 Tab 态一并清掉
+    if (v === "volcengine") setParams({});
+    else setParams({ engine: v });
+  };
+
   const switchTab = (v: TabKey) => {
-    // sync 为默认态，不带查询参数，保持 /tts 干净
+    // sync 为默认态，不带查询参数，保持 /tts 干净（火山态本就无 engine 参数）
     if (v === "sync") setParams({});
     else setParams({ tab: v });
   };
@@ -41,7 +60,7 @@ export default function TTSPage() {
     <>
       <PageHeader
         title="语音合成"
-        description="同步 / 流式 / 长文本三个通道，按场景与费用选择"
+        description="多引擎语音合成：火山引擎三通道 / 千问平台非流式"
         actions={
           <Link
             to="/history"
@@ -53,33 +72,54 @@ export default function TTSPage() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Tabs items={TAB_ITEMS} value={tab} onChange={switchTab} />
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <Tabs items={ENGINE_TABS} value={engine} onChange={switchEngine} />
       </div>
 
-      {/* 通道说明条：定位 + 计费方式 + 适用建议（费用视角选通道） */}
-      <Card className="mb-4">
-        <CardBody className="space-y-1.5 py-3">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <MicroLabel>{info.tab}</MicroLabel>
-            <span className="text-sm text-fg">{info.tagline}</span>
+      {engine === "qianwen" ? (
+        qianwenReady ? (
+          <QianwenTTSPanel />
+        ) : (
+          <Card>
+            <CardBody className="space-y-2">
+              <p className="text-sm text-fg-2">尚未配置千问平台凭证。</p>
+              <Link to="/settings" className="text-xs text-accent hover:opacity-80">
+                去设置页配置千问 API Key →
+              </Link>
+            </CardBody>
+          </Card>
+        )
+      ) : (
+        <>
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <Tabs items={TAB_ITEMS} value={tab} onChange={switchTab} />
           </div>
-          <p className="text-xs text-fg-2">
-            <span className="mr-1 text-muted">计费：</span>
-            {info.pricing}
-          </p>
-          <p className="text-xs text-muted">
-            <span className="mr-1">适用：</span>
-            {info.advice} 同量文本的费用对比见
-            <Link to="/pricing" className="mx-0.5 text-accent transition-colors duration-150 hover:opacity-80">
-              计费测算
-            </Link>
-            （刊例快照 {PRICE_SNAPSHOT_DATE}，以账单为准）。
-          </p>
-        </CardBody>
-      </Card>
 
-      {tab === "sync" ? <TTSSyncPanel /> : tab === "stream" ? <TTSStreamPanel /> : <TTSLongPanel />}
+          {/* 通道说明条：定位 + 计费方式 + 适用建议（费用视角选通道） */}
+          <Card className="mb-4">
+            <CardBody className="space-y-1.5 py-3">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <MicroLabel>{info.tab}</MicroLabel>
+                <span className="text-sm text-fg">{info.tagline}</span>
+              </div>
+              <p className="text-xs text-fg-2">
+                <span className="mr-1 text-muted">计费：</span>
+                {info.pricing}
+              </p>
+              <p className="text-xs text-muted">
+                <span className="mr-1">适用：</span>
+                {info.advice} 同量文本的费用对比见
+                <Link to="/pricing" className="mx-0.5 text-accent transition-colors duration-150 hover:opacity-80">
+                  计费测算
+                </Link>
+                （刊例快照 {PRICE_SNAPSHOT_DATE}，以账单为准）。
+              </p>
+            </CardBody>
+          </Card>
+
+          {tab === "sync" ? <TTSSyncPanel /> : tab === "stream" ? <TTSStreamPanel /> : <TTSLongPanel />}
+        </>
+      )}
     </>
   );
 }
