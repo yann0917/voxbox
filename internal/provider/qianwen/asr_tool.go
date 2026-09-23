@@ -82,7 +82,7 @@ func (t *ASRTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		return provider.TaskOutput{}, err
 	}
 	if t.apiKey == "" {
-		return provider.TaskOutput{}, fmt.Errorf("未配置千问 API Key：请在设置页「云端服务」配置千问平台凭证，或 voxbox config set qianwen.api_key")
+		return provider.TaskOutput{}, fmt.Errorf("%w：请在设置页「云端服务」配置千问平台凭证，或 voxbox config set qianwen.api_key", ErrNoCred)
 	}
 	model := paramString(in.Params, "model")
 	if model == "" {
@@ -225,12 +225,17 @@ func (t *ASRTool) saveArtifacts(ctx context.Context, in provider.TaskInput, task
 	}, nil
 }
 
-// resolveOut 相对路径锚定 outDir 并回算相对形态；绝对 _out 也回算相对 outDir 的形态
-// （沿用 Task 4 产物语义：outDir 内的绝对路径归一为相对展示路径）。
+// resolveOut 相对路径锚定 outDir 并回算相对形态；绝对 _out 仅当落在 outDir 内时
+// 归一为相对展示路径，outDir 外保持绝对——相对化会回算出 ../ 逃逸路径，
+// 破坏产物越界防护与 CLI --json 对绝对 path 的消费约定。
 func resolveOut(outDir, p string) (abs, rel string) {
+	outDir = filepath.Clean(outDir)
 	abs = p
 	if !filepath.IsAbs(abs) {
 		abs = filepath.Join(outDir, p)
+	}
+	if !strings.HasPrefix(abs, outDir+string(filepath.Separator)) {
+		return abs, abs
 	}
 	rel, _ = filepath.Rel(outDir, abs)
 	return abs, rel

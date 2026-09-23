@@ -242,4 +242,21 @@ func TestLoadQianwen(t *testing.T) {
 	if cfg.Qianwen.APIKey != "sk-test-123" {
 		t.Errorf("Qianwen.APIKey = %q, 期望 sk-test-123", cfg.Qianwen.APIKey)
 	}
+	// List() 应列出 qianwen.api_key 行且打码（config list / 设置页可发现性）。
+	kvs, err := List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, kv := range kvs {
+		if kv.Key == "qianwen.api_key" {
+			found = true
+			if kv.Value == "sk-test-123" || !strings.Contains(kv.Value, "*") {
+				t.Errorf("qianwen.api_key 应打码列出, got %q", kv.Value)
+			}
+		}
+	}
+	if !found {
+		t.Error("List() 缺 qianwen.api_key 行")
+	}
 }

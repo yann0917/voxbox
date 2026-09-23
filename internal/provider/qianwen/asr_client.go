@@ -155,10 +155,11 @@ func (c *ASRClient) QueryTask(ctx context.Context, taskID string) (Transcription
 	return t, nil
 }
 
-// FetchTranscription 拉取 transcription_url 的转写 JSON。
+// FetchTranscription 拉取 transcription_url 的转写 JSON。该 URL 为跨域预签名地址，
+// 传空 apiKey 使 doJSON 不附带 Authorization 头（避免凭证外泄与签名参数冲突）。
 func (c *ASRClient) FetchTranscription(ctx context.Context, url string) (Transcription, error) {
 	var tr Transcription
-	if err := doJSON(ctx, http.MethodGet, url, c.apiKey, nil, nil, &tr); err != nil {
+	if err := doJSON(ctx, http.MethodGet, url, "", nil, nil, &tr); err != nil {
 		return Transcription{}, err
 	}
 	return tr, nil

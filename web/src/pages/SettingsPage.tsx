@@ -130,7 +130,9 @@ function ProviderCardForm({ card, onSaved }: { card: ProviderShape; onSaved: () 
     },
     onError: (e: Error) => toast({ tone: "error", title: "保存失败", description: e.message }),
   });
-  const fieldVal = (f: ProviderFieldShape) => drafts[f.key] ?? (f.kind === "select" ? (f.value ?? "") : "");
+  // 已存值打底 + 未保存草稿覆盖；secret 出于安全不回显（恒空起填，空提交=不改），
+  // text/select 回显已存值——text 不回显叠加空提交清空语义会误清凭证。
+  const fieldVal = (f: ProviderFieldShape) => drafts[f.key] ?? (f.kind === "secret" ? "" : (f.value ?? ""));
   return (
     <Card>
       <CardHeader title={card.title} icon={<KeyRound size={15} strokeWidth={1.75} />} aside={cardAside(card)} />

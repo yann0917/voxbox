@@ -389,6 +389,7 @@ func List() ([]KV, error) {
 		{"storage.provider", cfg.Storage.Provider},
 		{"mvsep.api_token", mask(cfg.MVSep.APIToken)},
 		{"mvsep.base_url", cfg.MVSep.BaseURL},
+		{"qianwen.api_key", mask(cfg.Qianwen.APIKey)},
 	}
 	// 各通道段独立列出（bucket/AK/SK）；键即真实落盘布局，可直接指导 config set。
 	for _, name := range slices.Sorted(maps.Keys(cfg.StorageChannels)) {

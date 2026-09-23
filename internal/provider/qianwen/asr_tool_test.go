@@ -2,6 +2,7 @@ package qianwen
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -80,7 +81,8 @@ func TestASRToolLocalFileNeedsStorage(t *testing.T) {
 	}
 }
 
-// 凭证缺失（url 输入直用）：报「千问 API Key」配置指引。
+// 凭证缺失（url 输入直用）：报「千问 API Key」配置指引，并包装 ErrNoCred 哨兵
+// （CLI 退出码 / Web 业务码按其映射为 4）。
 func TestASRToolMissingAPIKey(t *testing.T) {
 	tool := NewASRTool("", t.TempDir())
 	_, err := tool.Run(context.Background(), provider.TaskInput{
@@ -88,5 +90,38 @@ func TestASRToolMissingAPIKey(t *testing.T) {
 	}, func(int, string, map[string]any) {})
 	if err == nil || !strings.Contains(err.Error(), "千问 API Key") {
 		t.Fatalf("应报千问 API Key 指引, got %v", err)
+	}
+	if !errors.Is(err, ErrNoCred) {
+		t.Errorf("缺凭证错误应包装 ErrNoCred 哨兵, got %v", err)
+	}
+}
+
+// resolveOut 路径语义：相对路径锚定 outDir 并回算相对形态；绝对路径在 outDir 内
+// 归一为相对展示，outDir 外（含 ../ 相对形态落到外部的）保持绝对——不产生 ../ 逃逸
+// 相对路径，守住产物越界防护与 CLI --json 对绝对 path 的消费约定。
+func TestResolveOut(t *testing.T) {
+	out := t.TempDir()
+
+	abs, rel := resolveOut(out, filepath.Join("asr", "a.txt"))
+	if abs != filepath.Join(out, "asr", "a.txt") || rel != filepath.Join("asr", "a.txt") {
+		t.Errorf("相对路径: abs=%q rel=%q", abs, rel)
+	}
+
+	inside := filepath.Join(out, "custom.txt")
+	abs, rel = resolveOut(out, inside)
+	if abs != inside || rel != "custom.txt" {
+		t.Errorf("outDir 内绝对路径应归一为相对展示: abs=%q rel=%q", abs, rel)
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside.txt") // 另一目录（outDir 外）
+	abs, rel = resolveOut(out, outside)
+	if abs != outside || rel != outside {
+		t.Errorf("outDir 外绝对路径应原样保留: abs=%q rel=%q", abs, rel)
+	}
+
+	escape := filepath.Join(out, "..", "escape.txt") // Clean 后落到 outDir 外
+	abs, rel = resolveOut(out, escape)
+	if want := filepath.Clean(escape); abs != want || rel != want {
+		t.Errorf("../ 逃逸路径应保持绝对: abs=%q rel=%q want=%q", abs, rel, want)
 	}
 }

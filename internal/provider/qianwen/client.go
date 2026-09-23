@@ -51,9 +51,13 @@ func doJSON(ctx context.Context, method, url, apiKey string, headers map[string]
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	// apiKey 为空时不带 Authorization：拉取转录结果（FetchTranscription）的 URL 是
+	// 跨域预签名地址，附带自有凭证既泄露 api_key 又可能与签名参数冲突。
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)

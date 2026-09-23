@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
 )
 
@@ -27,6 +28,8 @@ func TestExitCodeFor(t *testing.T) {
 		{fmt.Errorf("%w: xxx", volcengine.ErrNoCred), 4},
 		{fmt.Errorf("%w: bad token", volcengine.ErrAuth), 4},
 		{fmt.Errorf("%w: 机器翻译资源 volc.speech.mt 未开通", volcengine.ErrNotGranted), 4},
+		// 千问凭证缺失走同款哨兵映射（配置类问题，重试无意义）
+		{fmt.Errorf("%w：请在设置页「云端服务」配置千问平台凭证，或 voxbox config set qianwen.api_key", qianwen.ErrNoCred), 4},
 		{errors.New("火山 TTS 错误 内容审核(50000)"), 3},
 	}
 	for _, c := range cases {

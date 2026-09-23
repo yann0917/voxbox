@@ -60,7 +60,7 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		return provider.TaskOutput{}, fmt.Errorf("缺少必填参数: text")
 	}
 	if t.apiKey == "" {
-		return provider.TaskOutput{}, fmt.Errorf("未配置千问 API Key：请在设置页「云端服务」配置千问平台凭证，或 voxbox config set qianwen.api_key")
+		return provider.TaskOutput{}, fmt.Errorf("%w：请在设置页「云端服务」配置千问平台凭证，或 voxbox config set qianwen.api_key", ErrNoCred)
 	}
 	model := paramString(in.Params, "model")
 	if model == "" {
@@ -95,11 +95,9 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	if outParam, ok := in.Params["_out"].(string); ok && outParam != "" {
 		relPath = outParam
 	}
-	absPath := relPath
-	if !filepath.IsAbs(absPath) {
-		absPath = filepath.Join(t.outDir, relPath)
-	}
-	relPath, _ = filepath.Rel(t.outDir, absPath)
+	// 绝对 _out 落在 outDir 内归一为相对展示路径，outDir 外保持绝对路径
+	// （防 ../ 逃逸，语义与 volcengine tts 及 asr 的 resolveOut 一致）。
+	absPath, relPath := resolveOut(t.outDir, relPath)
 	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 		return provider.TaskOutput{}, fmt.Errorf("创建产物目录失败: %w", err)
 	}

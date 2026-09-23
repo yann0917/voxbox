@@ -75,15 +75,19 @@ func TestASRClientSubmitQwenAudio(t *testing.T) {
 	}
 }
 
-// 轮询查询：SUCCEEDED 时带出 transcription_url。
+// 轮询查询：SUCCEEDED 时带出 transcription_url；任务查询带 Bearer 凭证，
+// 拉取转录结果（跨域预签名 URL）不带 Authorization（避免凭证外泄）。
 func TestASRClientQueryTask(t *testing.T) {
 	var srv *httptest.Server
+	var taskAuth, fetchAuth string
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/tasks/tid-1" {
+			taskAuth = r.Header.Get("Authorization")
 			_, _ = w.Write([]byte(`{"output":{"task_id":"tid-1","task_status":"SUCCEEDED",
 				"results":[{"transcription_url":"` + srv.URL + `/trans.json"}]}}`))
 			return
 		}
+		fetchAuth = r.Header.Get("Authorization")
 		_, _ = w.Write([]byte(`{"transcripts":[{"sentences":[
 			{"begin_time":0,"end_time":1500,"text":"你好","speaker_id":"1"},
 			{"begin_time":1500,"end_time":3000,"text":"世界"}]}]}`))
@@ -94,12 +98,18 @@ func TestASRClientQueryTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if taskAuth != "Bearer sk" {
+		t.Errorf("任务查询 Authorization = %q, want Bearer sk", taskAuth)
+	}
 	if task.Status != StatusSucceeded || len(task.TranscriptionURLs) != 1 {
 		t.Fatalf("task = %+v", task)
 	}
 	tr, err := c.FetchTranscription(context.Background(), task.TranscriptionURLs[0])
 	if err != nil {
 		t.Fatal(err)
+	}
+	if fetchAuth != "" {
+		t.Errorf("拉取转录结果不应附带 Authorization 头, got %q", fetchAuth)
 	}
 	if len(tr.Transcripts) != 1 || len(tr.Transcripts[0].Sentences) != 2 {
 		t.Fatalf("transcription = %+v", tr)

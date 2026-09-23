@@ -2,6 +2,7 @@ package qianwen
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -42,6 +43,32 @@ func TestTTSToolRun(t *testing.T) {
 	}
 }
 
+// 绝对 _out 指向 outDir 外：Path 保持该绝对路径（相对化会回算 ../ 逃逸路径，
+// 破坏产物越界防护与 CLI --json 对绝对 path 的消费）。
+func TestTTSToolOutOutsideDataDir(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"output":{"choices":[{"message":{"content":[
+			{"audio":"data:audio/mpeg;base64,QUJDREVG"}]}}]}}`))
+	}))
+	defer srv.Close()
+	tool := NewTTSTool("sk-test", t.TempDir())
+	tool.client = NewTTSClient("sk-test", srv.URL) // 注入测试地址
+
+	outPath := filepath.Join(t.TempDir(), "outside.mp3") // 另一目录（outDir 外）
+	res, err := tool.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"text": "你好", "_out": outPath},
+	}, func(int, string, map[string]any) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Artifacts) != 1 || res.Artifacts[0].Path != outPath {
+		t.Fatalf("outDir 外的绝对 _out 应原样保留绝对路径: %+v", res.Artifacts)
+	}
+	if raw, err := os.ReadFile(outPath); err != nil || string(raw) != "ABCDEF" {
+		t.Errorf("音频应落盘到指定绝对路径: %q err=%v", raw, err)
+	}
+}
+
 // 缺 text / 未配置凭证：参数错误先行（与 volcengine 同序）。
 func TestTTSToolValidation(t *testing.T) {
 	tool := NewTTSTool("", t.TempDir())
@@ -49,9 +76,13 @@ func TestTTSToolValidation(t *testing.T) {
 		func(int, string, map[string]any) {}); err == nil || !strings.Contains(err.Error(), "text") {
 		t.Errorf("缺 text 应报参数错误, got %v", err)
 	}
-	if _, err := tool.Run(context.Background(), provider.TaskInput{Params: map[string]any{"text": "hi"}},
-		func(int, string, map[string]any) {}); err == nil || !strings.Contains(err.Error(), "API Key") {
+	_, err := tool.Run(context.Background(), provider.TaskInput{Params: map[string]any{"text": "hi"}},
+		func(int, string, map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "API Key") {
 		t.Errorf("缺凭证应报配置指引, got %v", err)
+	}
+	if !errors.Is(err, ErrNoCred) {
+		t.Errorf("缺凭证错误应包装 ErrNoCred 哨兵（CLI/服务端按其映射退出码 4）, got %v", err)
 	}
 }
 
