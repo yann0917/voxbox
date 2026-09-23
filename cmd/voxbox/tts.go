@@ -12,13 +12,16 @@ import (
 
 func newTTSCommand() *cobra.Command {
 	var (
-		textFile    string
-		voice       string
-		format      string
-		speedRatio  float64
-		volumeRatio float64
-		outPath     string
-		jsonOut     bool
+		textFile     string
+		voice        string
+		format       string
+		speedRatio   float64
+		volumeRatio  float64
+		engine       string
+		qwenModel    string
+		instructions string
+		outPath      string
+		jsonOut      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "tts <text>",
@@ -36,15 +39,31 @@ func newTTSCommand() *cobra.Command {
 				}
 				text = string(raw)
 			}
-			params := map[string]any{"text": text, "voice": voice, "format": format,
-				"speed_ratio": speedRatio, "volume_ratio": volumeRatio}
-			return runToolSync(c, "volcengine", "tts", params, nil, outPath, jsonOut)
+			// 千问音色默认值与火山不同：用户显式传 --voice 则尊重其选择
+			if engine == "qianwen" && voice == "zh_female_cancan_mars_bigtts" && !c.Flags().Changed("voice") {
+				voice = "Cherry"
+			}
+			var params map[string]any
+			switch engine {
+			case "volcengine":
+				params = map[string]any{"text": text, "voice": voice, "format": format,
+					"speed_ratio": speedRatio, "volume_ratio": volumeRatio}
+			case "qianwen":
+				params = map[string]any{"text": text, "voice": voice, "format": format,
+					"model": qwenModel, "instructions": instructions}
+			default:
+				return fmt.Errorf("不支持的引擎 %q（可选 volcengine / qianwen）", engine)
+			}
+			return runToolSync(c, engine, "tts", params, nil, outPath, jsonOut)
 		},
 	}
 	f := cmd.Flags()
 	f.StringVar(&textFile, "file", "", "从文件读取文本")
-	f.StringVar(&voice, "voice", "zh_female_cancan_mars_bigtts", "音色 ID")
-	f.StringVar(&format, "format", "mp3", "音频格式: mp3|wav|pcm|ogg_opus")
+	f.StringVar(&engine, "engine", "volcengine", "合成引擎: volcengine（火山引擎）| qianwen（千问）")
+	f.StringVar(&voice, "voice", "zh_female_cancan_mars_bigtts", "音色 ID（--engine qianwen 默认 Cherry，可选 48 官方音色）")
+	f.StringVar(&format, "format", "mp3", "音频格式: mp3|wav|pcm|ogg_opus（--engine qianwen 仅支持 mp3|wav）")
+	f.StringVar(&qwenModel, "qwen-model", "qwen3-tts-flash", "千问模型: qwen3-tts-flash|qwen3-tts-instruct-flash（仅 --engine qianwen 生效）")
+	f.StringVar(&instructions, "instructions", "", "风格指令（仅千问 instruct 模型生效：用自然语言描述语速/情感/风格）")
 	f.Float64Var(&speedRatio, "speed-ratio", 1.0, "语速 0.2-3.0")
 	f.Float64Var(&volumeRatio, "volume-ratio", 1.0, "音量 0.2-3.0")
 	f.StringVar(&outPath, "out", "", "产物输出路径（默认数据目录自动命名）")
