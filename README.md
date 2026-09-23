@@ -12,10 +12,11 @@
 | 格式工厂工具集 | z.pcgeshi.com 云端直连（免费匿名）：人声/伴奏分离、视频转换压缩、音频转换压缩降噪、图片转换压缩，共 11 项（人声分离另有转换猫镜像线路 `zhuanhuanmao`，同后端不同站点入口） | 站点私有任务协议逆向（预签名直传 TOS → create_task → 轮询 → 产物直链） |
 | 机器翻译 | 32 语种互译、自动检测源语言、术语定制（直传术语 / 术语表） | HTTP 同步（matx_translate，需开通 volc.speech.mt） |
 | 语音妙记 | 音视频 URL 转结构化纪要：转写+说话人、全文总结、待办/问答提取、章节总结、中英翻译（≤2h、<1G） | HTTP 异步（lark submit/query，结果链接 24h 有效立即转存） |
+| 千问平台语音 | qwen3-tts 非流式合成（48 官方音色、instruct 模型风格指令）+ qwen3-asr 录音文件转写（长音频 ≤12h、说话人分离、SRT 字幕） | DashScope 兼容 HTTP（固定入口，Bearer API Key） |
 
 ## 特性
 
-- **双形态**：`voxbox tts/asr/podcast/separate/translate/minutes` 命令行直用（`separate --engine mvsep|gsgc|zhuanhuanmao|mediakit` 四引擎切换；脚本/agent 友好，`--json` 机器可读输出）；`voxbox serve` 启动 Web 控制台。
+- **双形态**：`voxbox tts/asr/podcast/separate/translate/minutes` 命令行直用（`tts`/`asr` 支持 `--engine volcengine|qianwen` 双引擎，`separate --engine mvsep|gsgc|zhuanhuanmao|mediakit` 四引擎切换；脚本/agent 友好，`--json` 机器可读输出）；`voxbox serve` 启动 Web 控制台。
 - **单二进制**：前端产物 go:embed 内嵌，goroutine 任务池 + SQLite 状态，零外部依赖部署；纯 Go sqlite 驱动，可交叉编译（`make dist`）。
 - **可扩展**：Provider 抽象层，新平台/新工具以「实现接口 + 注册」接入，前端表单与 CLI 由参数 schema 驱动。
 - **Agent 可调用**：`voxbox skill install` 把 skill 装到本机 agent 目录（WorkBuddy / Claude Code / CodeBuddy），agent 即可按 CLI 调用全部能力——**skill 已 go:embed 进二进制，只分发可执行文件也自带**；`voxbox mcp` 提供 stdio MCP server（15 个工具，见 [docs/mcp.md](docs/mcp.md)），Claude Code 等 MCP 客户端可直连。
@@ -29,6 +30,7 @@
 - **工作台**：真实运行统计（任务数/成功率/累计耗时）+ 最近任务
 - **试听**：自研波形播放器 + 全局播放条，历史页与各工具页的产物可直接播放、下载
 - **工具联动**：人声分离页的人声轨可「送 ASR 识别」——产物直接作为识别输入，无需公网 URL
+- **设置页云端/本地两 Tab**：云端凭证按厂商卡片独立保存与连通性测试（火山语音 / 千问平台 / MediaKit / MVSep），本地能力与存储位置归入本地 Tab
 
 ## 快速开始
 
@@ -39,6 +41,9 @@ make all
 # 配置火山引擎语音凭证
 ./bin/voxbox config set volc.speech.app_id <APP ID>
 ./bin/voxbox config set volc.speech.access_token <Token>
+
+# 配置千问平台凭证（qwen3-tts 合成 / qwen3-asr 转写，与火山凭证相互独立）
+./bin/voxbox config set qianwen.api_key <API Key>
 
 # CLI 合成（机器可读输出，退出码 0 成功）
 ./bin/voxbox tts "你好，voxbox" --out /tmp/hello.mp3 --json
@@ -58,6 +63,10 @@ make all
 ./bin/voxbox asr --url "https://example.com/talk.mp3" --version idle  --json   # 闲时版，低价、24h 内完成
 ./bin/voxbox asr --file /tmp/talk.m4a --version flash --json   # 本地文件走极速版（需配置对象存储）
 ./bin/voxbox asr --file /tmp/talk.wav --version standard --json   # 本地文件走标准版（需配置对象存储）
+
+# 千问引擎（tts/asr --engine qianwen；音色缺省 Cherry，asr 仅录音文件转写、不支持 --version）
+./bin/voxbox tts "你好，千问" --engine qianwen --voice Cherry --out /tmp/qwen.mp3 --json
+./bin/voxbox asr --engine qianwen --url "https://example.com/talk.mp3" --out /tmp/transcript.txt --json
 
 # 主题一键生成双人播客（--speakers 必填：两个音色 ID 逗号分隔，用 voxbox voices list 查询，支持 --scene/--lang 筛选）
 ./bin/voxbox podcast "用五分钟聊聊本地大模型" \
