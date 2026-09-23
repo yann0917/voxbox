@@ -1,0 +1,266 @@
+name: Release
+
+# 手动触发发布：版本号可填可不填，留空则在最新 tag 基础上自动把 patch +1。
+# 若该版本 tag 已存在（先手动打 tag 的情形），构建与 Release 都按该 tag 的提交进行，
+# 保证发布产物与 tag 严格对应。
+# darwin 产物必须在 macOS runner 构建并 ad-hoc 签名：Apple Silicon 内核拒绝执行
+# 无签名 arm64 二进制，而 Go 只在 macOS host 原生构建时自动 ad-hoc（linux 交叉编译不会）。
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号 x.y.z（可带 v 前缀；留空 = 最新版本 patch +1）"
+        required: false
+        default: ""
+      draft:
+        description: "创建为草稿 Release（不立即公开）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# 同一时间只允许一个发布流程，避免并发打 tag
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: 解析版本与测试
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
+      prev_tag: ${{ steps.ver.outputs.prev_tag }}
+      commit: ${{ steps.ver.outputs.commit }}
+    steps:
+      - name: 检出代码（含全部 tag，用于计算版本号）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 安装 Go（版本取自 go.mod）
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 解析版本号
+        id: ver
+        env:
+          # 通过 env 传递，避免输入内容直接插入 shell 脚本
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          input="${INPUT_VERSION#v}"   # 允许填 v1.2.3
+
+          # 既有版本 tag：既用于自动递增，也用于更新日志基线（上一个 tag..本次提交）
+          latest="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
+
+          if [ -n "$input" ]; then
+            ver="$input"
+            echo "使用手动指定版本：$ver"
+          elif [ -z "$latest" ]; then
+            ver="0.1.0"
+            echo "未发现既有 tag，使用初始版本：$ver"
+          else
+            base="${latest#v}"
+            major="${base%%.*}"
+            rest="${base#*.}"
+            minor="${rest%%.*}"
+            patch="${rest#*.}"
+            ver="$major.$minor.$((patch + 1))"
+            echo "基于最新 tag $latest 自动递增 patch：$ver"
+          fi
+
+          if ! printf '%s' "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::版本号格式非法：'$ver'，应为 x.y.z（例如 1.2.3）"
+            exit 1
+          fi
+
+          # 构建基线：tag 已存在就按**该 tag 的提交**构建，产物与 tag 严格对应
+          #（支持「先手动打 tag 再触发发布」；也避免 main 又前进后打出与 tag 不符的产物）。
+          # 不存在则用当前提交 —— 后面 Release 时会把 tag 打在这个提交上。
+          tag="v$ver"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            commit="$(git rev-parse "$tag^{commit}")"
+            echo "tag $tag 已存在，按该 tag 的提交构建：$commit"
+          else
+            commit="$(git rev-parse HEAD)"
+            echo "tag $tag 将创建于当前提交：$commit"
+          fi
+
+          # 更新日志基线：除本次发布 tag 外的最新版本 tag（无则空 = 首个版本）
+          prev="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -vxF "$tag" | head -n1 || true)"
+          echo "更新日志基线 tag：${prev:-（无，取全部历史）}"
+
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=$prev" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - name: 运行测试
+        run: go test ./... -count=1
+
+  build:
+    name: 构建发布包（${{ matrix.name }}）
+    needs: resolve
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux 与 windows
+            platforms: "linux/amd64 linux/arm64 windows/amd64"
+          - os: macos-latest
+            name: darwin（含 ad-hoc 签名）
+            platforms: "darwin/arm64 darwin/amd64"
+    steps:
+      - name: 检出代码（固定到 tag 对应提交）
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          fetch-depth: 0
+
+      - name: 安装 Node（前端编译要求 24+）
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安装 Go（版本取自 go.mod）
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 构建发布包（前端 + 交叉编译 + darwin ad-hoc 签名）
+        run: make dist VERSION=${{ needs.resolve.outputs.version }} PLATFORMS="${{ matrix.platforms }}"
+
+      - name: 校验产物
+        run: |
+          set -euo pipefail
+          ls -lh dist/
+          count="$(ls -1 dist/*.zip 2>/dev/null | wc -l | tr -d ' ')"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::没有生成任何发布包"
+            exit 1
+          fi
+          echo "共生成 $count 个发布包"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: 发布 Release
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码（固定到 tag 对应提交，生成更新日志需完整历史与 tag）
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          fetch-depth: 0
+
+      - name: 汇合各平台产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 平铺产物到 dist/
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find artifacts -name '*.zip' -exec mv {} dist/ \;
+          ls -lh dist/
+          count="$(ls -1 dist/*.zip | wc -l | tr -d ' ')"
+          if [ "$count" -ne 5 ]; then
+            echo "::error::发布包数量 $count，应为 5（linux/arm64、linux/amd64、windows/amd64、darwin/arm64、darwin/amd64）"
+            exit 1
+          fi
+
+      # GitHub 自动生成的 Release Notes 只收录「已合并的 PR」——本仓库是直接推 main，
+      # 没有 PR，所以自动 notes 只有一行 Full Changelog 链接。改为按提交信息生成：
+      # conventional 前缀分组，只取标题行（部分提交正文较长，不展开）。
+      - name: 生成更新日志
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          PREV_TAG: ${{ needs.resolve.outputs.prev_tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "$PREV_TAG" ] && git merge-base --is-ancestor "$PREV_TAG" HEAD 2>/dev/null; then
+            range="$PREV_TAG..HEAD"
+            echo "更新日志范围：$range"
+          else
+            range=""
+            echo "无可用的基线 tag，更新日志取全部历史（最多 200 条）"
+          fi
+
+          # shellcheck disable=SC2086  # $range 为空时需整体省略，故意不加引号
+          git log --no-merges -n 200 --pretty=format:'%h%x09%s' $range | awk -F'\t' '
+            NF >= 2 {
+              if ($2 ~ /^feat/)          c = "新功能"
+              else if ($2 ~ /^fix/)      c = "修复"
+              else if ($2 ~ /^perf/)     c = "性能与优化"
+              else if ($2 ~ /^docs/)     c = "文档"
+              else                       c = "其他"
+              items[c] = items[c] "- " $2 "（" $1 "）\n"
+              seen[c] = 1
+            }
+            END {
+              n = split("新功能 修复 性能与优化 文档 其他", cats, " ")
+              for (i = 1; i <= n; i++) {
+                c = cats[i]
+                if (seen[c]) printf "### %s\n\n%s\n", c, items[c]
+              }
+            }
+          ' > changelog.md
+
+          {
+            cat changelog.md
+            printf '\n---\n\n'
+            printf '%s\n' \
+              '> **macOS 安装提示**：二进制为 ad-hoc 签名（未公证）。若提示「Apple could not verify …」，' \
+              '> 执行 `xattr -d com.apple.quarantine ./voxbox` 后重试；如仍被拦，在' \
+              '> 「系统设置 → 隐私与安全性」中点「仍要打开」。'
+            if [ -n "$PREV_TAG" ]; then
+              printf '\n**Full Changelog**：https://github.com/%s/compare/%s...%s\n' \
+                "$GITHUB_REPOSITORY" "$PREV_TAG" "$TAG"
+            fi
+          } > release-notes.md
+
+          echo "----- release-notes.md -----"
+          cat release-notes.md
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve.outputs.tag }}
+          name: ${{ needs.resolve.outputs.tag }}
+          files: dist/*.zip
+          draft: ${{ inputs.draft }}
+          # 注意：body 与 generate_release_notes 同时给会由 body 覆盖生成内容
+          #（GitHub 语义），所以更新日志与 macOS 提示统一走 body_path。
+          body_path: release-notes.md
+          fail_on_unmatched_files: true
+
+      - name: 汇总
+        run: |
+          echo "### 发布完成 :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 版本：\`${{ needs.resolve.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 草稿：\`${{ inputs.draft }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 发布包 | 大小 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          for f in dist/*.zip; do
+            echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |" >> "$GITHUB_STEP_SUMMARY"
+          done

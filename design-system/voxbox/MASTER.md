@@ -1,0 +1,230 @@
+# Design System Master File — voxbox
+
+> **LOGIC:** 构建具体页面时，先查 `design-system/voxbox/pages/[page].md`。存在则该页规则**覆盖**本文件；不存在则严格遵循本文件。
+>
+> 本文件基于 ui-ux-pro-max 生成结果**人工校正**：保留其有效判据（Dark Mode (OLED) 的午夜蓝族与 AAA 对比、Fira Code/Fira Sans 技术精确调性、Dark audio 色板取向、间距与反模式清单），替换掉不适用于后台工具的落地页 Pattern/Style，并补齐中文与离线约束。2026-09-24 二次设计：由「暖黑金属机架 + 琥珀信号灯」改向「深空信号站」，琥珀版全部退役。
+
+**Project:** voxbox（AI 语音工具箱 · 单用户本地工具）
+**Category:** Admin Console / Developer Tool
+**Updated:** 2026-09-24
+
+---
+
+## 0. 设计方向（一句话）
+
+**把界面做成一间深空信号站**：午夜蓝多层面板、刻印微标签、电光青信号色（示波器束流）、等宽数字读数。产品调性是「深空里的精密测控台」，不是「炫酷 AI 产品」，更不是「模板化后台」。
+
+**材质三律（反「Gradio 味」的硬判据，2026-09-24 校准）**：
+1. **无纯平面**——一切容器表面必须有方向性：卡片用极缓的顶亮渐变（冷雾顶光），输入用凹槽内嵌阴影（仪表凹陷）。
+2. **无中性灰**——中性色全部带蓝冷倾向（canvas 偏 `#070B15` 族，非 `#0A0A0C` 无彩黑，更禁止暖棕）；亮色主题是冷雾白/晨蓝，不是暖纸。
+3. **有空气感**——画布铺 ≤2.5% 噪点纹理（胶片颗粒），主操作按钮带青光晕；光来自「信号束流」，不来自装饰彩虹。
+
+设计决策的判据：任何视觉选择都要能回答「这像不像深空任务里的测控界面」。不像的，删掉。
+
+---
+
+## 1. 色彩
+
+### 1.1 暗色（默认）
+
+| 角色 | 值 | 语义 / 用途 |
+|---|---|---|
+| `--color-bg` | `#070B15` | 应用画布（深空午夜蓝黑，蓝冷倾向，**禁止纯黑、暖棕与无彩灰黑**） |
+| `--color-panel` | `#0C1322` | 侧栏、面板底、表头 |
+| `--color-raise` | `#101A2E` | 卡片、内容容器 |
+| `--color-raise-2` | `#16233C` | 卡片内嵌槽、hover 底 |
+| `--color-inset` | `#060B16` | 输入凹槽底（比 raise 更深，配内嵌阴影） |
+| `--color-line` | `rgba(157,200,255,.09)` | 发丝分隔线（冷蓝白低透明） |
+| `--color-line-strong` | `rgba(157,200,255,.18)` | 分组边界、输入框边框 |
+| `--color-fg` | `#E9F1FF` | 主文本（冷白） |
+| `--color-fg-2` | `#A3B4D0` | 次级文本、值 |
+| `--color-muted` | `#66799A` | 微标签、说明、占位 |
+| `--color-accent` | `#22D3EE` | **电光青**：主操作、激活态、焦点环 |
+| `--color-accent-hi` | `#7DEBFA` | accent hover / 按钮渐变顶 |
+| `--color-accent-ink` | `#05242B` | 落在 accent 底上的文字 |
+| `--color-meter` | `#34D399` | **信号绿**：成功、波形、电平（不做主操作色） |
+| `--color-warn` | `#F5C042` | 警示 |
+| `--color-danger` | `#FF6B7A` | 错误、破坏性操作 |
+
+### 1.2 亮色（完整适配，非降级）
+
+| 角色 | 值 |
+|---|---|
+| `--color-bg` | `#E9EEF6` |
+| `--color-panel` | `#F2F5FA` |
+| `--color-raise` | `#FAFCFF` |
+| `--color-raise-2` | `#E2E9F3` |
+| `--color-inset` | `#DFE6F1` |
+| `--color-line` | `rgba(23,48,91,.13)` |
+| `--color-line-strong` | `rgba(23,48,91,.22)` |
+| `--color-fg` | `#0D1930` |
+| `--color-fg-2` | `#42536E` |
+| `--color-muted` | `#5B6B87` |
+| `--color-accent` | `#0E7490` |
+| `--color-accent-hi` | `#155E75` |
+| `--color-accent-ink` | `#FFFFFF` |
+| `--color-meter` | `#059669` |
+| `--color-warn` | `#B45309` |
+| `--color-danger` | `#DC2626` |
+
+亮色是「破晓的同一间信号站」：冷雾画布 + 晨蓝面板，**禁止纯白 `#FFFFFF` 大面积做画布/面板**（纯白=通用后台即视感的根源），也**禁止把旧琥珀版暖纸色任何形式请回来**。
+
+### 1.3 材质规则（全主题通用，组件层实现）
+
+1. **卡片 = 冷雾顶光面**：`.card-surface`——`linear-gradient(180deg, edge-light 混入 3%, raise)` 顶亮渐变 + `--shadow-1` 顶缘 1px 内高光。禁止再写裸 `bg-raise`。
+2. **输入 = 仪表凹槽**：底用 `--color-inset`（比容器深一档）+ `inset 0 1px 2px var(--inset-shadow)`；focus 时青色边框+外环，内嵌阴影保留。
+3. **主操作按钮 = 电光青束流**：`.btn-primary`——`linear-gradient(180deg, accent-hi, accent)` + 顶部内高光 + `0 2px 14px -4px` 青光晕；hover 整体提亮，**禁止位移**。
+4. **画布噪点**：`body::after` 全屏 feTurbulence 噪点，暗色 `opacity .025`、亮色 `.018`，`pointer-events:none`，z 最顶层——胶片颗粒统一材质，**禁止任何大于 4% 的纹理透明度**。
+5. **波形 idle 色**：`--wave-idle` 随主题（暗 `rgba(233,241,255,.16)` / 亮 `rgba(23,48,91,.20)`），WavePlayer 从令牌读取，禁止硬编码。
+
+**色彩纪律**：电光青是唯一主操作色；绿只表示「信号/成功/电平」；红只表示「错误/破坏」；黄只表示「警示」。禁止第二个装饰性强调色（紫/粉霓虹一律不进界面）。
+
+---
+
+## 2. 字体
+
+**Fira 不覆盖中文**，必须逐字形回退——中英混排是本产品常态，字体栈顺序不可改：
+
+```css
+--font-sans: "Fira Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+--font-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+```
+
+- **Fira Sans**：界面文本（拉丁 + 数字）
+- **Fira Code**：**全部数字读数**——时间码、时长、耗时、计数、ID、参数值
+- **中文**：PingFang SC / 微软雅黑回退（不做中文字体定制）
+
+**字体交付**：`@fontsource/fira-sans` 与 `@fontsource/fira-code`（npm 自托管、Vite 打包）。**禁止 Google Fonts CDN**——本地工具要离线可用，且 CDN 在境内不稳定。
+
+### 字号与字重标尺
+
+| Token | 值 | 用途 |
+|---|---|---|
+| `micro` | 11px / `letter-spacing .08em` / uppercase | **刻印微标签**：字段名、区块标题、表头 |
+| `xs` | 12px | 辅助、时间戳 |
+| `sm` | 13px | 次级正文、按钮 |
+| `base` | 14px | 正文 |
+| `lg` | 16px | 区块标题 |
+| `xl` | 20px | 页面标题 |
+| `2xl` | 26px | 面板级大标题 |
+| `3xl` | 34px / mono | **统计读数**（工作台） |
+
+字重仅用 400 / 500 / 600。禁止 700+（会破坏精密感）。数字一律 `font-variant-numeric: tabular-nums`。
+
+---
+
+## 3. 空间、圆角、阴影、动效
+
+**间距**（只用这几个，禁止随手写 px）：`4 / 8 / 12 / 16 / 24 / 32 / 48`
+
+**圆角**：`--radius-sm 7px`（输入、按钮）· `md 12px`（卡片）· `lg 16px`（浮层）· `full`（徽标、圆点）
+
+**阴影**（暗色底靠「顶缘冷光内高光 + 深投影」造层次，不是靠大黑影；阴影随主题切换，定义为变量）：
+```css
+/* 暗色 */
+--elev-1: 0 1px 2px rgba(2,8,20,.55), inset 0 1px 0 rgba(190,224,255,.06);
+--elev-2: 0 8px 24px -8px rgba(2,8,20,.70), inset 0 1px 0 rgba(190,224,255,.06);
+--elev-3: 0 24px 48px -12px rgba(1,5,14,.80);
+/* 亮色 */
+--elev-1: 0 1px 2px rgba(23,48,91,.08), inset 0 1px 0 rgba(255,255,255,.8);
+--elev-2: 0 8px 24px -10px rgba(23,48,91,.16), inset 0 1px 0 rgba(255,255,255,.8);
+--elev-3: 0 24px 48px -12px rgba(23,48,91,.22);
+```
+
+**动效**：`--dur-1 120ms`（状态切换）· `--dur-2 200ms`（进浮层）· `--ease cubic-bezier(.2,.8,.2,1)`
+- 只做**有意义的动效**：任务进度、播放电平、浮层进离场、页面首屏分段浮现（staggered）。
+- **禁止**装饰性无限动画（呼吸/波形/闪烁只用于 running/loading 状态，且尊重 `prefers-reduced-motion`）。
+- **禁止** layout-shifting hover（`scale` / `translateY` 位移）。
+
+---
+
+## 4. 图标
+
+**Lucide**（`lucide-react`），统一 `stroke-width 1.75`、尺寸 16 / 20 两档。
+
+- **严禁 emoji 作图标**（一律 SVG）
+- 导航图标、操作图标、空状态图标一律来自同一套 stroke 图标
+- 图标不单独承担语义时配文字标签（a11y）
+
+---
+
+## 5. 组件规格
+
+组件位于 `web/src/ui/`，**所有页面必须复用，禁止再手写卡片/按钮 class**。
+
+| 组件 | 要点 |
+|---|---|
+| `Button` | 变体 `primary`(青实底) / `secondary`(描边) / `ghost` / `danger`；尺寸 sm/md；`loading` 态内置 spinner 且禁点；hover 只变底色/描边色，**不位移** |
+| `Field` | **刻印微标签**(micro) + 控件 + hint/error 行；label 必须与控件关联（htmlFor） |
+| `Input` / `Textarea` | 底 `raise-2`、边框 `line-strong`、focus 时边框转 accent + 2px accent 外环（`focus-visible`，不可移除） |
+| `Select` | **自定义 listbox，禁止原生 `<select>`**。触发钮与 Input 同材质；面板 `bg-panel` + `line-strong` + `shadow-3` + `radius-md`，下方放不下向上翻；选中项 accent `Check`，活动项 `raise-2`，`optgroup` 组头用 micro 微标签；键盘 ↑↓/Home/End/Enter/Esc/首字跳转，Esc 只关面板不冒泡给 Modal。API 与原生同形（`onChange={(e) => e.target.value}`，子元素写 `<option>/<optgroup>`） |
+| `Card` | 可选 header（标题 + 右侧操作）；内部 16/24 间距；hover 只提亮边框/底色。**`CardBody` 自带 `p-4`，传 `className` 是叠加不是覆盖**——只传 `space-y-*` 控制纵向节奏；改 padding 须显式传 `px-*`/`py-*`/`p-*`（曾因默认值被覆盖导致全站卡片掉内边距，勿回退） |
+| `Badge` | 任务状态：pending 灰 / running 青(带呼吸点) / succeeded 绿 / failed 红 / canceled 灰；**不得只靠颜色**（带文字） |
+| `ProgressBar` | 细条(2px)，底 `raise-2`、条 accent；running 时条上叠加流光 |
+| `WaveLoader` | **波形加载指示**：4 根错相弹跳电平条（`currentColor`，默认 accent），用于「等待/处理中」的行内状态（任务进度卡、加载更多、空结果等待），替代 spinner 语义；静态占位仍用 Skeleton；`role="status"` + `aria-label` |
+| `Skeleton` | 与最终布局同形状的骨架（**内容区不用 spinner**），`animate-pulse` |
+| `EmptyState` | 图标 + 标题 + 一句说明 + 一个主操作（禁止空白页） |
+| `Toast` | 右上角，250ms 滑入淡出，4s 自动消失，`role="status"`；**全站替换 `alert()`** |
+| `ConfirmDialog` | 破坏性操作（删除任务）必须二次确认，危险按钮在右侧 |
+| `Tabs` | 分段控件（segmented）；键盘方向键可切，`role="tablist"` |
+| `IconButton` | 方形图标按钮，必有 `title`/`aria-label` |
+| `MicroLabel` | 刻印微标签的统一实现 |
+| **`WavePlayer`** | **签名组件**：WebAudio 解码取峰值 → canvas 波形（cyan 已播 / idle 未播）+ 播放头 + mono 时间码 `mm:ss.d`；用于所有音频产物 |
+| `MiniPlayerBar` | 全局底部播放条：当前产物、上/下一个、波形、关闭；跨页面常驻（zustand） |
+| `LevelMeter` | 播放中电平条（绿），仅在播放态出现 |
+
+---
+
+## 6. 页面模式（后台控制台，非落地页）
+
+**外壳**：左侧固定导轨 232px（图标+文字，激活态 = 青色左侧标记 + 提亮底）· 顶部条（页面标题 + 上下文 + 全局操作：主题切换/健康状态）· 主区 `max-w-[1100px]` 居中，32px 内边距。
+**响应式**：`<1024` 导轨收为纯图标（64px），`<768` 导轨变底部/抽屉；主区不出现横向滚动。
+
+**页面结构**：
+1. **页头**：标题(20/600) + 一句说明(13 muted) + 右侧主操作
+2. **内容**：表单类页面在 `≥1024` 走两栏（编辑区 flex-1 + 参数面板 320px），窄屏单栏
+3. **结果**：卡片 + 行式布局；音频行 = 轨道标签 + WavePlayer + 下载/联动操作
+4. **任务列表**：表格，mono 时间戳、状态 Badge、行内操作
+5. **加载**：Skeleton 同构骨架；**空态**：EmptyState 带主操作；**错误**：行内错误 + Toast，不用 alert
+
+**工作台**：只放真数据（`/api/tasks` 汇总：各工具任务数/成功率/最近任务），**禁止编造统计**。
+
+---
+
+## 7. 反模式（禁止）
+
+沿用并强化 ui-ux-pro-max 清单：
+
+- ❌ **emoji 作图标** —— 一律 SVG（Lucide）
+- ❌ **纯黑 #000 / 无彩灰黑** —— 用 `#070B15` 族蓝冷画布
+- ❌ **位移/缩放 hover** —— 只改颜色与边框
+- ❌ **超过 300ms 的过渡**，或瞬时无过渡
+- ❌ **`alert()` / `confirm()`** —— 用 Toast / ConfirmDialog
+- ❌ **只靠颜色区分状态**（状态必须带文字）
+- ❌ **移除默认焦点环**（必须换成本设计的 accent 焦点环）
+- ❌ **内容区 spinner**（用 Skeleton）
+- ❌ **空白页**（必须有 EmptyState）
+- ❌ **`var(--x)` 任意值散写**（用 `@theme` 语义工具类，如 `bg-panel` / `text-fg-2`）
+- ❌ 第二个装饰性强调色（紫/粉/橙霓虹）、700+ 字重、多套圆角混用
+- ❌ **旧琥珀版色值回流**（`#FF8A3D` 族与暖纸亮色已整体退役，新代码禁止引用）
+
+---
+
+## 8. 交付前检查表
+
+- [ ] 无 emoji 图标；图标全部来自 Lucide 且尺寸统一
+- [ ] 所有可点元素有 `cursor-pointer` 与可见 hover 反馈
+- [ ] 过渡 150–300ms；hover 无位移
+- [ ] 亮色模式文本对比 ≥ 4.5:1，边框可见，两种主题都实测
+- [ ] 键盘可达：焦点环可见、Tab 顺序合理、对话框可 Esc 关闭
+- [ ] `prefers-reduced-motion` 下禁用呼吸/滑入动画
+- [ ] 375 / 768 / 1024 / 1440 四档响应式，无横向滚动
+- [ ] 加载有 Skeleton、空态有引导、错误有 Toast 与行内提示
+- [ ] 数字读数使用 mono + tabular-nums
+- [ ] 无 `alert()` 残留、无 `var()` 任意值散写
+
+---
+
+## 9. 页面级覆盖
+
+页面特定偏离写在 `design-system/voxbox/pages/<page>.md`（存在即覆盖本文件）。当前无覆盖文件。

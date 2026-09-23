@@ -1,0 +1,33 @@
+// 登录态与凭证管理：/api/auth/* 的薄封装。会话走 HttpOnly Cookie（浏览器自动携带），
+// 前端只持身份快照（useMe）；401 由 RequireAuth 统一跳登录页。
+import { useQuery } from "@tanstack/react-query";
+import { fetchJSON } from "./api";
+
+export interface Me {
+  id: string;
+  username: string;
+  role: string;
+  must_change_password: boolean;
+  has_token: boolean;
+}
+
+export const fetchMe = () => fetchJSON<Me>("/api/auth/me");
+
+export const login = (username: string, password: string) =>
+  fetchJSON<Me>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) });
+
+export const logout = () => fetchJSON<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
+
+export const changePassword = (old_password: string, new_password: string) =>
+  fetchJSON<{ ok: boolean }>("/api/auth/password", {
+    method: "POST",
+    body: JSON.stringify({ old_password, new_password }),
+  });
+
+/** 轮换 API token：明文只在本响应出现一次（MCP/CLI 用）。 */
+export const rotateToken = () =>
+  fetchJSON<{ api_token: string }>("/api/auth/token/rotate", { method: "POST" });
+
+export function useMe() {
+  return useQuery({ queryKey: ["me"], queryFn: fetchMe, retry: false, staleTime: 60_000 });
+}

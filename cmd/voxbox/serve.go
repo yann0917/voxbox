@@ -1,0 +1,87 @@
+package main
+
+import (
+	"embed"
+	"fmt"
+	"net/http"
+	"os"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/spf13/cobra"
+	"github.com/yann0917/voxbox/internal/config"
+	"github.com/yann0917/voxbox/internal/server"
+	"github.com/yann0917/voxbox/internal/service"
+)
+
+//go:embed all:webdist
+var webDist embed.FS
+
+func newServeCommand() *cobra.Command {
+	var port int
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "启动 Web 控制台",
+		RunE: func(c *cobra.Command, args []string) error {
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+			if port != 0 {
+				cfg.Server.Port = port
+			}
+			svc, err := service.New(cfg)
+			if err != nil {
+				return err
+			}
+			defer svc.Close()
+			srv := server.New(svc)
+			svc.StartEngine(srv.Hub().Notify, 2)
+
+			// 首次启动引导：users 表为空时创建 admin。随机密码只在本次控制台打印，
+			// 首登强制改密；VOXBOX_ADMIN_PASSWORD 供部署自动化注入（不回显）。
+			initialPassword, err := srv.EnsureBootstrapAdmin()
+			if err != nil {
+				return fmt.Errorf("初始化管理员账号失败: %w", err)
+			}
+			if initialPassword != "" {
+				username := os.Getenv("VOXBOX_ADMIN_USERNAME")
+				if username == "" {
+					username = "admin"
+				}
+				fmt.Fprintf(os.Stderr, "\n=== 首次启动已创建管理员账号 ===\n")
+				fmt.Fprintf(os.Stderr, "用户名: %s\n", username)
+				fmt.Fprintf(os.Stderr, "初始密码: %s （仅本次显示，请立即登录修改）\n\n", initialPassword)
+			}
+
+			// MCP Streamable HTTP 端点：与 Web 控制台同进程同端口（/api/mcp），
+			// 工具调用与 Web 任务共享同一引擎；鉴权与 /api 其余端点同层（Bearer token）。
+			mcpSrv := newMCPServer(svc)
+			srv.MountMCP(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
+				return mcpSrv
+			}, nil))
+
+			// 配置文件监听：服务运行中 CLI config set / 手工编辑 config.yaml 的凭证
+			// 变更热生效。失败仅降级告警，不阻断启动（Web 保存路径不依赖此监听）。
+			stopWatch, err := config.Watch(func(c *config.Config) {
+				svc.ReloadDiskConfig(c)
+				fmt.Fprintf(os.Stderr, "配置文件变更已热加载: %s\n", config.Path())
+			})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "配置文件监听不可用（Web 保存仍即时生效）: %v\n", err)
+			} else {
+				defer stopWatch()
+			}
+
+			handler := server.WithStatic(srv.Handler(), webDist)
+			host := cfg.Server.Host
+			if host == "" {
+				host = "127.0.0.1"
+			}
+			addr := fmt.Sprintf("%s:%d", host, cfg.Server.Port)
+			fmt.Fprintf(os.Stderr, "voxbox Web 已启动: http://%s\n", addr)
+			return http.ListenAndServe(addr, handler)
+		},
+	}
+	cmd.Flags().IntVar(&port, "port", 0, "端口（默认取配置）")
+	return cmd
+}

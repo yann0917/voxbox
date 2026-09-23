@@ -1,0 +1,89 @@
+name: CI
+
+# 日常门禁：Go 测试与静态检查、前端构建与 lint。发布走 release.yml。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同一分支有新提交时取消上一次未完成的运行（CI 可以安全取消，发布流程则不可）
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go（vet / gofmt / test -race）
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go（版本取自 go.mod）
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 格式检查
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l cmd internal 2>/dev/null | sort -u)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::以下文件未通过 gofmt，请本地执行 gofmt -w 后提交："
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+          echo "gofmt 通过"
+
+      - name: 静态检查
+        run: go vet ./...
+
+      - name: 测试（含数据竞争检测）
+        run: go test ./... -count=1 -race
+
+  web:
+    name: 前端（lint / build）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node（要求 24+）
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: 类型检查与构建
+        run: npm run build
+
+      - name: 校验构建产物
+        working-directory: .
+        run: |
+          set -euo pipefail
+          if [ ! -f web/dist/index.html ]; then
+            echo "::error::前端构建产物缺少 index.html"
+            exit 1
+          fi
+          assets="$(find web/dist/assets -type f 2>/dev/null | wc -l | tr -d ' ')"
+          if [ "$assets" -eq 0 ]; then
+            echo "::error::前端构建产物缺少 assets"
+            exit 1
+          fi
+          echo "构建产物正常：index.html + $assets 个资源文件"
+          du -sh web/dist

@@ -1,0 +1,7 @@
+# voxbox 反代（Caddy 自动签发/续期 HTTPS 证书）
+# 安装：把 example.com 换成你的域名后
+#       sudo cp deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+example.com {
+	# TLS/压缩由 Caddy 承担，后端保持 127.0.0.1 回环
+	reverse_proxy 127.0.0.1:8081
+}

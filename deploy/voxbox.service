@@ -1,0 +1,29 @@
+# voxbox systemd 服务单元
+# 安装：sudo cp deploy/voxbox.service /etc/systemd/system/
+#       sudo systemctl daemon-reload && sudo systemctl enable --now voxbox
+[Unit]
+Description=voxbox 语音工具箱 Web 控制台
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 运行用户（建议专用低权账号：useradd -r -m -d /var/lib/voxbox voxbox）
+User=voxbox
+Group=voxbox
+# VOXBOX_HOME 解耦配置/数据目录与运行用户主目录（config.yaml 与 data/ 都在这里）
+Environment=VOXBOX_HOME=/var/lib/voxbox
+# 部署自动化可预置初始管理员密码（账号已存在时无效）；留空则首启打印随机密码
+#Environment=VOXBOX_ADMIN_PASSWORD=
+#Environment=VOXBOX_ADMIN_USERNAME=admin
+ExecStart=/usr/local/bin/voxbox serve
+Restart=on-failure
+RestartSec=3
+# 加固
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/voxbox
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

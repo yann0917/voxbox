@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>voxbox</title>
+    <script>
+      // 首帧防闪烁：CSS 绘制前按主题偏好挂 light 类（与 src/lib/theme.ts 同一判定）。
+      // 缺这个，亮色偏好用户每次加载都会先闪一帧暗色。
+      try {
+        var p = localStorage.getItem("theme");
+        var dark =
+          p === "dark" ||
+          ((p === null || p === "system") && matchMedia("(prefers-color-scheme: dark)").matches);
+        if (!dark) document.documentElement.classList.add("light");
+      } catch (e) {}
+    </script>
+    <script type="module" crossorigin src="/assets/index-B-K9w6XB.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/ui-BCHr7xkl.js">
+    <link rel="modulepreload" crossorigin href="/assets/api-D-OJ21pv.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-_6S2WOiB.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

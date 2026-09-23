@@ -1,0 +1,13 @@
+dist/
+.playwright-mcp/
+bin/
+web/node_modules/
+web/dist/
+# embed 构建产物不入库，仅保留占位 index.html（保证裸 go build 可编译）
+cmd/voxbox/webdist/*
+!cmd/voxbox/webdist/index.html
+# 根目录裸构建二进制与 macOS 元数据
+/voxbox
+.DS_Store
+.agent/
+qingmusic-go/

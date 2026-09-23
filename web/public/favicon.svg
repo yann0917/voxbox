@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- voxbox 品牌标：电光青信号方块 + 声波纹。与登录页 AudioLines 同一图形，
+       色值取 design-system/voxbox/MASTER.md §1.1（accent / accent-ink）；
+       描边 2.25 比界面图标略粗，保证 16px 标签页尺寸下的可读性 -->
+  <rect x="2" y="2" width="44" height="44" rx="10" fill="#22D3EE"/>
+  <g transform="translate(12 12)" fill="none" stroke="#05242B" stroke-width="2.25" stroke-linecap="round">
+    <path d="M2 10v3"/>
+    <path d="M6 6v11"/>
+    <path d="M10 3v18"/>
+    <path d="M14 8v7"/>
+    <path d="M18 5v13"/>
+    <path d="M22 10v3"/>
+  </g>
+</svg>

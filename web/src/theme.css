@@ -1,0 +1,336 @@
+@import "tailwindcss";
+
+/* ============================================================
+   voxbox 设计令牌
+   源文件：design-system/voxbox/MASTER.md —— 改这里前先改那里
+   暗色为默认（:root），亮色为覆盖（:root.light）
+   方向：深空午夜蓝 + 电光青信号（材质三律见 MASTER §0/§1.3）
+   ============================================================ */
+
+@theme inline {
+  /* 表面层级：画布 → 面板 → 卡片 → 内嵌槽 → 输入凹槽 */
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-raise: var(--raise);
+  --color-raise-2: var(--raise-2);
+  --color-inset: var(--inset);
+
+  /* 发丝分隔与边框 */
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  /* 文本层级 */
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-muted: var(--muted);
+
+  /* 信号色：青=操作，绿=电平/成功，红=错误，黄=警示 */
+  --color-accent: var(--accent);
+  --color-accent-hi: var(--accent-hi);
+  --color-accent-ink: var(--accent-ink);
+  --color-meter: var(--meter);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+
+  /* 字体：Fira 覆盖拉丁与数字，中文逐字形回退——顺序不可改 */
+  --font-sans: "Fira Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* 圆角 */
+  --radius-sm: 7px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  /* 阴影：随主题切换（--elev-* 定义在下方两套主题里） */
+  --shadow-1: var(--elev-1);
+  --shadow-2: var(--elev-2);
+  --shadow-3: var(--elev-3);
+
+  /* 动效 */
+  --ease-out-quint: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ---------------- 暗色（默认）：深空午夜蓝 ---------------- */
+:root {
+  --bg: #070b15;
+  --panel: #0c1322;
+  --raise: #101a2e;
+  --raise-2: #16233c;
+  --inset: #060b16;
+  --line: rgba(157, 200, 255, 0.09);
+  --line-strong: rgba(157, 200, 255, 0.18);
+  --fg: #e9f1ff;
+  --fg-2: #a3b4d0;
+  --muted: #66799a;
+  --accent: #22d3ee;
+  --accent-hi: #7debfa;
+  --accent-ink: #05242b;
+  --meter: #34d399;
+  --warn: #f5c042;
+  --danger: #ff6b7a;
+
+  /* 材质：顶缘冷光 / 凹槽阴影 / 波形 idle */
+  --edge-light: rgba(190, 224, 255, 0.07);
+  --inset-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+  --wave-idle: rgba(233, 241, 255, 0.16);
+  --noise-opacity: 0.025;
+
+  --elev-1: 0 1px 2px rgba(2, 8, 20, 0.55), inset 0 1px 0 rgba(190, 224, 255, 0.06);
+  --elev-2: 0 8px 24px -8px rgba(2, 8, 20, 0.7), inset 0 1px 0 rgba(190, 224, 255, 0.06);
+  --elev-3: 0 24px 48px -12px rgba(1, 5, 14, 0.8);
+  color-scheme: dark;
+}
+
+/* ---------------- 亮色：破晓的同一间信号站（冷雾白） ---------------- */
+:root.light {
+  --bg: #e9eef6;
+  --panel: #f2f5fa;
+  --raise: #fafcff;
+  --raise-2: #e2e9f3;
+  --inset: #dfe6f1;
+  --line: rgba(23, 48, 91, 0.13);
+  --line-strong: rgba(23, 48, 91, 0.22);
+  --fg: #0d1930;
+  --fg-2: #42536e;
+  --muted: #5b6b87;
+  --accent: #0e7490;
+  --accent-hi: #155e75;
+  --accent-ink: #ffffff;
+  --meter: #059669;
+  --warn: #b45309;
+  --danger: #dc2626;
+
+  --edge-light: rgba(255, 255, 255, 0.7);
+  --inset-shadow: inset 0 1px 2px rgba(23, 48, 91, 0.12);
+  --wave-idle: rgba(23, 48, 91, 0.2);
+  --noise-opacity: 0.018;
+
+  --elev-1: 0 1px 2px rgba(23, 48, 91, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --elev-2: 0 8px 24px -10px rgba(23, 48, 91, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --elev-3: 0 24px 48px -12px rgba(23, 48, 91, 0.22);
+  color-scheme: light;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans, "Fira Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 画布胶片颗粒：统一材质、消除色带（MASTER §1.3-4，透明度红线 4%） */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: var(--noise-opacity);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* 数字一律表格对齐——时间码、时长、耗时、计数 */
+  code,
+  kbd,
+  samp,
+  pre,
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 焦点环：全局统一，不可移除 */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 30%, transparent);
+    color: var(--fg);
+  }
+
+  /* 细滚动条：与面板同色系，hover 才显形 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--muted);
+    background-clip: content-box;
+  }
+
+  /* 尊重系统减弱动效偏好 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* 刻印微标签：字段名、区块标题、表头 —— 控制台的核心信息语言 */
+  .micro {
+    font-size: 11px;
+    line-height: 1.2;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  /* 卡面：顶缘冷光渐变（MASTER §1.3-1），Card 组件专用 */
+  .card-surface {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--raise), var(--edge-light) 55%) 0%,
+      var(--raise) 52%
+    );
+  }
+
+  /* 电光青主按钮：渐变 + 顶缘高光 + 青光晕（MASTER §1.3-3） */
+  .btn-primary {
+    background: linear-gradient(180deg, var(--accent-hi), var(--accent) 85%);
+    box-shadow:
+      0 2px 14px -4px color-mix(in oklab, var(--accent) 45%, transparent),
+      inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  }
+  .btn-primary:hover {
+    background: linear-gradient(180deg, var(--accent-hi), var(--accent-hi) 85%);
+  }
+  .btn-primary:active {
+    background: linear-gradient(180deg, var(--accent), var(--accent) 85%);
+    box-shadow:
+      0 1px 8px -4px color-mix(in oklab, var(--accent) 40%, transparent),
+      inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+
+  /* 信号色点：任务运行中的呼吸指示（唯一允许的无限动画） */
+  .signal-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+  }
+  .signal-dot-pulse {
+    animation: signal-pulse 1.6s var(--ease-out-quint, cubic-bezier(0.2, 0.8, 0.2, 1)) infinite;
+  }
+  @keyframes signal-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 45%, transparent);
+    }
+    50% {
+      opacity: 0.55;
+      box-shadow: 0 0 0 4px color-mix(in oklab, currentColor 0%, transparent);
+    }
+  }
+
+  /* 波形加载指示：等待/处理中的品牌化 loading（4 根错相弹跳的电平条）。
+     与 signal-dot 同级：无限动画仅限「进行中」语义，静态占位仍用 Skeleton。
+     负延迟让首帧即错相，无启动爬坡 */
+  .wave-loader {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .wave-loader-bar {
+    width: 3px;
+    height: 100%;
+    border-radius: 999px;
+    background: currentColor;
+    transform: scaleY(0.35);
+    transform-origin: center;
+    animation: wave-loader 1.1s ease-in-out infinite;
+  }
+  .wave-loader-bar:nth-child(2) {
+    animation-delay: -0.275s;
+  }
+  .wave-loader-bar:nth-child(3) {
+    animation-delay: -0.55s;
+  }
+  .wave-loader-bar:nth-child(4) {
+    animation-delay: -0.825s;
+  }
+  @keyframes wave-loader {
+    0%,
+    100% {
+      transform: scaleY(0.35);
+    }
+    50% {
+      transform: scaleY(1);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wave-loader-bar {
+      animation: none;
+    }
+  }
+
+  /* 进度条流光：仅在运行中叠加 */
+  .sheen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--fg) 22%, transparent),
+      transparent
+    );
+    animation: sheen 1.4s linear infinite;
+  }
+  @keyframes sheen {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  /* 首屏分段浮现：面板级内容入场 */
+  .rise {
+    animation: rise 320ms var(--ease-out-quint, cubic-bezier(0.2, 0.8, 0.2, 1)) both;
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
