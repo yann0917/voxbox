@@ -1,0 +1,1034 @@
+[
+  {
+    "id": "Cherry",
+    "desc": "阳光积极、亲切自然小姐姐",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250211/tixcef/cherry.wav"
+  },
+  {
+    "id": "Serena",
+    "desc": "温柔小姐姐",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250211/bxokea/serena.wav"
+  },
+  {
+    "id": "Ethan",
+    "desc": "标准普通话，带部分北方口音。阳光、温暖、活力、朝气",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250211/emaqdp/ethan.wav"
+  },
+  {
+    "id": "Chelsie",
+    "desc": "二次元虚拟女友",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250211/vnpxgw/chelsie.wav"
+  },
+  {
+    "id": "Momo",
+    "desc": "撒娇搞怪，逗你开心",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/rvzrcx/Momo.wav"
+  },
+  {
+    "id": "Vivian",
+    "desc": "拽拽的、可爱的小暴躁",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/eetwkj/Vivian.wav"
+  },
+  {
+    "id": "Moon",
+    "desc": "率性帅气的月白",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/bcaqju/Moon.wav"
+  },
+  {
+    "id": "Maia",
+    "desc": "知性与温柔的碰撞",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/fewawx/Maia.wav"
+  },
+  {
+    "id": "Kai",
+    "desc": "耳朵的一场SPA",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/maiqbf/Kai.wav"
+  },
+  {
+    "id": "Nofish",
+    "desc": "不会翘舌音的设计师",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/xurcmx/Nofish.wav"
+  },
+  {
+    "id": "Bella",
+    "desc": "喝酒不打醉拳的小萝莉",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/optibu/Bella.wav"
+  },
+  {
+    "id": "Jennifer",
+    "desc": "品牌级、电影质感般美语女声",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/fejjiv/Jennifer.wav"
+  },
+  {
+    "id": "Ryan",
+    "desc": "节奏拉满，戏感炸裂，真实与张力共舞",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/wsytum/Ryan.wav"
+  },
+  {
+    "id": "Katerina",
+    "desc": "御姐音色，韵律回味十足",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/fschpb/Katerina.wav"
+  },
+  {
+    "id": "Aiden",
+    "desc": "精通厨艺的美语大男孩",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/hgxtqi/Aiden.wav"
+  },
+  {
+    "id": "Eldric Sage",
+    "desc": "沉稳睿智的老者，沧桑如松却心明如镜",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/hbvhwj/Eldric+Sage.wav"
+  },
+  {
+    "id": "Mia",
+    "desc": "温顺如春水，乖巧如初雪",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/gpvlix/Mia.wav"
+  },
+  {
+    "id": "Mochi",
+    "desc": "聪明伶俐的小大人，童真未泯却早慧如禅",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/zapcpe/Mochi.wav"
+  },
+  {
+    "id": "Bellona",
+    "desc": "声音洪亮，吐字清晰，人物鲜活，听得人热血沸腾；金戈铁马入梦来，字正腔圆间尽显千面人声的江湖",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/wztwli/Bellona.wav"
+  },
+  {
+    "id": "Vincent",
+    "desc": "一口独特的沙哑烟嗓，一开口便道尽了千军万马与江湖豪情",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/skfrkq/Vincent.wav"
+  },
+  {
+    "id": "Bunny",
+    "desc": "“萌属性”爆棚的小萝莉",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/aswewm/Bunny.wav"
+  },
+  {
+    "id": "Neil",
+    "desc": "平直的基线语调，字正腔圆的咬字发音，这就是最专业的新闻主持人",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/ucmfkt/Neil.wav"
+  },
+  {
+    "id": "Elias",
+    "desc": "既保持学科严谨性，又通过叙事技巧将复杂知识转化为可消化的认知模块",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/rhbvqx/Elias.wav"
+  },
+  {
+    "id": "Arthur",
+    "desc": "被岁月和旱烟浸泡过的质朴嗓音，不疾不徐地摇开了满村的奇闻异事",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/ynqwyu/Arthur.wav"
+  },
+  {
+    "id": "Nini",
+    "desc": "糯米糍一样又软又黏的嗓音，那一声声拉长了的“哥哥”，甜得能把人的骨头都叫酥了",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/lppeba/Nini.wav"
+  },
+  {
+    "id": "Seren",
+    "desc": "温和舒缓的声线，助你更快地进入睡眠，晚安，好梦",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/xlksoe/Seren.wav"
+  },
+  {
+    "id": "Pip",
+    "desc": "调皮捣蛋却充满童真的他来了，这是你记忆中的小新吗",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/gqxoub/Pip.wav"
+  },
+  {
+    "id": "Stella",
+    "desc": "平时是甜到发腻的迷糊少女音，但在喊出“代表月亮消灭你”时，瞬间充满不容置疑的爱与正义",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/azikxr/Stella.wav"
+  },
+  {
+    "id": "Bodega",
+    "desc": "热情的西班牙大叔",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/jxnuap/Bodega.wav"
+  },
+  {
+    "id": "Sonrisa",
+    "desc": "热情开朗的拉美大姐",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/uywoxb/Sonrisa.wav"
+  },
+  {
+    "id": "Alek",
+    "desc": "一开口，是战斗民族的冷，也是毛呢大衣下的暖",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/wtklus/Alek.wav"
+  },
+  {
+    "id": "Dolce",
+    "desc": "慵懒的意大利大叔",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/pirhim/Dolce.wav"
+  },
+  {
+    "id": "Sohee",
+    "desc": "温柔开朗，情绪丰富的韩国欧尼",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/wwphft/Sohee.wav"
+  },
+  {
+    "id": "Ono Anna",
+    "desc": "鬼灵精怪的青梅竹马",
+    "gender": "女",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/mvfbxy/Ono+Anna.wav"
+  },
+  {
+    "id": "Lenn",
+    "desc": "理性是底色，叛逆藏在细节里——穿西装也听后朋克的德国青年",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/arnzdt/Lenn.wav"
+  },
+  {
+    "id": "Emilien",
+    "desc": "浪漫的法国大哥哥",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/qltlde/Emilien.wav"
+  },
+  {
+    "id": "Andre",
+    "desc": "声音磁性，自然舒服、沉稳男生",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/hhfogy/Andre.wav"
+  },
+  {
+    "id": "Radio Gol",
+    "desc": "足球诗人Rádio Gol！今天我要用名字为你们解说足球",
+    "gender": "男",
+    "languages": [
+      "中文（普通话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/vnezxq/Radio+Gol.wav"
+  },
+  {
+    "id": "Jada",
+    "desc": "风风火火的沪上阿姐",
+    "gender": "女",
+    "languages": [
+      "中文（上海话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/qjfmmi/Jada.wav"
+  },
+  {
+    "id": "Dylan",
+    "desc": "北京胡同里长大的少年",
+    "gender": "男",
+    "languages": [
+      "中文（北京话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/ultaxm/Dylan.wav"
+  },
+  {
+    "id": "Li",
+    "desc": "耐心的瑜伽老师",
+    "gender": "男",
+    "languages": [
+      "中文（南京话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250916/frgdes/Li.wav"
+  },
+  {
+    "id": "Marcus",
+    "desc": "面宽话短，心实声沉——老陕的味道",
+    "gender": "男",
+    "languages": [
+      "中文（陕西话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/dwnnrg/Marcus.wav"
+  },
+  {
+    "id": "Roy",
+    "desc": "诙谐直爽、市井活泼的台湾哥仔形象",
+    "gender": "男",
+    "languages": [
+      "中文（闽南语）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/stsfsz/Roy.wav"
+  },
+  {
+    "id": "Peter",
+    "desc": "天津相声，专业捧哏",
+    "gender": "男",
+    "languages": [
+      "中文（天津话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/twvnsp/Peter.wav"
+  },
+  {
+    "id": "Sunny",
+    "desc": "甜到你心里的川妹子",
+    "gender": "女",
+    "languages": [
+      "中文（四川话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/jtrktt/Sunny.wav"
+  },
+  {
+    "id": "Eric",
+    "desc": "一个跳脱市井的四川成都男子",
+    "gender": "男",
+    "languages": [
+      "中文（四川话）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/qhbznw/Eric.wav"
+  },
+  {
+    "id": "Rocky",
+    "desc": "幽默风趣的阿强，在线陪聊",
+    "gender": "男",
+    "languages": [
+      "中文（粤语）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/kfxxgp/Rocky.wav"
+  },
+  {
+    "id": "Kiki",
+    "desc": "甜美的港妹闺蜜",
+    "gender": "女",
+    "languages": [
+      "中文（粤语）",
+      "英语",
+      "法语",
+      "德语",
+      "俄语",
+      "意大利语",
+      "西班牙语",
+      "葡萄牙语",
+      "日语",
+      "韩语"
+    ],
+    "models": [
+      "qwen3-tts-flash"
+    ],
+    "preview": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/qwinef/KiKi.wav"
+  }
+]

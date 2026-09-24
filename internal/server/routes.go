@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/yann0917/voxbox/internal/config"
 	"github.com/yann0917/voxbox/internal/provider/mvsep"
+	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
 	"github.com/yann0917/voxbox/internal/store"
 	"github.com/yann0917/voxbox/internal/subtitle"
@@ -628,7 +629,13 @@ func (s *Server) mvsepSeparationGet(c *gin.Context) {
 	ok(c, gin.H{"status": status, "result": res})
 }
 
+// listVoices 音色列表：?provider=qianwen 返回千问非实时音色（含官方试听 URL 与模型支持矩阵），
+// 缺省为火山引擎音色（场景/语种/方言筛选字段）。
 func (s *Server) listVoices(c *gin.Context) {
+	if c.Query("provider") == "qianwen" {
+		ok(c, gin.H{"voices": qianwen.Voices()})
+		return
+	}
 	ok(c, gin.H{"voices": volcengine.Voices()})
 }
 

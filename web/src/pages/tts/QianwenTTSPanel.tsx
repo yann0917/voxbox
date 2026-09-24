@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { apiBase, fetchJSON } from "../../lib/api";
 import type { Artifact, TaskDetail, TaskStatus } from "../../lib/types";
-import { QIANWEN_DEFAULT_VOICE, QIANWEN_VOICES } from "../../lib/qianwenVoices";
+import QianwenVoicePicker, { type QianwenVoice } from "../../components/QianwenVoicePicker";
 import { useTaskEvents } from "../../lib/ws";
 import {
   Button,
@@ -106,7 +106,7 @@ function ProgressBody({ run }: { run: Run }) {
 export default function QianwenTTSPanel() {
   const [text, setText] = useState("");
   const [model, setModel] = useState<QianwenModel>(DEFAULT_MODEL);
-  const [voice, setVoice] = useState(QIANWEN_DEFAULT_VOICE);
+  const [voice, setVoice] = useState("Cherry");
   const [languageType, setLanguageType] = useState("");
   const [instructions, setInstructions] = useState("");
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -118,6 +118,14 @@ export default function QianwenTTSPanel() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const ev = useTaskEvents();
+
+  /* 音色列表：/api/voices?provider=qianwen（含官方试听 URL 与模型支持矩阵） */
+  const voicesQuery = useQuery({
+    queryKey: ["voices", "qianwen"],
+    queryFn: () => fetchJSON<{ voices: QianwenVoice[] }>("/api/voices?provider=qianwen"),
+    retry: 1,
+  });
+  const voiceList = voicesQuery.data?.voices ?? [];
 
   /* WS 事件驱动当前任务进度；终态拉详情拿产物与最终状态 */
   useEffect(() => {
@@ -232,15 +240,15 @@ export default function QianwenTTSPanel() {
               )}
             </Field>
 
-            <Field label="音色">
-              {({ id, ...rest }) => (
-                <Select id={id} value={voice} onChange={(e) => setVoice(e.target.value)} {...rest}>
-                  {QIANWEN_VOICES.map((v) => (
-                    <option key={v.value} value={v.value}>
-                      {v.label}
-                    </option>
-                  ))}
-                </Select>
+            <Field label="音色" hint="点击喇叭可试听官方样本">
+              {() => (
+                <QianwenVoicePicker
+                  voices={voiceList}
+                  loading={voicesQuery.isLoading}
+                  value={voice}
+                  model={model}
+                  onChange={setVoice}
+                />
               )}
             </Field>
 

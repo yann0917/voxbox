@@ -75,6 +75,9 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	if voice == "" {
 		voice = DefaultVoice
 	}
+	if !VoiceSupportsModel(voice, model) {
+		return provider.TaskOutput{}, fmt.Errorf("音色 %s 不支持模型 %s：请在音色列表选择支持该模型的音色，或切换模型", voice, model)
+	}
 	// instructions 仅 instruct 模型支持，flash 不识别该字段
 	instructions := ""
 	if strings.Contains(model, "instruct") {
