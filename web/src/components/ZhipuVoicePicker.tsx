@@ -52,12 +52,20 @@ export default function ZhipuVoicePicker({
   useEffect(() => () => audioRef.current?.pause(), []);
 
   const q = query.trim().toLowerCase();
-  const list = voices.filter(
-    (v) =>
-      (type === "all" || v.voice_type === type) &&
-      (q === "" || v.voice.toLowerCase().includes(q) || v.voice_name.toLowerCase().includes(q)),
-  );
-  const current = voices.find((v) => v.voice === value);
+  const list = voices
+    .filter(
+      (v) =>
+        (type === "all" || v.voice_type === type) &&
+        (q === "" || v.voice.toLowerCase().includes(q) || v.voice_name.toLowerCase().includes(q)),
+    )
+    .sort((a, b) => {
+      // 官方音色排前（接口按创建时间倒序，uuid 音色会顶在最前）；组内按可读名
+      if (a.voice_type !== b.voice_type) return a.voice_type === "OFFICIAL" ? -1 : 1;
+      return a.voice_name.localeCompare(b.voice_name, "zh");
+    });
+  // 值匹配兼容两种形态：列表返回的合成 ID（官方音色多为 uuid）与短名（如默认值 tongtong）
+  const current =
+    voices.find((v) => v.voice === value) ?? voices.find((v) => v.voice_name === value);
 
   const togglePlay = (v: ZhipuVoice) => {
     if (!v.download_url) return;
@@ -93,7 +101,7 @@ export default function ZhipuVoicePicker({
           <span className="text-muted">音色加载中…</span>
         ) : (
           <span className="min-w-0 truncate text-sm text-fg">
-            {current ? `${current.voice} · ${current.voice_name}` : value}
+            {current ? current.voice_name : value}
           </span>
         )}
         <ChevronDown
@@ -179,10 +187,14 @@ export default function ZhipuVoicePicker({
                     )}
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-1.5">
-                        <span className="truncate text-sm text-fg">{v.voice}</span>
+                        <span className="truncate text-sm text-fg">{v.voice_name}</span>
                         {v.voice_type === "PRIVATE" && <span className="text-[10px] text-accent">复刻</span>}
                       </span>
-                      <span className="block truncate text-[11px] text-fg-2">{v.voice_name}</span>
+                      {/* 合成 ID：复刻音色展示完整值（管理/CLI 需要复制）；官方音色多为
+                          uuid 形态对用户无意义，仅在与可读名不同且非 uuid 时显示短名 */}
+                      {v.voice_type === "PRIVATE" && (
+                        <span className="block truncate font-mono text-[11px] text-muted">{v.voice}</span>
+                      )}
                     </span>
                   </div>
                 );
