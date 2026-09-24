@@ -97,13 +97,14 @@ func truncate(b []byte, n int) string {
 
 // ---- TTS ----
 
-// TTSReq 非流式合成请求（工具层语义字段，client 负责映射为 messages 协议）。
+// TTSReq 非流式合成请求。wire 结构（官方 api-reference/speech-synthesis/qwen-tts，
+// 真机 2026-09-24 校准）：全部语义字段平铺在 input.* 下，无 messages 包装。
 type TTSReq struct {
 	Model        string // qwen3-tts-flash | qwen3-tts-instruct-flash
-	Text         string
-	Voice        string
-	LanguageType string // 可空=不指定
-	Instructions string // 仅 instruct 模型
+	Text         string // ≤600 字符（qwen3-tts 系）
+	Voice        string // 必填（如 Cherry）
+	LanguageType string // 可空=上游默认 Auto
+	Instructions string // 仅 instruct 模型，≤1600 tokens
 }
 
 // TTSResult 合成产物：音频字节与容器格式（按 data URI mime 或 URL 扩展名推断）。
@@ -113,34 +114,23 @@ type TTSResult struct {
 }
 
 type ttsRequest struct {
-	Model      string         `json:"model"`
-	Input      ttsInput       `json:"input"`
-	Parameters map[string]any `json:"parameters,omitempty"`
+	Model string   `json:"model"`
+	Input ttsInput `json:"input"`
 }
 
 type ttsInput struct {
-	Messages []ttsMessage `json:"messages"`
-}
-
-type ttsMessage struct {
-	Role    string           `json:"role"`
-	Content []ttsContentItem `json:"content"`
-}
-
-type ttsContentItem struct {
-	Text         string `json:"text,omitempty"`
-	Voice        string `json:"voice,omitempty"`
+	Text         string `json:"text"`
+	Voice        string `json:"voice"`
 	LanguageType string `json:"language_type,omitempty"`
 	Instructions string `json:"instructions,omitempty"`
 }
 
 type ttsResponse struct {
 	Output struct {
-		Choices []struct {
-			Message struct {
-				Content []map[string]any `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+		Audio struct {
+			URL  string `json:"url"`
+			Data string `json:"data"`
+		} `json:"audio"`
 	} `json:"output"`
 	apiError
 }
@@ -152,38 +142,32 @@ func NewTTSClient(apiKey, baseURL string) *TTSClient {
 	return &TTSClient{apiKey: apiKey, baseURL: strings.TrimRight(baseURL, "/")}
 }
 
-// Synthesize 合成并取回音频字节：响应里的 audio 项为公网 URL（24h 有效）时下载，
-// 为 data URI 时直接 base64 解码。
+// Synthesize 合成并取回音频字节：非流式响应 output.audio.url 为公网地址（24h 有效），
+// 流式才有 data（base64）；两种载体统一走 fetchAudio。
 func (c *TTSClient) Synthesize(ctx context.Context, req TTSReq) (TTSResult, error) {
-	content := []ttsContentItem{{Text: req.Text}}
-	if req.Voice != "" {
-		content = append(content, ttsContentItem{Voice: req.Voice})
-	}
-	if req.LanguageType != "" {
-		content = append(content, ttsContentItem{LanguageType: req.LanguageType})
-	}
-	if req.Instructions != "" {
-		content = append(content, ttsContentItem{Instructions: req.Instructions})
+	if strings.TrimSpace(req.Voice) == "" {
+		return TTSResult{}, fmt.Errorf("千问 TTS 缺少必填参数: voice")
 	}
 	body := ttsRequest{
-		Model:      req.Model,
-		Input:      ttsInput{Messages: []ttsMessage{{Role: "user", Content: content}}},
-		Parameters: map[string]any{"stream": false},
+		Model: req.Model,
+		Input: ttsInput{
+			Text:         req.Text,
+			Voice:        req.Voice,
+			LanguageType: req.LanguageType,
+			Instructions: req.Instructions,
+		},
 	}
 	var resp ttsResponse
 	if err := doJSON(ctx, http.MethodPost, c.baseURL+pathTTSGen, c.apiKey, nil, body, &resp); err != nil {
 		return TTSResult{}, err
 	}
-	for _, ch := range resp.Output.Choices {
-		for _, item := range ch.Message.Content {
-			v, ok := item["audio"].(string)
-			if !ok || v == "" {
-				continue
-			}
-			return fetchAudio(ctx, v)
-		}
+	if v := resp.Output.Audio.URL; v != "" {
+		return fetchAudio(ctx, v)
 	}
-	return TTSResult{}, fmt.Errorf("千问 TTS 响应中未找到音频（content 项无 audio 键）")
+	if v := resp.Output.Audio.Data; v != "" {
+		return fetchAudio(ctx, "data:audio/wav;base64,"+v)
+	}
+	return TTSResult{}, fmt.Errorf("千问 TTS 响应中未找到音频（output.audio 为空）")
 }
 
 // fetchAudio audio 载体两种形态：data URI 直接解码；URL 下载（格式按扩展名推断）。

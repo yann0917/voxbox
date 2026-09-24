@@ -32,7 +32,6 @@ import {
 } from "../../ui";
 
 /** 千问 qwen3-tts 非流式支持的输出格式（与后端 ParamSpecs 同词表） */
-const FORMATS = ["mp3", "wav"];
 /** 合成模型：instruct 版额外支持自然语言风格指令（instructions 仅其生效） */
 type QianwenModel = "qwen3-tts-flash" | "qwen3-tts-instruct-flash";
 const DEFAULT_MODEL: QianwenModel = "qwen3-tts-flash";
@@ -110,7 +109,6 @@ export default function QianwenTTSPanel() {
   const [voice, setVoice] = useState(QIANWEN_DEFAULT_VOICE);
   const [languageType, setLanguageType] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [format, setFormat] = useState("mp3");
   const [taskId, setTaskId] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [detail, setDetail] = useState<TaskDetail | null>(null);
@@ -152,7 +150,7 @@ export default function QianwenTTSPanel() {
   const submit = useMutation({
     mutationFn: () => {
       // 任务参数空值键不传：language_type 留空即不指定；instructions 仅 instruct 模型携带
-      const params: Record<string, unknown> = { text: text.trim(), model, voice, format };
+      const params: Record<string, unknown> = { text: text.trim(), model, voice };
       if (languageType.trim()) params.language_type = languageType.trim();
       if (model === "qwen3-tts-instruct-flash" && instructions.trim()) {
         params.instructions = instructions.trim();
@@ -272,18 +270,6 @@ export default function QianwenTTSPanel() {
                 )}
               </Field>
             )}
-
-            <Field label="音频格式" aside={format === "mp3" ? "推荐" : undefined}>
-              {({ id, ...rest }) => (
-                <Select id={id} value={format} onChange={(e) => setFormat(e.target.value)} {...rest}>
-                  {FORMATS.map((f) => (
-                    <option key={f} value={f}>
-                      {f.toUpperCase()}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
 
             <div className="border-t border-line pt-3">
               <Button

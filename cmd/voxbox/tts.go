@@ -49,7 +49,8 @@ func newTTSCommand() *cobra.Command {
 				params = map[string]any{"text": text, "voice": voice, "format": format,
 					"speed_ratio": speedRatio, "volume_ratio": volumeRatio}
 			case "qianwen":
-				params = map[string]any{"text": text, "voice": voice, "format": format,
+				// 千问无 format 请求参数，产物格式由上游音频 URL 实际容器决定
+				params = map[string]any{"text": text, "voice": voice,
 					"model": qwenModel, "instructions": instructions}
 			default:
 				return fmt.Errorf("不支持的引擎 %q（可选 volcengine / qianwen）", engine)
@@ -61,7 +62,7 @@ func newTTSCommand() *cobra.Command {
 	f.StringVar(&textFile, "file", "", "从文件读取文本")
 	f.StringVar(&engine, "engine", "volcengine", "合成引擎: volcengine（火山引擎）| qianwen（千问）")
 	f.StringVar(&voice, "voice", "zh_female_cancan_mars_bigtts", "音色 ID（--engine qianwen 默认 Cherry，可选 48 官方音色）")
-	f.StringVar(&format, "format", "mp3", "音频格式: mp3|wav|pcm|ogg_opus（--engine qianwen 仅支持 mp3|wav）")
+	f.StringVar(&format, "format", "mp3", "音频格式: mp3|wav|pcm|ogg_opus（仅火山引擎生效；千问由上游决定）")
 	f.StringVar(&qwenModel, "qwen-model", "qwen3-tts-flash", "千问模型: qwen3-tts-flash|qwen3-tts-instruct-flash（仅 --engine qianwen 生效）")
 	f.StringVar(&instructions, "instructions", "", "风格指令（仅千问 instruct 模型生效：用自然语言描述语速/情感/风格）")
 	f.Float64Var(&speedRatio, "speed-ratio", 1.0, "语速 0.2-3.0")
