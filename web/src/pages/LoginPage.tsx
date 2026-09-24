@@ -21,7 +21,7 @@ export default function LoginPage() {
   const { data: me, isPending } = useMe();
   if (isPending) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg">
+      <div className="flex min-h-screen items-center justify-center">
         <p className="text-sm text-muted" role="status">正在校验登录态…</p>
       </div>
     );
@@ -48,7 +48,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg p-4">
+    <div className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <div className="flex size-12 items-center justify-center rounded-[var(--radius-md)] bg-accent text-accent-ink shadow-[var(--shadow-2)]">
@@ -56,7 +56,7 @@ export default function LoginPage() {
           </div>
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-fg">voxbox</h1>
-            <p className="mt-1 text-xs text-muted">火山引擎语音能力控制台 · 自托管部署</p>
+            <p className="mt-1 text-xs text-muted">多引擎语音工作台 · 自托管部署</p>
           </div>
         </div>
 

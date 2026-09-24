@@ -43,7 +43,7 @@ export function MixerTimeline({ duration, musicPeaks, vocalPeaks, env, onEnvChan
   const [selected, setSelected] = useState<number | null>(null);
   const dragRef = useRef<number | null>(null);
   // 兜底色与 theme.css 暗色默认一致；实际值一律以 computed style 读取为准（MASTER：无画布外硬编码色板）
-  const colorsRef = useRef({ accent: "#22d3ee", idle: "rgba(255,255,255,.18)", line: "rgba(255,214,165,.16)" });
+  const colorsRef = useRef({ accent: "#e2a35a", idle: "rgba(246,236,221,.16)", line: "rgba(255,214,165,.16)" });
   /** 绘制函数引用：主题切换/尺寸变化由观察器直接触发重绘，不经过 React 状态。 */
   const drawRef = useRef<() => void>(() => {});
 
@@ -53,8 +53,8 @@ export function MixerTimeline({ duration, musicPeaks, vocalPeaks, env, onEnvChan
     const read = () => {
       const cs = getComputedStyle(document.documentElement);
       colorsRef.current = {
-        accent: cs.getPropertyValue("--accent").trim() || "#22d3ee",
-        idle: cs.getPropertyValue("--wave-idle").trim() || cs.getPropertyValue("--line-strong").trim() || "rgba(255,255,255,.18)",
+        accent: cs.getPropertyValue("--accent").trim() || "#e2a35a",
+        idle: cs.getPropertyValue("--wave-idle").trim() || cs.getPropertyValue("--line-strong").trim() || "rgba(246,236,221,.16)",
         line: cs.getPropertyValue("--line-strong").trim() || "rgba(255,214,165,.16)",
       };
       drawRef.current();

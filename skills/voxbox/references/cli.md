@@ -52,15 +52,21 @@ voxbox tts <text | --file path> [flags]
 
 | flag | 默认 | 说明 |
 |---|---|---|
-| `--voice` | `zh_female_cancan_mars_bigtts` | 音色 ID，用 `voxbox voices list` 查询 |
-| `--format` | `mp3` | `mp3` / `wav` / `pcm` / `ogg_opus` |
-| `--speed-ratio` | `1.0` | 语速倍率，0.2 ~ 3.0 |
-| `--volume-ratio` | `1.0` | 音量倍率，0.2 ~ 3.0 |
+| `--engine` | `volcengine` | `volcengine`（火山引擎）/ `qianwen`（千问非流式合成） |
+| `--voice` | `zh_female_cancan_mars_bigtts` | 音色 ID，用 `voxbox voices list` 查询（仅火山音色）；`--engine qianwen` 用千问音色（默认 `Cherry`，共 48 官方音色） |
+| `--format` | `mp3` | `mp3` / `wav` / `pcm` / `ogg_opus`（`--engine qianwen` 仅 `mp3` / `wav`） |
+| `--speed-ratio` | `1.0` | 语速倍率，0.2 ~ 3.0（仅火山） |
+| `--volume-ratio` | `1.0` | 音量倍率，0.2 ~ 3.0（仅火山） |
+| `--qwen-model` | `qwen3-tts-flash` | 仅千问：`qwen3-tts-flash` / `qwen3-tts-instruct-flash` |
+| `--instructions` | 空 | 仅千问 instruct 模型：自然语言风格指令（语速/情感/风格） |
 | `--file` | — | 从文件读文本（与位置参数二选一） |
 | `--out` | 数据目录自动命名 | 产物路径 |
 | `--json` | 关 | 机器可读输出 |
 
-超过 1000 字的长文本自动改走分段合成后拼接（仅支持 mp3，其他格式长文本会报参数错误），无需手动处理。
+超过 1000 字的长文本自动改走分段合成后拼接（仅支持 mp3，其他格式长文本会报参数错误），无需手动处理（仅火山）。
+
+- `--engine qianwen` 走千问合成通道（凭证 `qianwen.api_key`）：`voxbox tts "今天天气不错" --engine qianwen --json`；
+  instruct 模型可加风格指令，如 `--qwen-model qwen3-tts-instruct-flash --instructions "语速放慢，情感温柔"`。
 
 ## tts-long 长文本语音合成
 
@@ -142,15 +148,20 @@ voxbox asr <file> [--url audio_url] [flags]
 
 | flag | 默认 | 说明 |
 |---|---|---|
-| `--version` | 按输入推断 | `sentence` 一句话（仅本地文件）/ `standard` 标准版（仅 URL）/ `idle` 闲时（仅 URL）/ `flash` 极速（仅 URL）；版本与输入不匹配报参数错误 |
+| `--engine` | `volcengine` | `volcengine`（火山引擎，四版本）/ `qianwen`（千问，仅录音文件转写） |
+| `--version` | 按输入推断 | `sentence` 一句话（仅本地文件）/ `standard` 标准版（仅 URL）/ `idle` 闲时（仅 URL）/ `flash` 极速（仅 URL）；版本与输入不匹配报参数错误（`--engine qianwen` 不适用，显式传入报参数冲突） |
+| `--qwen-model` | `qwen3-asr-flash-filetrans` | 仅千问：`qwen3-asr-flash-filetrans` / `qwen-audio-3.1-asr-flash-filetrans`（说话人分离更强） |
+| `--diarization` | 关 | 仅千问：说话人分离（≤2 小时且单声道音频） |
 | `--out` | 数据目录自动命名 | 转写文本输出路径 |
 | `--srt` | 开 | 额外产出 `.srt` 字幕（artifacts 中 kind=`subtitle`）；关闭传 `--srt=false` |
-| `--hotwords` | 空 | 逗号分隔热词，提升专有名词准确率 |
-| `--language` | （空） | 识别语言，留空自动识别（中文/英文/常见方言）；可选 zh-CN/en-US/ja-JP/yue-CN 等 25 种 |
+| `--hotwords` | 空 | 逗号分隔热词，提升专有名词准确率（仅火山） |
+| `--language` | （空） | 识别语言，留空自动识别（中文/英文/常见方言）；可选 zh-CN/en-US/ja-JP/yue-CN 等 25 种（`--engine qianwen` 仅 zh/en/ja/ko/de/fr/ru/es/pt/it） |
 | `--url` | — | 公网音频 URL，走异步批量通道 |
 | `--json` | 关 | 机器可读输出 |
 
 - 本地文件：官方协议直发一句话识别端点（全速分片），无需公网可达。
+- `--engine qianwen`（凭证 `qianwen.api_key`）：异步文件转写，URL 直用，本地文件需对象存储中转；
+  `--hotwords` 不生效。分句（含说话人前缀）在 JSON `summary.segments` 中（每句 `{text, start_ms, end_ms, speaker_id}`）。
 - `artifacts` 中 `transcript` 为全文文本；分句与时间戳在 JSON `summary.segments` 中（每句 `{text, start_ms, end_ms}`）。
 - 支持 mp3/wav/ogg/pcm（wav/pcm 内部需 pcm_s16le），其他格式报参数错误。
 
@@ -335,6 +346,7 @@ voxbox config list                    # 查看配置（密钥打码显示）
 | `volc.mediakit.api_key` | AI MediaKit API Key（人声分离火山通道） |
 | `mvsep.api_token` | MVSep API Token（mvsep.com 注册后全页 API 页获取） |
 | `mvsep.base_url` | MVSep 线路覆写，空=主站 geo 就近（可选 de/de2/hk.mvsep.com；同一任务须全程固定线路） |
+| `qianwen.api_key` | 千问平台 API Key（`tts` / `asr` 的 `--engine qianwen` 使用） |
 | `server.port` | Web 端口，默认 8081 |
 | `data_dir` | 产物数据目录，默认 `~/.voxbox/data` |
 

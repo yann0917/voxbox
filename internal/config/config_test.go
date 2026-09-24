@@ -222,3 +222,41 @@ func TestStorageChannelSelection(t *testing.T) {
 		t.Fatalf("re-enabled flattened view = %+v", cfg.Storage)
 	}
 }
+
+// TestLoadQianwen 读取 qianwen.api_key 凭证（VOXBOX_HOME 指向临时目录，t.Setenv
+// 测试结束自动还原，无需手动 Unsetenv）。
+func TestLoadQianwen(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VOXBOX_HOME", dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".voxbox"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	yaml := "qianwen:\n  api_key: sk-test-123\n"
+	if err := os.WriteFile(filepath.Join(dir, ".voxbox", "config.yaml"), []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Qianwen.APIKey != "sk-test-123" {
+		t.Errorf("Qianwen.APIKey = %q, 期望 sk-test-123", cfg.Qianwen.APIKey)
+	}
+	// List() 应列出 qianwen.api_key 行且打码（config list / 设置页可发现性）。
+	kvs, err := List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, kv := range kvs {
+		if kv.Key == "qianwen.api_key" {
+			found = true
+			if kv.Value == "sk-test-123" || !strings.Contains(kv.Value, "*") {
+				t.Errorf("qianwen.api_key 应打码列出, got %q", kv.Value)
+			}
+		}
+	}
+	if !found {
+		t.Error("List() 缺 qianwen.api_key 行")
+	}
+}

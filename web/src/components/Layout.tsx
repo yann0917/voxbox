@@ -133,7 +133,7 @@ function UserMenu({ username, role, onAskLogout }: { username: string; role: str
         <div
           role="menu"
           aria-label="账号菜单"
-          className="rise absolute right-0 top-[calc(100%+10px)] z-30 w-44 overflow-hidden rounded-[var(--radius-md)] border border-line bg-panel shadow-[var(--shadow-2)]"
+          className="rise absolute right-0 top-[calc(100%+10px)] z-30 w-44 overflow-hidden rounded-[var(--radius-md)] border border-line bg-panel backdrop-blur-xl shadow-[var(--shadow-2)]"
         >
           <div className="border-b border-line px-3 py-2.5">
             <p className="truncate text-xs font-medium text-fg">{username}</p>
@@ -221,10 +221,10 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex h-screen bg-bg">
+    <div className="flex h-screen">
       {/* 左侧导轨：lg 全宽（可手动收起），md 图标态 */}
       <aside
-        className={`hidden shrink-0 flex-col border-r border-line bg-panel md:flex ${
+        className={`hidden shrink-0 flex-col border-r border-line bg-panel backdrop-blur-xl md:flex ${
           navCollapsed ? "md:w-16" : "md:w-16 lg:w-[232px]"
         }`}
       >
@@ -243,9 +243,9 @@ export default function Layout() {
         </nav>
         <div className={`mt-auto p-4 ${navCollapsed ? "hidden" : "hidden lg:block"}`}>
           <p className="micro leading-relaxed opacity-70">
-            火山引擎
+            多引擎
             <br />
-            语音能力控制台
+            语音工作台
           </p>
         </div>
       </aside>
@@ -254,7 +254,7 @@ export default function Layout() {
       {navOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={() => setNavOpen(false)} />
-          <aside className="rise absolute left-0 top-0 h-full w-[248px] border-r border-line bg-panel">
+          <aside className="rise absolute left-0 top-0 h-full w-[248px] border-r border-line bg-panel backdrop-blur-xl">
             <div className="flex h-14 items-center justify-between border-b border-line px-3">
               <span className="text-sm font-semibold">voxbox</span>
               <IconButton label="关闭导航" onClick={() => setNavOpen(false)}>
@@ -271,7 +271,7 @@ export default function Layout() {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* 顶栏：只放全局控件与当前位置，页面标题由各页 PageHeader 承担（避免重复）。
             relative z-20：头像下拉菜单溢出顶栏，须整体压过 DOM 在后的 main 内容 */}
-        <header className="relative z-20 flex h-14 shrink-0 items-center gap-3 border-b border-line bg-panel/70 px-3 backdrop-blur md:px-6">
+        <header className="relative z-20 flex h-14 shrink-0 items-center gap-3 border-b border-line bg-panel px-3 backdrop-blur md:px-6">
           <IconButton label="打开导航" className="md:hidden" onClick={() => setNavOpen(true)}>
             <Menu size={18} strokeWidth={1.75} />
           </IconButton>

@@ -152,7 +152,7 @@ func TestToolsAndTaskSubmit(t *testing.T) {
 	ts, _, ac := newTestServer(t)
 	e := getEnvelope(t, ac, ts.URL+"/api/tools")
 	tools, _ := e.Data.([]any)
-	if len(tools) != 33 { // 火山 8 + MVSep 1 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12
+	if len(tools) != 35 { // 火山 8 + MVSep 1 + 千问 2 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12
 		t.Fatalf("tools = %v", e.Data)
 	}
 	// Registry().List() 基于 map 遍历，顺序不定：按 name 断言而非下标。
@@ -192,14 +192,11 @@ func TestToolsAndTaskSubmit(t *testing.T) {
 	}
 }
 
-// TestPutSettingsHotReload 保存凭证后立即 GET 应读到新值（热加载，无需重启）。
-// SaveCredentials 写 $HOME/.voxbox/config.yaml，须隔离 HOME。
-func TestPutSettingsHotReload(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	ts, _, ac := newTestServer(t)
-
-	body := `{"app_id":"app-1","access_token":"tok-1","api_key":"key-1","mediakit_api_key":"mk-1"}`
-	req, err := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", strings.NewReader(body))
+// doJSON 任意方法的 JSON 请求：返回 HTTP 状态码与业务包络（无路由的 404 响应体
+// 非包络，envelope 为零值，只看状态码）。
+func doJSON(t *testing.T, ac *http.Client, method, url, body string) (int, envelope) {
+	t.Helper()
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,58 +206,163 @@ func TestPutSettingsHotReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	var putE envelope
-	_ = json.NewDecoder(resp.Body).Decode(&putE)
-	if putE.Code != 0 {
-		t.Fatalf("put code = %d (%s)", putE.Code, putE.Message)
-	}
+	var e envelope
+	_ = json.NewDecoder(resp.Body).Decode(&e)
+	return resp.StatusCode, e
+}
 
+// providerFieldsFromSettings 从 GET /api/settings 的 providers 数组取指定卡的字段映射
+//（key → 字段对象：text/select 有 value，secret 有 has_value）。
+func providerFieldsFromSettings(t *testing.T, data map[string]any, card string) map[string]map[string]any {
+	t.Helper()
+	providers, _ := data["providers"].([]any)
+	for _, it := range providers {
+		p, _ := it.(map[string]any)
+		if p["name"] != card {
+			continue
+		}
+		out := map[string]map[string]any{}
+		fields, _ := p["fields"].([]any)
+		for _, fit := range fields {
+			f, _ := fit.(map[string]any)
+			key, _ := f["key"].(string)
+			out[key] = f
+		}
+		return out
+	}
+	t.Fatalf("providers 缺卡 %s: %v", card, data["providers"])
+	return nil
+}
+
+// TestGetSettingsProviders 新读端点：providers 数组在场（六卡齐全、kind 合法），
+// volc/mvsep 平铺段已删除，storage/data_dir 保留。
+func TestGetSettingsProviders(t *testing.T) {
+	ts, _, ac := newTestServer(t)
 	got := getEnvelope(t, ac, ts.URL+"/api/settings")
-	gotData, _ := got.Data.(map[string]any)
-	speech, _ := gotData["volc"].(map[string]any)["speech"].(map[string]any)
-	if speech["app_id"] != "app-1" {
-		t.Errorf("app_id = %v, want app-1（保存后应即时生效）", speech["app_id"])
+	data, _ := got.Data.(map[string]any)
+	providers, okArr := data["providers"].([]any)
+	if !okArr || len(providers) < 6 {
+		t.Fatalf("providers = %v", data["providers"])
 	}
-	if speech["api_key"] != "key-1" {
-		t.Errorf("api_key = %v, want key-1", speech["api_key"])
+	if _, exists := data["volc"]; exists {
+		t.Error("旧 volc 平铺段应已删除")
 	}
-	mk, _ := gotData["volc"].(map[string]any)["mediakit"].(map[string]any)
-	if mk["has_api_key"] != true {
-		t.Errorf("mediakit.has_api_key = %v, want true", mk["has_api_key"])
+	if _, exists := data["mvsep"]; exists {
+		t.Error("旧 mvsep 平铺段应已删除")
+	}
+	if _, exists := data["storage"]; !exists {
+		t.Error("storage 段应保留")
+	}
+	if _, exists := data["data_dir"]; !exists {
+		t.Error("data_dir 应保留")
+	}
+	names := map[string]bool{}
+	for _, it := range providers {
+		p, _ := it.(map[string]any)
+		name, _ := p["name"].(string)
+		names[name] = true
+		if kind, _ := p["kind"].(string); kind != "cloud" && kind != "local" {
+			t.Errorf("卡 %s kind = %q", name, kind)
+		}
+	}
+	for _, want := range []string{"volcengine", "mediakit", "mvsep", "qianwen", "audiotool", "gsgc"} {
+		if !names[want] {
+			t.Errorf("缺少卡 %s", want)
+		}
 	}
 }
 
-// TestSettingsTestConnection 连通性检测响应结构：顶层 ok/message 仍为语音探测结果
-// （向后兼容，前端 SettingsPage 直接消费），新增 mediakit 段（独立 ok/message）。
-// 测试环境无凭证：语音校验与 MediaKit 未配置检查均在发网络请求前返回，不会外联。
-func TestSettingsTestConnection(t *testing.T) {
+// TestPutSettingsHotReload 按卡保存凭证后立即 GET 应读到新值（热加载，无需重启）：
+// text 字段回 value、secret 字段只回 has_value。SaveProviderFields 写
+// $HOME/.voxbox/config.yaml，须隔离 HOME。
+func TestPutSettingsHotReload(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	ts, _, ac := newTestServer(t)
-	resp, err := ac.Post(ts.URL+"/api/settings/test-connection", "application/json", nil)
-	if err != nil {
-		t.Fatal(err)
+
+	if _, e := doJSON(t, ac, http.MethodPut, ts.URL+"/api/settings/providers/volcengine",
+		`{"fields":{"app_id":"app-1","access_token":"tok-1","api_key":"key-1"}}`); e.Code != CodeOK {
+		t.Fatalf("volcengine 保存 code = %d (%s)", e.Code, e.Message)
 	}
-	defer resp.Body.Close()
-	var e envelope
-	_ = json.NewDecoder(resp.Body).Decode(&e)
-	if e.Code != 0 {
+	if _, e := doJSON(t, ac, http.MethodPut, ts.URL+"/api/settings/providers/mediakit",
+		`{"fields":{"api_key":"mk-1"}}`); e.Code != CodeOK {
+		t.Fatalf("mediakit 保存 code = %d (%s)", e.Code, e.Message)
+	}
+
+	got := getEnvelope(t, ac, ts.URL+"/api/settings")
+	data, _ := got.Data.(map[string]any)
+	volc := providerFieldsFromSettings(t, data, "volcengine")
+	if f := volc["app_id"]; f["value"] != "app-1" {
+		t.Errorf("app_id = %v, want app-1（保存后应即时生效）", f["value"])
+	}
+	if f := volc["api_key"]; f["has_value"] != true || f["value"] != nil {
+		t.Errorf("api_key secret 字段应只回 has_value=true，got %v", f)
+	}
+	mk := providerFieldsFromSettings(t, data, "mediakit")
+	if f := mk["api_key"]; f["has_value"] != true {
+		t.Errorf("mediakit.api_key has_value = %v, want true", f["has_value"])
+	}
+}
+
+// TestPutSettingsProviders 新写端点契约：按卡保存成功；未知卡拒绝（业务包络非 0）；
+// 旧 PUT /api/settings 整表端点已删除，必须 HTTP 404。
+func TestPutSettingsProviders(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ts, _, ac := newTestServer(t)
+
+	if _, e := doJSON(t, ac, http.MethodPut, ts.URL+"/api/settings/providers/qianwen",
+		`{"fields":{"api_key":"sk-route-1"}}`); e.Code != CodeOK {
+		t.Fatalf("按卡保存 code = %d (%s)", e.Code, e.Message)
+	}
+	if _, e := doJSON(t, ac, http.MethodPut, ts.URL+"/api/settings/providers/nope",
+		`{"fields":{}}`); e.Code == CodeOK {
+		t.Error("未知卡应拒绝（业务码非 0）")
+	}
+	status, _ := doJSON(t, ac, http.MethodPut, ts.URL+"/api/settings", `{"api_key":"x"}`)
+	if status != http.StatusNotFound {
+		t.Errorf("旧端点应 HTTP 404, got %d", status)
+	}
+}
+
+// TestTestConnectionShape test-connection 新结构：results 数组逐卡回
+// name/ok/message（未配置也须在场且 message 非空）+ storage 独立段。
+// 测试环境无凭证：各卡未配置检查均在发网络请求前返回，不会外联。
+func TestTestConnectionShape(t *testing.T) {
+	ts, _, ac := newTestServer(t)
+	e := postJSON(t, ac, ts.URL+"/api/settings/test-connection", "")
+	if e.Code != CodeOK {
 		t.Fatalf("code = %d (%s)", e.Code, e.Message)
 	}
 	data, _ := e.Data.(map[string]any)
-	if _, exists := data["ok"]; !exists {
-		t.Errorf("data 缺少顶层 ok 键: %v", data)
+	results, okArr := data["results"].([]any)
+	if !okArr || len(results) < 4 {
+		t.Fatalf("results = %v", data["results"])
 	}
-	if msg, _ := data["message"].(string); msg == "" {
-		t.Errorf("data.message 应为非空字符串: %v", data)
+	seen := map[string]bool{}
+	for _, it := range results {
+		r, _ := it.(map[string]any)
+		name, _ := r["name"].(string)
+		seen[name] = true
+		if msg, _ := r["message"].(string); msg == "" {
+			t.Errorf("卡 %s 缺 message", name)
+		}
+		if _, exists := r["ok"]; !exists {
+			t.Errorf("卡 %s 缺 ok 键", name)
+		}
 	}
-	mk, ok := data["mediakit"].(map[string]any)
-	if !ok {
-		t.Fatalf("data.mediakit 应为对象: %v", data)
+	for _, want := range []string{"volcengine", "mediakit", "mvsep", "qianwen"} {
+		if !seen[want] {
+			t.Errorf("results 缺卡 %s", want)
+		}
 	}
-	if _, exists := mk["ok"]; !exists {
-		t.Errorf("mediakit 缺少 ok 键: %v", mk)
+	st, okObj := data["storage"].(map[string]any)
+	if !okObj {
+		t.Fatalf("data.storage 应为对象: %v", data)
 	}
-	if msg, _ := mk["message"].(string); msg == "" {
-		t.Errorf("mediakit.message 应为非空字符串: %v", mk)
+	if _, exists := st["ok"]; !exists {
+		t.Error("storage 缺 ok 键")
+	}
+	if msg, _ := st["message"].(string); msg == "" {
+		t.Errorf("storage.message 应为非空字符串: %v", st)
 	}
 }
 
@@ -649,34 +751,23 @@ func TestArtifactAbsPathJail(t *testing.T) {
 	}
 }
 
-// TestSettingsStorageChannels 存储配置分段契约：PUT 按类型保存后，GET 回传
-// storage.channels.<名> 独立段（secret 只回 has_secret_key 布尔），切类型再切回值仍在。
+// TestSettingsStorageChannels 存储配置分段契约：PUT /api/settings/storage 按类型
+// 保存后，GET 回传 storage.channels.<名> 独立段（secret 只回 has_secret_key 布尔），
+// 切类型再切回值仍在。
 func TestSettingsStorageChannels(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	ts, _, ac := newTestServer(t)
 
 	put := func(body string) {
 		t.Helper()
-		req, err := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", strings.NewReader(body))
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := ac.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-		var e envelope
-		_ = json.NewDecoder(resp.Body).Decode(&e)
-		if e.Code != 0 {
-			t.Fatalf("put code = %d (%s)", e.Code, e.Message)
+		if _, e := doJSON(t, ac, http.MethodPut, ts.URL+"/api/settings/storage", body); e.Code != CodeOK {
+			t.Fatalf("put storage code = %d (%s)", e.Code, e.Message)
 		}
 	}
-	put(`{"storage":{"provider":"tos","endpoint":"ep","region":"r","bucket":"bk","access_key":"AK","secret_key":"SK","prefix":"pp"}}`)
+	put(`{"provider":"tos","endpoint":"ep","region":"r","bucket":"bk","access_key":"AK","secret_key":"SK","prefix":"pp"}`)
 	// 停用（仅选择器清空），再启用
-	put(`{"storage":{"provider":""}}`)
-	put(`{"storage":{"provider":"tos","endpoint":"ep","region":"r","bucket":"bk","access_key":"AK","secret_key":"","prefix":"pp"}}`)
+	put(`{"provider":""}`)
+	put(`{"provider":"tos","endpoint":"ep","region":"r","bucket":"bk","access_key":"AK","secret_key":"","prefix":"pp"}`)
 
 	got := getEnvelope(t, ac, ts.URL+"/api/settings")
 	data, _ := got.Data.(map[string]any)

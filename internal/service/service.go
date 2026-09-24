@@ -20,6 +20,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider/audiotool"
 	"github.com/yann0917/voxbox/internal/provider/gsgc"
 	"github.com/yann0917/voxbox/internal/provider/mvsep"
+	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
 	"github.com/yann0917/voxbox/internal/store"
 	"github.com/yann0917/voxbox/internal/task"
@@ -80,6 +81,9 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 	if err := mvsep.RegisterAll(reg, *cfg, dataDir); err != nil {
 		return nil, err
 	}
+	if err := qianwen.RegisterAll(reg, *cfg, dataDir); err != nil {
+		return nil, err
+	}
 	if err := gsgc.RegisterAll(reg, *cfg, dataDir); err != nil {
 		return nil, err
 	}
@@ -137,60 +141,104 @@ func (s *Service) DB() *store.DB                { return s.db }
 func (s *Service) Registry() *provider.Registry { return s.reg }
 func (s *Service) Config() *config.Config       { return s.cfg.Load() }
 
-// SaveCredentials 将非空凭证持久化到 ~/.voxbox/config.yaml 并热应用：
-// 整体换新配置快照、以新凭证覆盖重注册火山与 MVSep 工具，Web 设置保存后即时生效，
-// 无需重启。空值跳过（与设置页"留空表示不修改"语义一致）。进行中任务持有旧工具实例，不受影响。
-func (s *Service) SaveCredentials(appID, accessToken, apiKey, mediaKitAPIKey, mvsepToken, mvsepBaseURL string) error {
-	set := func(key, val string) error {
-		if val == "" {
-			return nil
+// SaveProviderFields 保存一张凭证卡的字段并热应用：按卡声明校验（未知卡/未知字段拒绝），
+// secret 留空=不修改，text/select 按提交值落盘（select 空串=合法取值，如 MVSep 主站）。
+// 成功后只重注册该卡对应的工具集，进行中任务持有旧实例不受影响。
+func (s *Service) SaveProviderFields(name string, fields map[string]string) error {
+	var card *provider.ProviderInfo
+	for _, c := range providerCards() {
+		if c.Name == name {
+			cc := c
+			card = &cc
+			break
 		}
-		return config.Set(key, val)
 	}
-	if err := errors.Join(
-		set("volc.speech.app_id", appID),
-		set("volc.speech.access_token", accessToken),
-		set("volc.speech.api_key", apiKey),
-		set("volc.mediakit.api_key", mediaKitAPIKey),
-		set("mvsep.api_token", mvsepToken),
-		set("mvsep.base_url", mvsepBaseURL),
-	); err != nil {
-		return err
+	if card == nil || card.Kind != provider.KindCloud {
+		return fmt.Errorf("未知凭证卡: %s", name)
 	}
-	nc := *s.cfg.Load()
-	if appID != "" {
-		nc.Volc.Speech.AppID = appID
+	for k := range fields {
+		known := false
+		for _, f := range card.Fields {
+			if f.Key == k {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return fmt.Errorf("字段不属于 %s 卡: %s", name, k)
+		}
 	}
-	if accessToken != "" {
-		nc.Volc.Speech.AccessToken = accessToken
-	}
-	if apiKey != "" {
-		nc.Volc.Speech.APIKey = apiKey
-	}
-	if mediaKitAPIKey != "" {
-		nc.Volc.MediaKit.APIKey = mediaKitAPIKey
-	}
-	if mvsepToken != "" {
-		nc.MVSep.APIToken = mvsepToken
-	}
-	// 线路（base_url）允许显式清空回落主站：与凭证不同，空串本身是合法取值（主站），
-	// 故仅当值发生变化才写盘，且保存值直接生效。
-	if mvsepBaseURL != nc.MVSep.BaseURL {
-		if err := config.Set("mvsep.base_url", mvsepBaseURL); err != nil {
+	for _, f := range card.Fields {
+		v, ok := fields[f.Key]
+		if !ok || (f.Kind == provider.FieldSecret && v == "") {
+			continue // 未提交或 secret 留空 = 不修改
+		}
+		if err := config.Set(f.ConfigKey, v); err != nil {
 			return err
 		}
-		nc.MVSep.BaseURL = mvsepBaseURL
 	}
+	nc := *s.cfg.Load()
+	applyCardFields(&nc, name, fields)
 	s.cfg.Store(&nc)
-	volcengine.ReRegisterAll(s.reg, nc, nc.DataDir)
-	mvsep.ReRegisterAll(s.reg, nc, nc.DataDir)
+	s.reloadCard(name, nc)
 	return nil
 }
 
-// ReloadDiskConfig 从磁盘配置热应用运行期可变段：火山凭证 + 对象存储。
+// applyCardFields 把提交字段套进内存快照。语义与落盘一致（SaveProviderFields）：
+// text/select 字段提交值即生效（空串=清空，如 app_id 留空、接入线路回落主站）；
+// 只有 secret 字段保留「空串=不修改」守卫。
+func applyCardFields(nc *config.Config, name string, fields map[string]string) {
+	get := func(k string) (string, bool) {
+		v, ok := fields[k]
+		return v, ok
+	}
+	switch name {
+	case "volcengine":
+		// app_id 是 text 字段：提交值即生效，空串=清空（播客凭证对可整体撤销）。
+		if v, ok := get("app_id"); ok {
+			nc.Volc.Speech.AppID = v
+		}
+		if v, ok := get("access_token"); ok && v != "" {
+			nc.Volc.Speech.AccessToken = v
+		}
+		if v, ok := get("api_key"); ok && v != "" {
+			nc.Volc.Speech.APIKey = v
+		}
+	case "mediakit":
+		if v, ok := get("api_key"); ok && v != "" {
+			nc.Volc.MediaKit.APIKey = v
+		}
+	case "mvsep":
+		if v, ok := get("api_token"); ok && v != "" {
+			nc.MVSep.APIToken = v
+		}
+		// base_url 是 select 字段：空串=主站（合法取值），不设守卫。
+		if v, ok := get("base_url"); ok {
+			nc.MVSep.BaseURL = v
+		}
+	case "qianwen":
+		if v, ok := get("api_key"); ok && v != "" {
+			nc.Qianwen.APIKey = v
+		}
+	}
+}
+
+// reloadCard 卡 → 工具热重注册映射（mediakit 的分离工具在 volcengine 包，共用其重注册）。
+func (s *Service) reloadCard(name string, nc config.Config) {
+	switch name {
+	case "volcengine", "mediakit":
+		volcengine.ReRegisterAll(s.reg, nc, nc.DataDir)
+	case "mvsep":
+		mvsep.ReRegisterAll(s.reg, nc, nc.DataDir)
+	case "qianwen":
+		qianwen.ReRegisterAll(s.reg, nc, nc.DataDir)
+	}
+}
+
+// ReloadDiskConfig 从磁盘配置热应用运行期可变段：火山/千问凭证 + 对象存储。
 // 配置文件监听（config.Watch）的回调路径：服务运行中另一终端 voxbox config set、
-// 手工编辑 config.yaml 的变更即时生效，与 Web 设置保存（SaveCredentials/SaveStorage
-// 同步热应用）殊途同归。仅替换这两段：端口与数据目录是启动期属性（监听已绑定、
+// 手工编辑 config.yaml 的变更即时生效，与 Web 设置保存（SaveProviderFields/SaveStorage
+// 同步热应用）殊途同归。仅替换这些段：端口与数据目录是启动期属性（监听已绑定、
 // DB 已打开），不跟随文件变更。
 func (s *Service) ReloadDiskConfig(disk *config.Config) {
 	nc := *s.cfg.Load()
@@ -198,9 +246,11 @@ func (s *Service) ReloadDiskConfig(disk *config.Config) {
 	nc.Storage = disk.Storage
 	nc.StorageChannels = disk.StorageChannels
 	nc.MVSep = disk.MVSep
+	nc.Qianwen = disk.Qianwen
 	s.cfg.Store(&nc)
 	volcengine.ReRegisterAll(s.reg, nc, nc.DataDir)
 	mvsep.ReRegisterAll(s.reg, nc, nc.DataDir)
+	qianwen.ReRegisterAll(s.reg, nc, nc.DataDir)
 	s.rebuildStorageClient(nc.Storage)
 }
 
@@ -443,4 +493,21 @@ func (s *Service) TestMediaKitConnection() (string, bool) {
 	default:
 		return fmt.Sprintf("MediaKit 探测异常(HTTP %d)", resp.StatusCode), false
 	}
+}
+
+// TestQianwenConnection 千问连通性探测：极短文本合成（消耗少量额度，同火山语音模式）。
+func (s *Service) TestQianwenConnection() (string, bool) {
+	key := s.cfg.Load().Qianwen.APIKey
+	if key == "" {
+		return "未配置千问 API Key：请执行 voxbox config set qianwen.api_key 或在 Web 设置页配置", false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	client := qianwen.NewTTSClient(key, qianwen.BaseURL)
+	if _, err := client.Synthesize(ctx, qianwen.TTSReq{
+		Model: "qwen3-tts-flash", Text: "测", Voice: qianwen.DefaultVoice,
+	}); err != nil {
+		return err.Error(), false
+	}
+	return "连接成功", true
 }

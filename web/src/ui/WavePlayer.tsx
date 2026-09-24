@@ -18,7 +18,7 @@ export function WavePlayer({ src, title, sub, durationSec, className = "" }: Wav
   const wrapRef = useRef<HTMLDivElement>(null);
   const timeRef = useRef<HTMLSpanElement>(null);
   const fillRef = useRef<HTMLDivElement>(null);
-  const colorsRef = useRef({ accent: "#22d3ee", idle: "rgba(255,255,255,.18)" });
+  const colorsRef = useRef({ accent: "#e2a35a", idle: "rgba(246,236,221,.16)" });
   const peaksRef = useRef<number[] | null>(null);
   const draggingRef = useRef(false);
 
@@ -47,8 +47,8 @@ export function WavePlayer({ src, title, sub, durationSec, className = "" }: Wav
     const read = () => {
       const cs = getComputedStyle(document.documentElement);
       colorsRef.current = {
-        accent: cs.getPropertyValue("--accent").trim() || "#22d3ee",
-        idle: cs.getPropertyValue("--wave-idle").trim() || cs.getPropertyValue("--line-strong").trim() || "rgba(255,255,255,.18)",
+        accent: cs.getPropertyValue("--accent").trim() || "#e2a35a",
+        idle: cs.getPropertyValue("--wave-idle").trim() || cs.getPropertyValue("--line-strong").trim() || "rgba(246,236,221,.16)",
       };
       if (peaksRef.current) draw();
     };

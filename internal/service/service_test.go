@@ -15,8 +15,8 @@ import (
 func TestNewRegistersTools(t *testing.T) {
 	svc := newTestService(t)
 	metas := svc.Registry().List()
-	if len(metas) != 33 { // 火山 8 + MVSep 1 + gsgc 11（1 分离 + 10 站点功能）+ zhuanhuanmao 1 分离 + 音频剪辑 12
-		t.Fatalf("registered tools = %d, want 33", len(metas))
+	if len(metas) != 35 { // 火山 8 + MVSep 1 + 千问 2 + gsgc 11（1 分离 + 10 站点功能）+ zhuanhuanmao 1 分离 + 音频剪辑 12
+		t.Fatalf("registered tools = %d, want 35", len(metas))
 	}
 	if _, ok := svc.Registry().Get("mvsep", "separate"); !ok {
 		t.Error("mvsep.separate not found")
@@ -48,17 +48,25 @@ func TestSubmitUnknownTool(t *testing.T) {
 	}
 }
 
-// TestSaveCredentialsHotReload 验证凭证保存即时生效：内存配置换快照、
-// 工具覆盖重注册、YAML 持久化，且空值不覆盖已有凭证。
-// 注意：SaveCredentials 写 $HOME/.voxbox/config.yaml，须先隔离 HOME。
-func TestSaveCredentialsHotReload(t *testing.T) {
+// TestSaveProviderFieldsHotReload 验证多卡按卡保存即时生效：内存配置换快照、
+// 工具覆盖重注册、YAML 持久化，且 secret 留空不覆盖已有凭证。
+// 注意：SaveProviderFields 写 $HOME/.voxbox/config.yaml，须先隔离 HOME。
+func TestSaveProviderFieldsHotReload(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	svc := newTestService(t)
 
 	if got := svc.Config().Volc.Speech.AppID; got != "" {
 		t.Fatalf("initial app id = %q, want empty", got)
 	}
-	if err := svc.SaveCredentials("app-1", "tok-1", "key-1", "mk-1", "mv-1", ""); err != nil {
+	if err := svc.SaveProviderFields("volcengine", map[string]string{
+		"app_id": "app-1", "access_token": "tok-1", "api_key": "key-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SaveProviderFields("mediakit", map[string]string{"api_key": "mk-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SaveProviderFields("mvsep", map[string]string{"api_token": "mv-1"}); err != nil {
 		t.Fatal(err)
 	}
 	cfg := svc.Config()
@@ -70,8 +78,8 @@ func TestSaveCredentialsHotReload(t *testing.T) {
 	if _, ok := svc.Registry().Get("volcengine", "tts"); !ok {
 		t.Error("volcengine.tts missing after hot reload")
 	}
-	if len(svc.Registry().List()) != 33 {
-		t.Errorf("List len = %d, want 33（火山 8 + MVSep 1 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12）", len(svc.Registry().List()))
+	if len(svc.Registry().List()) != 35 {
+		t.Errorf("List len = %d, want 35（火山 8 + MVSep 1 + 千问 2 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12）", len(svc.Registry().List()))
 	}
 	// 持久化：重读磁盘配置与内存一致
 	persisted, err := config.Load()
@@ -84,8 +92,8 @@ func TestSaveCredentialsHotReload(t *testing.T) {
 	if persisted.MVSep.APIToken != "mv-1" {
 		t.Fatalf("mvsep token 未持久化: %+v", persisted.MVSep)
 	}
-	// 部分保存：空值跳过，其余字段保留
-	if err := svc.SaveCredentials("app-2", "", "", "", "", ""); err != nil {
+	// 部分保存：secret 留空跳过，其余字段保留
+	if err := svc.SaveProviderFields("volcengine", map[string]string{"app_id": "app-2"}); err != nil {
 		t.Fatal(err)
 	}
 	cfg = svc.Config()
@@ -99,7 +107,10 @@ func TestSaveCredentialsHotReload(t *testing.T) {
 func TestReloadVolcFromDisk(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	svc := newTestService(t)
-	if err := svc.SaveCredentials("app-1", "tok-1", "", "mk-1", "", ""); err != nil {
+	if err := svc.SaveProviderFields("volcengine", map[string]string{"app_id": "app-1", "access_token": "tok-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SaveProviderFields("mediakit", map[string]string{"api_key": "mk-1"}); err != nil {
 		t.Fatal(err)
 	}
 	before := svc.Config().DataDir
@@ -123,8 +134,8 @@ func TestReloadVolcFromDisk(t *testing.T) {
 	if _, ok := svc.Registry().Get("volcengine", "tts"); !ok {
 		t.Error("volcengine.tts missing after reload")
 	}
-	if len(svc.Registry().List()) != 33 {
-		t.Errorf("List len = %d, want 33（火山 8 + MVSep 1 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12）", len(svc.Registry().List()))
+	if len(svc.Registry().List()) != 35 {
+		t.Errorf("List len = %d, want 35（火山 8 + MVSep 1 + 千问 2 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12）", len(svc.Registry().List()))
 	}
 }
 
@@ -224,6 +235,104 @@ func TestSaveStorageChannelSwitch(t *testing.T) {
 	}
 	if ch := disk.StorageChannels["tos"]; ch.Endpoint != "ep-b" || ch.SecretKey != "sk-a" {
 		t.Fatalf("disk tos channel = %+v", ch)
+	}
+}
+
+// SaveProviderFields：字段落盘、快照更新、secret 留空不改、未知字段拒绝、热重注册触发。
+func TestSaveProviderFields(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VOXBOX_HOME", home)
+	svc, err := NewWithHome(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	// 1) 保存千问 key：落盘 + 快照可见
+	if err := svc.SaveProviderFields("qianwen", map[string]string{"api_key": "sk-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.Config().Qianwen.APIKey; got != "sk-1" {
+		t.Errorf("快照 Qianwen.APIKey = %q", got)
+	}
+	disk, err := config.Load()
+	if err != nil || disk.Qianwen.APIKey != "sk-1" {
+		t.Errorf("落盘不符: %q err=%v", disk.Qianwen.APIKey, err)
+	}
+	// 守护「secret 不回传值」：设置态里千问 secret 字段只回 has_value，不带值。
+	for _, st := range svc.ProviderStates(svc.Config()) {
+		if st.Name != "qianwen" {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.Key == "api_key" && (f.Kind != provider.FieldSecret || !f.HasValue || f.Value != "") {
+				t.Errorf("secret 字段应只回 has_value: %+v", f)
+			}
+		}
+	}
+
+	// 2) secret 留空 = 不改（空串提交不覆盖）
+	if err := svc.SaveProviderFields("qianwen", map[string]string{"api_key": ""}); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.Config().Qianwen.APIKey; got != "sk-1" {
+		t.Errorf("secret 留空不应清空: %q", got)
+	}
+
+	// 3) 未知字段拒绝
+	if err := svc.SaveProviderFields("qianwen", map[string]string{"hacker": "x"}); err == nil {
+		t.Error("未知字段应报错")
+	}
+
+	// 4) 未知卡拒绝
+	if err := svc.SaveProviderFields("nope", map[string]string{}); err == nil {
+		t.Error("未知卡应报错")
+	}
+
+	// 5) 热重注册：保存火山凭证后注册表内 tts 工具可取出（凭证已进实例）
+	if err := svc.SaveProviderFields("volcengine", map[string]string{"api_key": "vk-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := svc.Registry().Get("volcengine", "tts"); !ok {
+		t.Error("volcengine.tts 应已注册")
+	}
+	if _, ok := svc.Registry().Get("qianwen", "tts"); !ok {
+		t.Error("qianwen.tts 应已注册（Task 7 newWithRoot 注册）")
+	}
+
+	// 6) text 字段空串=清空（与 secret 留空不改相对）：app_id 提交空串后，
+	//    内存快照与 config.Load() 落盘均应为空。
+	if err := svc.SaveProviderFields("volcengine", map[string]string{"app_id": "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.Config().Volc.Speech.AppID; got != "a" {
+		t.Fatalf("app_id = %q, want a", got)
+	}
+	if err := svc.SaveProviderFields("volcengine", map[string]string{"app_id": ""}); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.Config().Volc.Speech.AppID; got != "" {
+		t.Errorf("text 字段空串提交应清空快照: app_id = %q", got)
+	}
+	disk, err = config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := disk.Volc.Speech.AppID; got != "" {
+		t.Errorf("text 字段空串提交应清空落盘: app_id = %q", got)
+	}
+}
+
+// TestQianwenConnection：未配置直接报未配置。
+func TestQianwenConnectionUnconfigured(t *testing.T) {
+	svc, err := NewWithHome(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	msg, ok := svc.TestQianwenConnection()
+	if ok || msg == "" {
+		t.Errorf("未配置应 (false, 提示), got (%v, %q)", ok, msg)
 	}
 }
 

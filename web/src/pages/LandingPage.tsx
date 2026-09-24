@@ -7,6 +7,7 @@ import {
   Mic,
   NotebookPen,
   Podcast,
+  Scissors,
   Terminal,
   Waves,
   Wrench,
@@ -15,10 +16,11 @@ import { Button } from "../ui";
 
 /** 能力矩阵（与控制台导航同序同义，公开页只做介绍不拉数据）。 */
 const CAPABILITIES = [
-  { icon: AudioLines, title: "语音合成", desc: "同步 / 流式 / 长文本三通道，多音色与情感参数" },
-  { icon: Mic, title: "语音识别", desc: "一句话秒级转写、录音文件批量识别、分句时间戳" },
+  { icon: AudioLines, title: "语音合成", desc: "火山三通道 + 千问双模型，多音色与自然语言风格指令" },
+  { icon: Mic, title: "语音识别", desc: "一句话秒级转写、长音频批量识别、说话人分离与分句时间戳" },
   { icon: Podcast, title: "播客工坊", desc: "双人对话稿一键合成播客节目" },
-  { icon: Waves, title: "人声分离", desc: "Roformer / Demucs 多引擎，人声与伴奏分轨" },
+  { icon: Waves, title: "人声分离", desc: "多引擎人声与伴奏分轨，站点线路备选" },
+  { icon: Scissors, title: "音频剪辑", desc: "ffmpeg 本地处理：裁剪合并、变调、均衡、口播闪避" },
   { icon: Languages, title: "机器翻译", desc: "32 语种互译，热词与术语表定制" },
   { icon: NotebookPen, title: "语音妙记", desc: "音视频转结构化会议纪要，可导出 Word" },
   { icon: Captions, title: "字幕工坊", desc: "SRT/ASS 解析、分句草稿与卡拉OK样式导出" },
@@ -52,7 +54,7 @@ voxbox tts "你好世界" --voice zh_female_roushunvsheng`,
 /** 产品展示页（公开路由 /）：介绍能力与接入方式，登录入口在右上角。 */
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-bg text-fg">
+    <div className="min-h-screen text-fg">
       {/* 顶栏 */}
       <header className="sticky top-0 z-10 border-b border-line bg-panel/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1100px] items-center gap-3 px-4 md:px-8">
@@ -76,18 +78,19 @@ export default function LandingPage() {
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-0 -top-24 h-64 opacity-60"
-          style={{ background: "radial-gradient(60% 100% at 50% 0%, rgba(34,211,238,0.12), transparent)" }}
+          style={{ background: "radial-gradient(60% 100% at 50% 0%, color-mix(in oklab, var(--accent) 13%, transparent), transparent)" }}
         />
         <div className="mx-auto max-w-[1100px] px-4 py-20 md:px-8 md:py-28">
           <p className="micro mb-4 text-accent">一键部署 · 单二进制 · 数据自有</p>
           <h1 className="max-w-3xl text-3xl font-semibold leading-tight tracking-tight md:text-5xl md:leading-[1.15]">
-            语音工具箱，
-            <br className="sm:hidden" />
-            像一间深空信号站一样可靠
+            多引擎语音工具箱，
+            <br />
+            自托管，开箱即用
           </h1>
           <p className="mt-5 max-w-2xl text-sm leading-relaxed text-fg-2 md:text-base">
-            合成、识别、分离、翻译、妙记、字幕——火山引擎语音能力的完整自托管工作台。
-            一个二进制跑在服务器或本机，任务引擎与产物全在你的磁盘上，Agent 经 MCP 直接调用。
+            合成、识别、分离、翻译、妙记、字幕——火山引擎与千问平台双云端引擎，加上本地 ffmpeg
+            音频处理，组成一套完整的自托管工作台。一个二进制跑在服务器或本机，任务引擎与产物全在你的磁盘上，Agent
+            经 MCP 直接调用。
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Link to="/workbench">
@@ -99,7 +102,7 @@ export default function LandingPage() {
           </div>
           <dl className="mt-12 grid max-w-2xl grid-cols-3 gap-6">
             {[
-              ["33", "内置工具"],
+              ["35", "内置工具"],
               ["3", "调用入口 Web / CLI / MCP"],
               ["0", "外部服务依赖*"],
             ].map(([v, k]) => (
@@ -110,7 +113,7 @@ export default function LandingPage() {
               </div>
             ))}
           </dl>
-          <p className="mt-3 text-[10px] text-muted">* SQLite 存储，纯 Go 驱动；语音能力由你配置的火山引擎凭证计费。</p>
+          <p className="mt-3 text-[10px] text-muted">* SQLite 存储，纯 Go 驱动；云端语音能力分别由你配置的火山引擎 / 千问平台凭证计费。</p>
         </div>
       </section>
 
@@ -163,7 +166,7 @@ export default function LandingPage() {
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[11px] text-muted">
           <span>voxbox · 自托管语音工作台</span>
           <span className="hidden sm:inline">·</span>
-          <span>由火山引擎语音大模型驱动</span>
+          <span>由火山引擎 × 千问平台语音大模型驱动</span>
         </div>
       </footer>
     </div>

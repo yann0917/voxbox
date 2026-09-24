@@ -1,4 +1,4 @@
-package volcengine
+package provider
 
 import (
 	"path/filepath"
