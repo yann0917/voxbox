@@ -52,7 +52,7 @@ voxbox tts "你好世界" --voice zh_female_roushunvsheng`,
 /** 产品展示页（公开路由 /）：介绍能力与接入方式，登录入口在右上角。 */
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-bg text-fg">
+    <div className="min-h-screen text-fg">
       {/* 顶栏 */}
       <header className="sticky top-0 z-10 border-b border-line bg-panel/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1100px] items-center gap-3 px-4 md:px-8">

@@ -21,7 +21,7 @@ export default function LoginPage() {
   const { data: me, isPending } = useMe();
   if (isPending) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg">
+      <div className="flex min-h-screen items-center justify-center">
         <p className="text-sm text-muted" role="status">正在校验登录态…</p>
       </div>
     );
@@ -48,7 +48,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg p-4">
+    <div className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <div className="flex size-12 items-center justify-center rounded-[var(--radius-md)] bg-accent text-accent-ink shadow-[var(--shadow-2)]">

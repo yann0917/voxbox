@@ -221,7 +221,7 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex h-screen bg-bg">
+    <div className="flex h-screen">
       {/* 左侧导轨：lg 全宽（可手动收起），md 图标态 */}
       <aside
         className={`hidden shrink-0 flex-col border-r border-line bg-panel backdrop-blur-xl md:flex ${
