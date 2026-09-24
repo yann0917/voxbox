@@ -68,7 +68,9 @@ export default function AboutPage() {
         <CardBody className="space-y-3">
           <p className="text-sm leading-relaxed text-fg">
             voxbox 是一套个人自用的多媒体 AI 工具箱：单个 Go 二进制，既是命令行工具也是 Web 控制台。
-            它把火山引擎豆包语音的八项 AI 能力装进同一个任务引擎——提交任务、实时进度、产物落盘、历史可溯，
+            它把三家语音平台的 AI 能力装进同一个任务引擎——火山引擎豆包语音的八项能力为主干，
+            另接千问平台（qwen3-tts 合成 / qwen3-asr 文件转写）与小米 MiMo（MiMo-V2.5-TTS 合成 / mimo-v2.5-asr 同步转写）
+            作为合成与识别的备用引擎，提交任务、实时进度、产物落盘、历史可溯，
             面向配音、转写、播客、会议纪要、翻译等日常内容生产场景。
           </p>
           <p className="text-sm leading-relaxed text-fg-2">
@@ -88,17 +90,18 @@ export default function AboutPage() {
               在 <Link to="/settings" className="text-accent transition-colors duration-150 hover:opacity-80">设置页</Link> 填写凭证，
               或执行（配置文件位于 <code className="rounded bg-inset px-1.5 py-0.5 font-mono text-xs">~/.voxbox/config.yaml</code>）：
             </p>
-            <Cmd>voxbox config set volc.speech.app_id &lt;APP ID&gt;&#10;voxbox config set volc.speech.access_token &lt;Token&gt;</Cmd>
+            <Cmd>voxbox config set volc.speech.app_id &lt;APP ID&gt;&#10;voxbox config set volc.speech.access_token &lt;Token&gt;&#10;voxbox config set qianwen.api_key &lt;API Key&gt;&#10;voxbox config set xiaomi.api_key &lt;API Key&gt;</Cmd>
             <p className="text-xs text-muted">
               <KeyRound size={12} strokeWidth={1.75} className="mr-1 inline" />
-              仅播客必须 APP ID + Access Token，其余能力支持新版 API Key 单键；人声分离使用独立的 MediaKit API Key。
+              火山：仅播客必须 APP ID + Access Token，其余能力支持新版 API Key 单键；人声分离用独立的 MediaKit API Key。
+              千问（TTS/ASR）与小米（TTS/ASR）各一个 API Key，合成与识别共用；引擎在 CLI --engine 或页面页签里切换。
             </p>
           </Step>
           <Step n="2" title="命令行调用">
             <p>
               所有命令同步执行、进程退出即完成；加 <code className="rounded bg-inset px-1.5 py-0.5 font-mono text-xs">--json</code> 获得机器可读产物路径。
             </p>
-            <Cmd>voxbox tts "你好，voxbox" --out hello.mp3 --json&#10;voxbox minutes "https://example.com/meeting.mp4" --features summary,todo --json</Cmd>
+            <Cmd>voxbox tts "你好，voxbox" --out hello.mp3 --json&#10;voxbox tts "你好，千问" --engine qianwen --out qwen.mp3 --json&#10;voxbox asr rec.mp3 --engine xiaomi --out transcript.txt --json</Cmd>
             <p className="text-xs text-muted">
               完整命令与参数见
               <a
@@ -180,17 +183,28 @@ export default function AboutPage() {
       {/* 底层模型（产品介绍） */}
       <Card>
         <CardHeader
-          title="底层能力：火山引擎豆包语音"
+          title="底层能力：多引擎语音平台"
           icon={<Cpu size={15} strokeWidth={1.75} />}
-          aside={<span className="micro">大模型体系</span>}
+          aside={<span className="micro">火山 / 千问 / 小米</span>}
         />
         <CardBody className="space-y-3">
           <p className="text-sm leading-relaxed text-fg-2">
-            全部能力由火山引擎豆包语音大模型体系驱动。官方产品线覆盖音频创作（Seed-Audio，单条 Prompt 生成影视级多轨音频）、
-            语音合成（多情感高表现力 TTS）、声音复刻（少量样本克隆音色）、语音识别（高准确率转写）、
-            语音播客（多角色对谈生成）、语音同传、语音妙记（会议转写与智能纪要）与机器翻译——
-            voxbox 按个人工作流挑选并组合了其中八项，统一封装为本地工具；音色列表、能力边界与计费口径以官方文档为准。
+            <span className="font-medium text-fg">火山引擎豆包语音（主干）</span>——官方产品线覆盖音频创作
+            （Seed-Audio，单条 Prompt 生成影视级多轨音频）、语音合成（多情感高表现力 TTS）、声音复刻（少量样本克隆音色）、
+            语音识别（高准确率转写）、语音播客（多角色对谈生成）、语音同传、语音妙记（会议转写与智能纪要）与机器翻译——
+            voxbox 按个人工作流挑选并组合了其中八项，统一封装为本地工具。
           </p>
+          <p className="text-sm leading-relaxed text-fg-2">
+            <span className="font-medium text-fg">千问平台（合成 / 转写备选）</span>——qwen3-tts-flash 非流式合成
+            （48 官方音色、instruct 模型支持风格指令）与 qwen3-asr 文件转写（长音频 ≤12h、说话人分离、SRT 字幕）；
+            与火山凭证相互独立。
+          </p>
+          <p className="text-sm leading-relaxed text-fg-2">
+            <span className="font-medium text-fg">小米 MiMo（合成 / 转写备选）</span>——MiMo-V2.5-TTS 系列合成
+            （9 官方预置音色、自然语言风格指令、文本描述定制音色 voicedesign）与 mimo-v2.5-asr 同步转写
+            （mp3/wav 直传，中英识别，输出纯文本）；OpenAI 兼容协议。
+          </p>
+          <p className="text-xs text-muted">音色列表、能力边界与计费口径均以各家官方文档为准。</p>
           <div className="space-y-1.5">
             <MicroLabel className="inline-flex items-center gap-1">
               <BookOpenText size={12} strokeWidth={1.75} />

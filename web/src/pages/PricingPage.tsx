@@ -3,10 +3,13 @@ import { Calculator, Coins, ExternalLink, Info, Languages, Mic, NotebookPen, Pod
 import {
   bestPackUnitPrice,
   CHARS_PER_AUDIO_MINUTE,
+  CLOUD_PRICE_SNAPSHOT_DATE,
   estimateMinutes,
   estimateMT,
   estimatePodcast,
   MINUTES_PRICE,
+  MIMO_ASR_PRICE_PER_HOUR,
+  MIMO_TTS_FREE_NOTE,
   MT_OUTPUT_PRICE,
   PODCAST_PRICES,
   postpaidUnitPrice,
@@ -20,6 +23,10 @@ import {
   PRICE_SYNC_BY_CHARS,
   PRICE_SYNC_BY_MINUTE,
   PRICE_TTS_20,
+  QWEN_AUDIO_ASR,
+  QWEN_ASR_PRICE_PER_HOUR,
+  QWEN_TTS_CJK_RATIO,
+  QWEN_TTS_PRICE_PER_WAN,
   SEPARATE_PRICE_PER_MINUTE,
   SEPARATE_TRIAL,
   SYNC_SEGMENT_CHARS,
@@ -72,7 +79,7 @@ function PriceRows({ items }: { items: PriceItem[] }) {
   );
 }
 
-/** TTS 三通道同量对比：同一字符数走三条通道的估算费用。 */
+/** TTS 多引擎同量对比：同一字符数走火山三通道与千问/小米的估算费用。 */
 function TTSCompare() {
   const [chars, setChars] = useState(10000);
   const n = Math.max(0, chars);
@@ -92,24 +99,39 @@ function TTSCompare() {
   const calls = Math.ceil(n / SYNC_SEGMENT_CHARS);
   const syncCallsPostpaid = (calls / 1000) * postpaidUnitPrice(PRICE_SYNC_BY_CALLS, calls / 1000);
 
-  const rows = [
+  // 千问：0.8 元/万计费字符；汉字计 2 字符（中文场景按 2 倍折算，以账单为准）
+  const qwCost = ((n * QWEN_TTS_CJK_RATIO) / 10000) * QWEN_TTS_PRICE_PER_WAN;
+
+  const rows: { name: string; desc: string; postpaid: number; pack: number | null; accent?: boolean }[] = [
     {
-      name: "同步合成（按时长口径）",
+      name: "火山 · 同步合成（按时长口径）",
       desc: `≈ ${minutes.toFixed(1)} 分钟（${CHARS_PER_AUDIO_MINUTE} 字/分钟）`,
       postpaid: syncMinutePostpaid,
       pack: syncMinutePack,
       accent: true,
     },
-    { name: "流式合成", desc: "2.0 模型按字符", postpaid: v20Postpaid, pack: v20Pack },
-    { name: "长文本合成", desc: "2.0 模型按字符，一次提交", postpaid: v20Postpaid, pack: v20Pack },
+    { name: "火山 · 流式合成", desc: "2.0 模型按字符", postpaid: v20Postpaid, pack: v20Pack },
+    { name: "火山 · 长文本合成", desc: "2.0 模型按字符，一次提交", postpaid: v20Postpaid, pack: v20Pack },
+    {
+      name: "千问 · qwen3-tts-flash",
+      desc: "0.8 元/万计费字符，汉字计 2 字符",
+      postpaid: qwCost,
+      pack: null,
+    },
+    {
+      name: "小米 · MiMo-V2.5-TTS",
+      desc: "限时免费（预置音色 / voicedesign 同价）",
+      postpaid: 0,
+      pack: null,
+    },
   ];
 
   return (
     <Card>
       <CardHeader
-        title="语音合成三通道对比"
+        title="语音合成多引擎对比"
         icon={<Coins size={15} strokeWidth={1.75} />}
-        aside={<span className="micro">同量文本 · 按费用选通道</span>}
+        aside={<span className="micro">同量文本 · 火山/千问/小米</span>}
       />
       <CardBody className="space-y-3">
         <Field label="字符数" hint="拖动或输入要合成的文本量">
@@ -133,7 +155,9 @@ function TTSCompare() {
               <span className={`text-sm ${r.accent ? "text-fg" : "text-fg"}`}>{r.name}</span>
               <span className="min-w-0 flex-1 truncate text-[11px] text-muted">{r.desc}</span>
               <span className="font-mono text-sm tabular-nums text-fg">{fmtYuan(r.postpaid)}</span>
-              <span className="font-mono text-[11px] tabular-nums text-muted">包后 ≈ {fmtYuan(r.pack)}</span>
+              <span className="font-mono text-[11px] tabular-nums text-muted">
+                {r.pack != null ? `包后 ≈ ${fmtYuan(r.pack)}` : ""}
+              </span>
             </div>
           ))}
         </div>
@@ -147,26 +171,33 @@ function TTSCompare() {
   );
 }
 
-/** ASR 估算：版本 + 时长。 */
+
+
+/** ASR 估算：引擎（火山三版本/千问 filetrans/小米）+ 时长，同口径按小时对比。 */
 function ASREstimator() {
-  const [version, setVersion] = useState<"standard" | "flash" | "idle">("standard");
+  type AsrEngine = "standard" | "flash" | "idle" | "qianwen" | "xiaomi";
+  const [engine, setEngine] = useState<AsrEngine>("standard");
   const [hours, setHours] = useState(10);
-  const item = version === "standard" ? PRICE_ASR_STANDARD : version === "flash" ? PRICE_ASR_FLASH : PRICE_ASR_IDLE;
   const h = Math.max(0, hours);
-  const postpaid = h * postpaidUnitPrice(item, h);
-  const pack = h * bestPackUnitPrice(item);
+
+  const volcItem = engine === "standard" ? PRICE_ASR_STANDARD : engine === "flash" ? PRICE_ASR_FLASH : PRICE_ASR_IDLE;
+  const isVolc = engine === "standard" || engine === "flash" || engine === "idle";
+  const postpaid = isVolc ? h * postpaidUnitPrice(volcItem, h) : h * (engine === "qianwen" ? QWEN_ASR_PRICE_PER_HOUR : MIMO_ASR_PRICE_PER_HOUR);
+  const engineLabel = isVolc ? volcItem.label : engine === "qianwen" ? "千问 qwen3-asr-flash-filetrans（0.00022 元/秒）" : "小米 mimo-v2.5-asr";
 
   return (
     <Card>
       <CardHeader title="语音识别测算" icon={<Mic size={15} strokeWidth={1.75} />} aside={<span className="micro">按语音时长</span>} />
       <CardBody className="space-y-3">
         <div className="grid grid-cols-2 gap-2">
-          <Field label="识别版本">
+          <Field label="识别引擎">
             {({ id }) => (
-              <Select id={id} value={version} onChange={(e) => setVersion(e.target.value as typeof version)}>
-                <option value="standard">标准版（2.3 元/小时）</option>
-                <option value="flash">极速版（4.5 元/小时）</option>
-                <option value="idle">闲时版（1.2 元/小时）</option>
+              <Select id={id} value={engine} onChange={(e) => setEngine(e.target.value as AsrEngine)}>
+                <option value="standard">火山 · 标准版（2.3 元/小时）</option>
+                <option value="flash">火山 · 极速版（4.5 元/小时）</option>
+                <option value="idle">火山 · 闲时版（1.2 元/小时）</option>
+                <option value="qianwen">千问 · filetrans（≈0.79 元/小时）</option>
+                <option value="xiaomi">小米 · mimo-asr（0.5 元/小时）</option>
               </Select>
             )}
           </Field>
@@ -182,7 +213,13 @@ function ASREstimator() {
             <span className="ml-2 font-mono text-xl tabular-nums text-fg">{fmtYuan(postpaid)}</span>
           </p>
           <p className="text-[11px] text-muted">
-            资源包最低折算 ≈ <span className="font-mono tabular-nums">{fmtYuan(pack)}</span> · 试用额度 {item.trial}
+            {engineLabel}
+            {isVolc && (
+              <>
+                {" "}· 资源包最低折算 ≈ <span className="font-mono tabular-nums">{fmtYuan(h * bestPackUnitPrice(volcItem))}</span> · 试用额度 {volcItem.trial}
+              </>
+            )}
+            {engine === "qianwen" && " · qwen-audio 系按 token 计费，未按时长折算"}
           </p>
         </div>
       </CardBody>
@@ -430,7 +467,7 @@ export default function PricingPage() {
     <>
       <PageHeader
         title="计费测算"
-        description="火山语音刊例价快照估算，帮助按费用选择工具；实际以账单为准"
+        description="火山 / 千问 / 小米刊例价快照估算，帮助按费用选择引擎；实际以账单为准"
         actions={
           <span className="inline-flex items-center gap-3">
             {PRICING_SOURCES.map((s) => (
@@ -489,13 +526,60 @@ export default function PricingPage() {
                 </tbody>
               </table>
             </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-left text-xs">
+                <thead>
+                  <tr className="border-b border-line text-muted">
+                    <th className="py-2 pr-3 font-normal">千问 / 小米计费项</th>
+                    <th className="py-2 pr-3 font-normal">单价</th>
+                    <th className="py-2 pr-3 font-normal">计费口径</th>
+                    <th className="py-2 font-normal">备注</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-line/60">
+                    <td className="py-2 pr-3 text-fg">千问 qwen3-tts-flash / instruct-flash</td>
+                    <td className="py-2 pr-3 font-mono tabular-nums text-fg-2">{QWEN_TTS_PRICE_PER_WAN} 元/万字符</td>
+                    <td className="py-2 pr-3 text-muted">按输入文本字符，输出不计费</td>
+                    <td className="py-2 text-muted">汉字计 2 字符、其余 1 字符</td>
+                  </tr>
+                  <tr className="border-b border-line/60">
+                    <td className="py-2 pr-3 text-fg">千问 qwen3-asr-flash-filetrans</td>
+                    <td className="py-2 pr-3 font-mono tabular-nums text-fg-2">{QWEN_ASR_PRICE_PER_HOUR} 元/小时</td>
+                    <td className="py-2 pr-3 text-muted">按输入音频秒数（0.00022 元/秒）</td>
+                    <td className="py-2 text-muted">输出不计费</td>
+                  </tr>
+                  <tr className="border-b border-line/60">
+                    <td className="py-2 pr-3 text-fg">千问 qwen-audio-3.1-asr-flash-filetrans</td>
+                    <td className="py-2 pr-3 font-mono tabular-nums text-fg-2">
+                      输入 {QWEN_AUDIO_ASR.inputPerMillion} / 输出 {QWEN_AUDIO_ASR.outputPerMillion} 元/百万token
+                    </td>
+                    <td className="py-2 pr-3 text-muted">按 token</td>
+                    <td className="py-2 text-muted">音频折算 token 口径官方未单列，未做时长估算</td>
+                  </tr>
+                  <tr className="border-b border-line/60">
+                    <td className="py-2 pr-3 text-fg">小米 MiMo-V2.5-TTS（tts/voicedesign/voiceclone）</td>
+                    <td className="py-2 pr-3 font-mono tabular-nums text-fg-2">{MIMO_TTS_FREE_NOTE}</td>
+                    <td className="py-2 pr-3 text-muted">—</td>
+                    <td className="py-2 text-muted">正式定价以官方后续公告为准</td>
+                  </tr>
+                  <tr className="border-b border-line/60 last:border-0">
+                    <td className="py-2 pr-3 text-fg">小米 mimo-v2.5-asr</td>
+                    <td className="py-2 pr-3 font-mono tabular-nums text-fg-2">{MIMO_ASR_PRICE_PER_HOUR} 元/小时</td>
+                    <td className="py-2 pr-3 text-muted">按输入音频时长折算小时，精确到秒</td>
+                    <td className="py-2 text-muted">仅收 mp3/wav，base64 后 ≤10MB</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
             <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted">
               <Info size={12} strokeWidth={1.75} className="mt-0.5 shrink-0" />
-              字符口径：1 个汉字/字母/标点/空格均算 1 字符（UTF-8 字节数不影响计费）；时长口径：累加每次调用语音时长精确至毫秒折算小时。
+              字符口径：1 个汉字/字母/标点/空格均算 1 字符（UTF-8 字节数不影响计费；千问例外——汉字计 2 字符）；时长口径：累加每次调用语音时长精确至毫秒折算小时。
               本页估算不含资源包抵扣顺序、试用额度与并发增购，后付费按小时出账；官方未给出「接口 ↔ 商品」映射，
               同步合成（V1 接口）的计费商品随音色代际而异，测算已按口径拆分并以账单为准；
               机器翻译按 token 计费（输入/输出分别计价，资源包按总量抵扣），
-              人声分离属 AI MediaKit 音频工具计费体系，随文档更新于 2026.07。
+              人声分离属 AI MediaKit 音频工具计费体系，随文档更新于 2026.07；
+              千问/小米价格取自模型市场与 Pay-As-You-Go 页（快照 {CLOUD_PRICE_SNAPSHOT_DATE}）。
             </p>
           </CardBody>
         </Card>

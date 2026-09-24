@@ -12,11 +12,40 @@
 
 export const PRICE_SNAPSHOT_DATE = "2026-09-13";
 
+/** 千问/小米刊例价快照日（模型市场与 Pay-As-You-Go 页抓取）。 */
+export const CLOUD_PRICE_SNAPSHOT_DATE = "2026-09-25";
+
 export const PRICING_SOURCES = [
-  { label: "计费概述", url: "https://www.volcengine.com/docs/6561/1359369" },
-  { label: "计费说明", url: "https://www.volcengine.com/docs/6561/1359370" },
+  { label: "火山计费概述", url: "https://www.volcengine.com/docs/6561/1359369" },
+  { label: "火山计费说明", url: "https://www.volcengine.com/docs/6561/1359370" },
   { label: "音频工具计费（人声分离）", url: "https://www.volcengine.com/docs/6448/2486469" },
+  { label: "千问计费说明", url: "https://platform.qianwenai.com/docs/developer-guides/getting-started/pricing" },
+  { label: "小米 Pay-As-You-Go", url: "https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go" },
 ];
+
+/* ---------------- 千问平台（platform.qianwenai.com，快照 2026-09-25） ---------------- */
+
+/** qwen3-tts-flash / instruct-flash 单价（模型市场页：0.8 元/万字符，输出不计费）。
+ *  计费口径：按输入文本字符数，汉字计 2 字符、其余 1——中文估算按 2 倍折算。 */
+export const QWEN_TTS_PRICE_PER_WAN = 0.8;
+/** 中文文本的计费字符倍率（汉字计 2 字符；估算口径，以账单为准）。 */
+export const QWEN_TTS_CJK_RATIO = 2;
+
+/** qwen3-asr-flash-filetrans 单价（模型市场页：0.00022 元/秒，按输入音频时长，输出不计费）。 */
+export const QWEN_ASR_PRICE_PER_SECOND = 0.00022;
+/** 折算小时价（×3600），供与火山/小米同口径对比。 */
+export const QWEN_ASR_PRICE_PER_HOUR = 0.792;
+
+/** qwen-audio-3.1-asr-flash-filetrans 按 token 计费（非时长口径，仅列示不做时长折算估算）。 */
+export const QWEN_AUDIO_ASR = { inputPerMillion: 0.8, outputPerMillion: 2.7 };
+
+/* ---------------- 小米 MiMo（platform.xiaomimimo.com，快照 2026-09-25） ---------------- */
+
+/** MiMo-V2.5-TTS 全系（tts/voicedesign/voiceclone）限时免费（官方 Pay-As-You-Go 页未列单价）。 */
+export const MIMO_TTS_FREE_NOTE = "限时免费（截至快照日官方未列单价）";
+
+/** mimo-v2.5-asr 单价：按输入音频时长折算小时计费（精确到秒），国内 0.5 元/小时。 */
+export const MIMO_ASR_PRICE_PER_HOUR = 0.5;
 
 /** 资源包档位：size 为计费单位数，price 为资源包价格（元）。 */
 export interface Pack {
