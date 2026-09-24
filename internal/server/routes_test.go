@@ -152,7 +152,7 @@ func TestToolsAndTaskSubmit(t *testing.T) {
 	ts, _, ac := newTestServer(t)
 	e := getEnvelope(t, ac, ts.URL+"/api/tools")
 	tools, _ := e.Data.([]any)
-	if len(tools) != 35 { // 火山 8 + MVSep 1 + 千问 2 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12
+	if len(tools) != 37 { // 火山 8 + MVSep 1 + 千问 2 + 小米 2 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12
 		t.Fatalf("tools = %v", e.Data)
 	}
 	// Registry().List() 基于 map 遍历，顺序不定：按 name 断言而非下标。
@@ -265,7 +265,7 @@ func TestGetSettingsProviders(t *testing.T) {
 			t.Errorf("卡 %s kind = %q", name, kind)
 		}
 	}
-	for _, want := range []string{"volcengine", "mediakit", "mvsep", "qianwen", "audiotool", "gsgc"} {
+	for _, want := range []string{"volcengine", "mediakit", "mvsep", "qianwen", "xiaomi", "audiotool", "gsgc"} {
 		if !names[want] {
 			t.Errorf("缺少卡 %s", want)
 		}
@@ -349,7 +349,7 @@ func TestTestConnectionShape(t *testing.T) {
 			t.Errorf("卡 %s 缺 ok 键", name)
 		}
 	}
-	for _, want := range []string{"volcengine", "mediakit", "mvsep", "qianwen"} {
+	for _, want := range []string{"volcengine", "mediakit", "mvsep", "qianwen", "xiaomi"} {
 		if !seen[want] {
 			t.Errorf("results 缺卡 %s", want)
 		}

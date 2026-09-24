@@ -553,7 +553,7 @@ type providerTest struct {
 
 func (s *Server) testConnection(c *gin.Context) {
 	// 按卡动态探测：volcengine 极短合成、mediakit 鉴权探测、mvsep token+免费额度、
-	// qianwen 极短合成；storage 桶探活（HeadBucket 不计费）。
+	// qianwen/xiaomi 极短合成；storage 桶探活（HeadBucket 不计费）。
 	tests := []struct {
 		name string
 		fn   func() (string, bool)
@@ -562,6 +562,7 @@ func (s *Server) testConnection(c *gin.Context) {
 		{"mediakit", s.svc.TestMediaKitConnection},
 		{"mvsep", s.svc.TestMVSepConnection},
 		{"qianwen", s.svc.TestQianwenConnection},
+		{"xiaomi", s.svc.TestXiaomiConnection},
 	}
 	results := make([]providerTest, 0, len(tests))
 	for _, tt := range tests {

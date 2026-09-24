@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/yann0917/voxbox/internal/config"
@@ -20,9 +21,15 @@ func TestProviderCardsValid(t *testing.T) {
 		}
 		seen[c.Name] = true
 	}
-	for _, want := range []string{"volcengine", "mediakit", "mvsep", "qianwen", "audiotool", "gsgc"} {
+	for _, want := range []string{"volcengine", "mediakit", "mvsep", "qianwen", "xiaomi", "audiotool", "gsgc"} {
 		if !seen[want] {
 			t.Errorf("缺少卡: %s", want)
+		}
+	}
+	// 小米卡描述须含官方控制台域名（前端把文案里的域名渲染成可点击跳转链接）
+	for _, c := range cards {
+		if c.Name == "xiaomi" && !strings.Contains(c.Description, "platform.xiaomimimo.com") {
+			t.Errorf("小米卡描述应含 platform.xiaomimimo.com: %q", c.Description)
 		}
 	}
 	// 卡的字段声明必须与 cardFieldValues 的键完全对齐
@@ -60,6 +67,12 @@ func TestCardConfigured(t *testing.T) {
 	}
 	if cardConfigured("qianwen", map[string]string{}) {
 		t.Error("千问空 key 不应视为已配置")
+	}
+	if !cardConfigured("xiaomi", map[string]string{"api_key": "k"}) {
+		t.Error("小米配 key 应视为已配置")
+	}
+	if cardConfigured("xiaomi", map[string]string{}) {
+		t.Error("小米空 key 不应视为已配置")
 	}
 }
 

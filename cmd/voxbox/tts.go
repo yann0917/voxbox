@@ -19,6 +19,7 @@ func newTTSCommand() *cobra.Command {
 		volumeRatio  float64
 		engine       string
 		qwenModel    string
+		mimoModel    string
 		instructions string
 		outPath      string
 		jsonOut      bool
@@ -39,9 +40,14 @@ func newTTSCommand() *cobra.Command {
 				}
 				text = string(raw)
 			}
-			// 千问音色默认值与火山不同：用户显式传 --voice 则尊重其选择
-			if engine == "qianwen" && voice == "zh_female_cancan_mars_bigtts" && !c.Flags().Changed("voice") {
-				voice = "Cherry"
+			// 各引擎音色默认值不同：用户显式传 --voice 则尊重其选择
+			if !c.Flags().Changed("voice") {
+				switch engine {
+				case "qianwen":
+					voice = "Cherry"
+				case "xiaomi":
+					voice = "" // 后端回落官方默认 mimo_default
+				}
 			}
 			var params map[string]any
 			switch engine {
@@ -52,19 +58,25 @@ func newTTSCommand() *cobra.Command {
 				// 千问无 format 请求参数，产物格式由上游音频 URL 实际容器决定
 				params = map[string]any{"text": text, "voice": voice,
 					"model": qwenModel, "instructions": instructions}
+			case "xiaomi":
+				// 小米 format 走 audio.format（wav|mp3）；voice 仅预置音色模型生效，
+				// voicedesign 由 --instructions 音色描述生成（tool 层校验必填）
+				params = map[string]any{"text": text, "voice": voice, "format": format,
+					"model": mimoModel, "instructions": instructions}
 			default:
-				return fmt.Errorf("不支持的引擎 %q（可选 volcengine / qianwen）", engine)
+				return fmt.Errorf("不支持的引擎 %q（可选 volcengine / qianwen / xiaomi）", engine)
 			}
 			return runToolSync(c, engine, "tts", params, nil, outPath, jsonOut)
 		},
 	}
 	f := cmd.Flags()
 	f.StringVar(&textFile, "file", "", "从文件读取文本")
-	f.StringVar(&engine, "engine", "volcengine", "合成引擎: volcengine（火山引擎）| qianwen（千问）")
-	f.StringVar(&voice, "voice", "zh_female_cancan_mars_bigtts", "音色 ID（--engine qianwen 默认 Cherry，可选 48 官方音色）")
-	f.StringVar(&format, "format", "mp3", "音频格式: mp3|wav|pcm|ogg_opus（仅火山引擎生效；千问由上游决定）")
+	f.StringVar(&engine, "engine", "volcengine", "合成引擎: volcengine（火山引擎）| qianwen（千问）| xiaomi（小米 MiMo）")
+	f.StringVar(&voice, "voice", "zh_female_cancan_mars_bigtts", "音色 ID（--engine qianwen 默认 Cherry，可选 48 官方音色；--engine xiaomi 默认 mimo_default，可选 9 官方预置音色）")
+	f.StringVar(&format, "format", "mp3", "音频格式: mp3|wav|pcm|ogg_opus（火山全支持；小米仅 wav|mp3；千问由上游决定）")
 	f.StringVar(&qwenModel, "qwen-model", "qwen3-tts-flash", "千问模型: qwen3-tts-flash|qwen3-tts-instruct-flash（仅 --engine qianwen 生效）")
-	f.StringVar(&instructions, "instructions", "", "风格指令（仅千问 instruct 模型生效：用自然语言描述语速/情感/风格）")
+	f.StringVar(&mimoModel, "mimo-model", "mimo-v2.5-tts", "小米模型: mimo-v2.5-tts|mimo-v2.5-tts-voicedesign（仅 --engine xiaomi 生效）")
+	f.StringVar(&instructions, "instructions", "", "风格指令（千问 instruct 模型生效；小米全系生效，voicedesign 模型下为音色描述必填）")
 	f.Float64Var(&speedRatio, "speed-ratio", 1.0, "语速 0.2-3.0")
 	f.Float64Var(&volumeRatio, "volume-ratio", 1.0, "音量 0.2-3.0")
 	f.StringVar(&outPath, "out", "", "产物输出路径（默认数据目录自动命名）")

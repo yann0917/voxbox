@@ -64,13 +64,14 @@ const URL_HINT: Record<"standard" | "idle" | "flash", string> = {
   flash: "公网音频地址（wav/mp3/ogg/spx/amr/aac/m4a），最大 100MB / 2 小时",
 };
 
-/** 识别引擎：火山引擎（一句话/标准/闲时/极速） / 千问平台文件转写 */
-type Engine = "volcengine" | "qianwen";
+/** 识别引擎：火山引擎（一句话/标准/闲时/极速） / 千问平台文件转写 / 小米 MiMo 同步转写 */
+type Engine = "volcengine" | "qianwen" | "xiaomi";
 
-/** 引擎页签：恒可点（TabItem 无 disabled），未配置千问时切过去渲染设置引导卡（与 TTSPage 同款） */
+/** 引擎页签：恒可点（TabItem 无 disabled），未配置凭证时切过去渲染设置引导卡（与 TTSPage 同款） */
 const ENGINE_TABS: TabItem<Engine>[] = [
   { value: "volcengine", label: "火山引擎" },
   { value: "qianwen", label: "千问平台" },
+  { value: "xiaomi", label: "小米 MiMo" },
 ];
 
 /** 千问 filetrans 转写模型（与后端 ParamSpecs 枚举一致） */
@@ -88,6 +89,17 @@ const QW_LANGUAGES: { value: string; label: string }[] = [
   { value: "ru", label: "俄语" }, { value: "es", label: "西班牙语" },
   { value: "pt", label: "葡萄牙语" }, { value: "it", label: "意大利语" },
 ];
+
+/** 小米 mimo-v2.5-asr 识别语种（与后端 ParamSpecs 同词表） */
+const MI_LANGUAGES: { value: string; label: string }[] = [
+  { value: "", label: "自动识别" },
+  { value: "zh", label: "中文" },
+  { value: "en", label: "英语" },
+];
+
+/** 小米引擎白名单与载荷上限：官方仅收 mp3/wav，base64 后 ≤10MB（原始 7.5MB） */
+const MI_EXTS = ["mp3", "wav"];
+const MI_MAX_BYTES = 7.5 * 1024 * 1024;
 
 type Segment = { text: string; start_ms: number; end_ms: number };
 
@@ -192,11 +204,15 @@ export default function ASRPage() {
   const { enabled: storageEnabled } = useStorageEnabled();
   // undefined = 设置未加载完成，与未配置同走引导卡（保守态，与 TTSPage 一致）
   const qianwenReady = useProviderConfigured("qianwen");
+  const xiaomiReady = useProviderConfigured("xiaomi");
+  // 火山无需凭证卡；千问/小米未配置（或未加载完）时切过去渲染设置引导卡
+  const engineReady = engine === "qianwen" ? qianwenReady : engine === "xiaomi" ? xiaomiReady : true;
 
   /* 本地上传白名单：火山一句话版（WS 直发）mp3/wav/ogg/pcm；标准/闲时/极速与千问（对象存储
      中转，按 URL 扩展名推断格式）白名单一致 wav/mp3/ogg/spx/amr/aac/m4a；极速版另有 100MB 上限。 */
+  const isXiaomi = engine === "xiaomi";
   const sentenceFile = engine === "volcengine" && version === "sentence";
-  const allowedExts = sentenceFile ? SENTENCE_EXTS : URL_VERSION_EXTS;
+  const allowedExts = isXiaomi ? MI_EXTS : sentenceFile ? SENTENCE_EXTS : URL_VERSION_EXTS;
 
   /* WS 事件驱动当前任务进度；终态拉详情拿产物与 summary.segments */
   useEffect(() => {
@@ -275,6 +291,9 @@ export default function ASRPage() {
     if (v === "qianwen") {
       if (!storageEnabled) setMode("url");
       else setMode((m) => (m === "recording" ? "upload" : m));
+    } else if (v === "xiaomi") {
+      // 小米本地上传直读、URL 直下，两通道恒可用；录音 Tab 不提供，回落上传
+      setMode((m) => (m === "recording" ? "upload" : m));
     } else if (version === "sentence") {
       // 回到火山：一句话版没有 URL 通道（与 changeVersion 的规则一致）
       setMode((m) => (m === "url" ? "upload" : m));
@@ -285,7 +304,10 @@ export default function ASRPage() {
     mutationFn: async () => {
       // params 按引擎分支：火山 = language/version/hotwords；千问 = filetrans 四参（语言空串 = 自动识别）
       let params: Record<string, unknown>;
-      if (engine === "qianwen") {
+      if (engine === "xiaomi") {
+        // 小米同步转写：仅语种（空串 = 服务端自动识别），音频经 file_ids/artifact_input 通道进 Files
+        params = { language: language.trim() };
+      } else if (engine === "qianwen") {
         params = {
           srt: true,
           model: qwenModel,
@@ -356,14 +378,20 @@ export default function ASRPage() {
     const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
     if (!allowedExts.includes(ext)) {
       setFileError(
-        sentenceFile
-          ? `不支持的格式 .${ext || "未知"}：仅支持 mp3 / wav / ogg / pcm`
-          : `不支持的格式 .${ext || "未知"}：支持 wav / mp3 / ogg / spx / amr / aac / m4a`,
+        isXiaomi
+          ? `不支持的格式 .${ext || "未知"}：小米引擎仅支持 mp3 / wav`
+          : sentenceFile
+            ? `不支持的格式 .${ext || "未知"}：仅支持 mp3 / wav / ogg / pcm`
+            : `不支持的格式 .${ext || "未知"}：支持 wav / mp3 / ogg / spx / amr / aac / m4a`,
       );
       return;
     }
     if (engine === "volcengine" && version === "flash" && f.size > 100 * 1024 * 1024) {
       setFileError(`极速版仅支持 100MB 内音频（当前 ${(f.size / 1024 / 1024).toFixed(0)}MB）`);
+      return;
+    }
+    if (isXiaomi && f.size > MI_MAX_BYTES) {
+      setFileError(`小米引擎仅支持 7.5MB 内音频（当前 ${(f.size / 1024 / 1024).toFixed(1)}MB）`);
       return;
     }
     setFileError("");
@@ -446,16 +474,18 @@ export default function ASRPage() {
   const urlHint =
     engine === "qianwen"
       ? "公网音频地址，异步转写，最大 2GB / 12 小时"
-      : version === "sentence"
-        ? undefined
-        : URL_HINT[version];
+      : isXiaomi
+        ? "公网音频地址（mp3/wav），同步转写，音频 ≤7.5MB"
+        : version === "sentence"
+          ? undefined
+          : URL_HINT[version];
   const seekTrack = { title: playTitle, sub: playSub };
 
   return (
     <>
       <PageHeader
         title="语音识别"
-        description="多引擎音频转文字（火山 / 千问），输出分句时间戳与 SRT 字幕"
+        description="多引擎音频转文字（火山 / 千问 / 小米），输出分句时间戳与 SRT 字幕"
         actions={
           <Link
             to="/history"
@@ -472,13 +502,13 @@ export default function ASRPage() {
         <Tabs<Engine> items={ENGINE_TABS} value={engine} onChange={changeEngine} />
       </div>
 
-      {/* 千问未配置（或设置未加载完）：引导卡替代输入/参数/结果区 */}
-      {engine === "qianwen" && !qianwenReady ? (
+      {/* 千问/小米未配置（或设置未加载完）：引导卡替代输入/参数/结果区 */}
+      {!engineReady ? (
         <Card>
           <CardBody className="space-y-2">
-            <p className="text-sm text-fg-2">尚未配置千问平台凭证。</p>
+            <p className="text-sm text-fg-2">尚未配置{engine === "qianwen" ? "千问平台" : "小米 MiMo"}凭证。</p>
             <Link to="/settings" className="text-xs text-accent hover:opacity-80">
-              去设置页配置千问 API Key →
+              去设置页配置{engine === "qianwen" ? "千问" : "小米"} API Key →
             </Link>
           </CardBody>
         </Card>
@@ -513,6 +543,7 @@ export default function ASRPage() {
                     <p className="text-[11px] text-muted">
                       提交时以 artifact_input 通道传入该产物，提交后可在下方试听源音轨。
                       {engine === "qianwen" && " 千问引擎会将本地产物经对象存储中转后转写。"}
+                      {isXiaomi && " 小米引擎直接读取本地产物转写（mp3/wav）。"}
                     </p>
                   </div>
                 ) : (
@@ -541,6 +572,10 @@ export default function ASRPage() {
                           />
                         )}
                       </Field>
+                    ) : isXiaomi ? (
+                      <p className="text-xs text-muted">
+                        mimo-v2.5-asr 同步转写：返回纯文本（无时间戳，不产 SRT）；本地文件直读，无需对象存储。
+                      </p>
                     ) : (
                       <>
                         <Field label="转写模型" hint="qwen3 通用推荐；qwen-audio 说话人分离更强（≤2GB / 12 小时）">
@@ -576,17 +611,22 @@ export default function ASRPage() {
 
                     <Tabs<Mode>
                       items={
-                        sentenceFile
+                        isXiaomi
                           ? [
+                              { value: "url" as const, label: "音频 URL", icon: <Link2 size={13} strokeWidth={1.75} /> },
                               { value: "upload" as const, label: "本地上传", icon: <Upload size={13} strokeWidth={1.75} /> },
-                              { value: "recording" as const, label: "麦克风录音", icon: <Mic size={13} strokeWidth={1.75} /> },
                             ]
-                          : !storageEnabled
-                            ? [{ value: "url" as const, label: "音频 URL", icon: <Link2 size={13} strokeWidth={1.75} /> }]
-                            : [
-                                { value: "url" as const, label: "音频 URL", icon: <Link2 size={13} strokeWidth={1.75} /> },
+                          : sentenceFile
+                            ? [
                                 { value: "upload" as const, label: "本地上传", icon: <Upload size={13} strokeWidth={1.75} /> },
+                                { value: "recording" as const, label: "麦克风录音", icon: <Mic size={13} strokeWidth={1.75} /> },
                               ]
+                            : !storageEnabled
+                              ? [{ value: "url" as const, label: "音频 URL", icon: <Link2 size={13} strokeWidth={1.75} /> }]
+                              : [
+                                  { value: "url" as const, label: "音频 URL", icon: <Link2 size={13} strokeWidth={1.75} /> },
+                                  { value: "upload" as const, label: "本地上传", icon: <Upload size={13} strokeWidth={1.75} /> },
+                                ]
                       }
                       value={mode}
                       onChange={(m) => {
@@ -632,7 +672,9 @@ export default function ASRPage() {
                               <p className="text-[11px] text-muted">
                                 {sentenceFile
                                   ? "支持 wav / mp3 / ogg / pcm / spx / amr / aac / m4a"
-                                  : "支持 wav / mp3 / ogg / spx / amr / aac / m4a；提交后自动经对象存储中转"}
+                                  : isXiaomi
+                                    ? "仅支持 mp3 / wav，7.5MB 内（base64 直传，无需对象存储）"
+                                    : "支持 wav / mp3 / ogg / spx / amr / aac / m4a；提交后自动经对象存储中转"}
                               </p>
                             </>
                           )}
@@ -760,7 +802,9 @@ export default function ASRPage() {
                   hint={
                     engine === "qianwen"
                       ? "留空自动识别语种"
-                      : "留空自动识别：中文、英文及上海/闽南/四川/陕西/粤语方言"
+                      : isXiaomi
+                        ? "留空自动识别（官方支持中/英显式指定）"
+                        : "留空自动识别：中文、英文及上海/闽南/四川/陕西/粤语方言"
                   }
                 >
                   {({ id, ...rest }) => (
@@ -771,9 +815,9 @@ export default function ASRPage() {
                       {...rest}
                     >
                       {engine === "volcengine" && <option value="">自动识别</option>}
-                      {(engine === "qianwen" ? QW_LANGUAGES : ASR_LANGUAGES).map((l) => (
+                      {(engine === "qianwen" ? QW_LANGUAGES : isXiaomi ? MI_LANGUAGES : ASR_LANGUAGES).map((l) => (
                         <option key={l.value} value={l.value}>
-                          {engine === "qianwen" ? l.label : `${l.label} ${l.value}`}
+                          {engine === "volcengine" ? `${l.label} ${l.value}` : l.label}
                         </option>
                       ))}
                     </Select>

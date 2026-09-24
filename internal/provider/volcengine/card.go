@@ -8,7 +8,7 @@ func ProviderCard() provider.ProviderInfo {
 		Name:  "volcengine",
 		Title: "火山引擎 · 语音合成 / 识别 / 播客",
 		Description: "播客生成必须 APP ID + Access Token（播客协议只认这对凭证）；TTS / 语音识别两者皆可——" +
-			"APP ID + Access Token，或新版 API Key 单键。",
+			"APP ID + Access Token，或新版 API Key 单键。凭证在语音技术控制台（console.volcengine.com/speech）创建。",
 		Kind:  provider.KindCloud,
 		Order: 10,
 		Fields: []provider.CredentialField{
@@ -25,11 +25,12 @@ func ProviderCard() provider.ProviderInfo {
 // MediaKitCard AI MediaKit 人声分离凭证卡（独立于火山语音凭证体系，落盘仍 volc.mediakit.*）。
 func MediaKitCard() provider.ProviderInfo {
 	return provider.ProviderInfo{
-		Name:        "mediakit",
-		Title:       "AI MediaKit · 人声分离",
-		Description: "仅用于人声背景音分离，与火山语音是两套独立凭证。",
-		Kind:        provider.KindCloud,
-		Order:       15,
+		Name:  "mediakit",
+		Title: "AI MediaKit · 人声分离",
+		Description: "仅用于人声背景音分离，与火山语音是两套独立凭证。" +
+			"API Key 在火山引擎控制台（console.volcengine.com）的 AI MediaKit 服务创建。",
+		Kind:  provider.KindCloud,
+		Order: 15,
 		Fields: []provider.CredentialField{
 			{Key: "api_key", Label: "MediaKit API Key", Kind: provider.FieldSecret, Required: true,
 				ConfigKey: "volc.mediakit.api_key", Placeholder: "在 AI MediaKit 控制台创建"},

@@ -11,6 +11,7 @@ import (
 
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
+	"github.com/yann0917/voxbox/internal/provider/xiaomi"
 	"github.com/yann0917/voxbox/internal/service"
 )
 
@@ -110,7 +111,8 @@ func exitCodeFor(err error) int {
 		return 2
 	case errors.Is(err, volcengine.ErrNoCred), errors.Is(err, volcengine.ErrAuth),
 		errors.Is(err, volcengine.ErrNotGranted), // 资源未开通（如机器翻译缺 volc.speech.mt）→ 配置类问题，重试无意义
-		errors.Is(err, qianwen.ErrNoCred):        // 千问凭证缺失 → 同为配置类问题
+		errors.Is(err, qianwen.ErrNoCred),        // 千问凭证缺失 → 同为配置类问题
+		errors.Is(err, xiaomi.ErrNoCred):         // 小米凭证缺失 → 同为配置类问题
 		return 4
 	default:
 		return 3

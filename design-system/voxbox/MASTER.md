@@ -43,6 +43,7 @@
 | `--color-accent-hi` | `#F2C184` | accent hover / 按钮渐变顶 |
 | `--color-accent-ink` | `#2A1A06` | 落在 accent 底上的文字（深咖啡） |
 | `--color-meter` | `#9FBE6F` | **苔藓绿**：成功、波形、电平（不做主操作色，大地色系与焦糖和谐） |
+| `--color-meter-vivid` | `#22C55E` | **信号绿**：header 连接状态灯（需从苔藓绿中跳出的状态指示，仅此一处，不作通用成功色） |
 | `--color-warn` | `#F0C04C` | 警示（亮琥珀，与铜 accent 拉开明度与色相） |
 | `--color-danger` | `#FF6D5C` | 错误、破坏性操作（暖珊瑚） |
 | `--atmosphere-primary` | `rgba(226,163,90,.15)` | 画布中心焦糖暖光（body::before） |
@@ -67,6 +68,7 @@
 | `--color-accent-hi` | `#754A2B` |
 | `--color-accent-ink` | `#FFFAF2` |
 | `--color-meter` | `#5A6E2D` |
+| `--color-meter-vivid` | `#16A34A` |
 | `--color-warn` | `#B45309` |
 | `--color-danger` | `#B42318` |
 | `--atmosphere-primary` | `rgba(194,142,90,.34)` |

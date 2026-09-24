@@ -22,6 +22,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider/mvsep"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
+	"github.com/yann0917/voxbox/internal/provider/xiaomi"
 	"github.com/yann0917/voxbox/internal/store"
 	"github.com/yann0917/voxbox/internal/task"
 )
@@ -82,6 +83,9 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 		return nil, err
 	}
 	if err := qianwen.RegisterAll(reg, *cfg, dataDir); err != nil {
+		return nil, err
+	}
+	if err := xiaomi.RegisterAll(reg, *cfg, dataDir); err != nil {
 		return nil, err
 	}
 	if err := gsgc.RegisterAll(reg, *cfg, dataDir); err != nil {
@@ -220,6 +224,10 @@ func applyCardFields(nc *config.Config, name string, fields map[string]string) {
 		if v, ok := get("api_key"); ok && v != "" {
 			nc.Qianwen.APIKey = v
 		}
+	case "xiaomi":
+		if v, ok := get("api_key"); ok && v != "" {
+			nc.Xiaomi.APIKey = v
+		}
 	}
 }
 
@@ -232,10 +240,12 @@ func (s *Service) reloadCard(name string, nc config.Config) {
 		mvsep.ReRegisterAll(s.reg, nc, nc.DataDir)
 	case "qianwen":
 		qianwen.ReRegisterAll(s.reg, nc, nc.DataDir)
+	case "xiaomi":
+		xiaomi.ReRegisterAll(s.reg, nc, nc.DataDir)
 	}
 }
 
-// ReloadDiskConfig 从磁盘配置热应用运行期可变段：火山/千问凭证 + 对象存储。
+// ReloadDiskConfig 从磁盘配置热应用运行期可变段：火山/千问/小米凭证 + 对象存储。
 // 配置文件监听（config.Watch）的回调路径：服务运行中另一终端 voxbox config set、
 // 手工编辑 config.yaml 的变更即时生效，与 Web 设置保存（SaveProviderFields/SaveStorage
 // 同步热应用）殊途同归。仅替换这些段：端口与数据目录是启动期属性（监听已绑定、
@@ -247,10 +257,12 @@ func (s *Service) ReloadDiskConfig(disk *config.Config) {
 	nc.StorageChannels = disk.StorageChannels
 	nc.MVSep = disk.MVSep
 	nc.Qianwen = disk.Qianwen
+	nc.Xiaomi = disk.Xiaomi
 	s.cfg.Store(&nc)
 	volcengine.ReRegisterAll(s.reg, nc, nc.DataDir)
 	mvsep.ReRegisterAll(s.reg, nc, nc.DataDir)
 	qianwen.ReRegisterAll(s.reg, nc, nc.DataDir)
+	xiaomi.ReRegisterAll(s.reg, nc, nc.DataDir)
 	s.rebuildStorageClient(nc.Storage)
 }
 
@@ -506,6 +518,22 @@ func (s *Service) TestQianwenConnection() (string, bool) {
 	client := qianwen.NewTTSClient(key, qianwen.BaseURL)
 	if _, err := client.Synthesize(ctx, qianwen.TTSReq{
 		Model: "qwen3-tts-flash", Text: "测", Voice: qianwen.DefaultVoice,
+	}); err != nil {
+		return err.Error(), false
+	}
+	return "连接成功", true
+}
+
+// TestXiaomiConnection 小米 MiMo 连通性探测：极短文本合成（消耗少量额度，同千问模式）。
+func (s *Service) TestXiaomiConnection() (string, bool) {
+	key := s.cfg.Load().Xiaomi.APIKey
+	if key == "" {
+		return "未配置小米 API Key：请执行 voxbox config set xiaomi.api_key 或在 Web 设置页配置", false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := xiaomi.NewTTSClient(key, xiaomi.BaseURL).Synthesize(ctx, xiaomi.TTSReq{
+		Model: xiaomi.ModelPreset, Text: "测", Voice: xiaomi.DefaultVoice, Format: "wav",
 	}); err != nil {
 		return err.Error(), false
 	}

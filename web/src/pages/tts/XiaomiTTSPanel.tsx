@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, AudioLines, Play, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { fetchJSON } from "../../lib/api";
 import type { TaskDetail } from "../../lib/types";
-import QianwenVoicePicker, { type QianwenVoice } from "../../components/QianwenVoicePicker";
 import { useTaskEvents } from "../../lib/ws";
 import { AudioRow, ProgressBody, type Run } from "./TTSShared";
 import {
@@ -13,24 +12,36 @@ import {
   CardHeader,
   EmptyState,
   Field,
-  Input,
   Select,
   StatusBadge,
   Textarea,
   useToast,
 } from "../../ui";
 
-/** 合成模型：instruct 版额外支持自然语言风格指令（instructions 仅其生效） */
-type QianwenModel = "qwen3-tts-flash" | "qwen3-tts-instruct-flash";
-const DEFAULT_MODEL: QianwenModel = "qwen3-tts-flash";
+/** 合成模型：voicedesign 由音色描述定制音色（instructions 为必填音色描述，无预置音色） */
+type MimoModel = "mimo-v2.5-tts" | "mimo-v2.5-tts-voicedesign";
+const DEFAULT_MODEL: MimoModel = "mimo-v2.5-tts";
 
-/** 千问非流式语音合成面板：单请求整段返回（无分段/流式），instruct 模型可带风格指令。 */
-export default function QianwenTTSPanel() {
+/** 预置音色（与后端 internal/provider/xiaomi/voices.go 同词表；官方未提供试听样本）。 */
+const PRESET_VOICES: { id: string; desc: string }[] = [
+  { id: "mimo_default", desc: "默认音色（中文集群为冰糖）" },
+  { id: "冰糖", desc: "中文女声" },
+  { id: "茉莉", desc: "中文女声" },
+  { id: "苏打", desc: "中文男声" },
+  { id: "白桦", desc: "中文男声" },
+  { id: "Mia", desc: "英文女声" },
+  { id: "Chloe", desc: "英文女声" },
+  { id: "Milo", desc: "英文男声" },
+  { id: "Dean", desc: "英文男声" },
+];
+
+/** 小米 MiMo 非流式语音合成面板：OpenAI 兼容协议，预置音色 / 文本描述定制音色双模型。 */
+export default function XiaomiTTSPanel() {
   const [text, setText] = useState("");
-  const [model, setModel] = useState<QianwenModel>(DEFAULT_MODEL);
-  const [voice, setVoice] = useState("Cherry");
-  const [languageType, setLanguageType] = useState("");
+  const [model, setModel] = useState<MimoModel>(DEFAULT_MODEL);
+  const [voice, setVoice] = useState("mimo_default");
   const [instructions, setInstructions] = useState("");
+  const [format, setFormat] = useState("wav");
   const [taskId, setTaskId] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [detail, setDetail] = useState<TaskDetail | null>(null);
@@ -41,13 +52,7 @@ export default function QianwenTTSPanel() {
   const { toast } = useToast();
   const ev = useTaskEvents();
 
-  /* 音色列表：/api/voices?provider=qianwen（含官方试听 URL 与模型支持矩阵） */
-  const voicesQuery = useQuery({
-    queryKey: ["voices", "qianwen"],
-    queryFn: () => fetchJSON<{ voices: QianwenVoice[] }>("/api/voices?provider=qianwen"),
-    retry: 1,
-  });
-  const voiceList = voicesQuery.data?.voices ?? [];
+  const isVoiceDesign = model === "mimo-v2.5-tts-voicedesign";
 
   /* WS 事件驱动当前任务进度；终态拉详情拿产物与最终状态 */
   useEffect(() => {
@@ -79,15 +84,18 @@ export default function QianwenTTSPanel() {
 
   const submit = useMutation({
     mutationFn: () => {
-      // 任务参数空值键不传：language_type 留空即不指定；instructions 仅 instruct 模型携带
-      const params: Record<string, unknown> = { text: text.trim(), model, voice };
-      if (languageType.trim()) params.language_type = languageType.trim();
-      if (model === "qwen3-tts-instruct-flash" && instructions.trim()) {
+      // 任务参数空值键不传：instructions 留空即无风格指令（voicedesign 缺描述由后端拦截）；
+      // voicedesign 无预置音色，voice 参数不随请求携带
+      const params: Record<string, unknown> = { text: text.trim(), model, format };
+      if (isVoiceDesign) {
         params.instructions = instructions.trim();
+      } else {
+        params.voice = voice;
+        if (instructions.trim()) params.instructions = instructions.trim();
       }
       return fetchJSON<{ task_id: string }>("/api/tasks", {
         method: "POST",
-        body: JSON.stringify({ provider: "qianwen", tool: "tts", params }),
+        body: JSON.stringify({ provider: "xiaomi", tool: "tts", params }),
       });
     },
     onSuccess: (d) => {
@@ -103,10 +111,9 @@ export default function QianwenTTSPanel() {
     },
   });
 
-  // 与后端一致：TrimSpace 后按 rune 计数（qianwen tts summary.char_count 同口径）
+  // 与后端一致：TrimSpace 后按 rune 计数（xiaomi tts summary.char_count 同口径）
   const charCount = Array.from(text.trim()).length;
-  const isInstruct = model === "qwen3-tts-instruct-flash";
-  const canSubmit = text.trim() !== "";
+  const canSubmit = text.trim() !== "" && (!isVoiceDesign || instructions.trim() !== "");
 
   const artifacts = detail?.artifacts ?? [];
   const audioArtifacts = artifacts.filter((a) => a.kind === "audio");
@@ -121,9 +128,7 @@ export default function QianwenTTSPanel() {
           <CardHeader
             title="合成文本"
             icon={<AudioLines size={15} strokeWidth={1.75} />}
-            aside={
-              <span className="font-mono text-[11px] tabular-nums text-muted">{charCount} 字</span>
-            }
+            aside={<span className="font-mono text-[11px] tabular-nums text-muted">{charCount} 字</span>}
           />
           <CardBody className="space-y-3">
             {/* 包裹层仅用于「去输入文本」聚焦：Textarea 组件不透传 ref */}
@@ -150,56 +155,65 @@ export default function QianwenTTSPanel() {
           <CardHeader
             title="合成参数"
             icon={<SlidersHorizontal size={15} strokeWidth={1.75} />}
-            aside={<span className="micro">qianwen · tts</span>}
+            aside={<span className="micro">xiaomi · tts</span>}
           />
           <CardBody className="space-y-4">
-            <Field label="模型" hint={isInstruct ? "instruct 版支持自然语言风格指令" : "默认模型，性价比高"}>
+            <Field label="模型" hint={isVoiceDesign ? "音色由文本描述定制，无预置音色" : "默认模型，预置音色合成"}>
               {({ id, ...rest }) => (
-                <Select id={id} value={model} onChange={(e) => setModel(e.target.value as QianwenModel)} {...rest}>
-                  <option value="qwen3-tts-flash">qwen3-tts-flash</option>
-                  <option value="qwen3-tts-instruct-flash">qwen3-tts-instruct-flash（支持风格指令）</option>
+                <Select id={id} value={model} onChange={(e) => setModel(e.target.value as MimoModel)} {...rest}>
+                  <option value="mimo-v2.5-tts">mimo-v2.5-tts（预置音色）</option>
+                  <option value="mimo-v2.5-tts-voicedesign">mimo-v2.5-tts-voicedesign（描述定制音色）</option>
                 </Select>
               )}
             </Field>
 
-            <Field label="音色" hint="点击喇叭可试听官方样本">
-              {() => (
-                <QianwenVoicePicker
-                  voices={voiceList}
-                  loading={voicesQuery.isLoading}
-                  value={voice}
-                  model={model}
-                  onChange={setVoice}
-                />
-              )}
-            </Field>
+            {!isVoiceDesign && (
+              <Field label="音色" hint="9 官方预置音色，支持中英文">
+                {({ id, ...rest }) => (
+                  <Select id={id} value={voice} onChange={(e) => setVoice(e.target.value)} {...rest}>
+                    {PRESET_VOICES.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.id} · {v.desc}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            )}
 
-            <Field label="语言" aside="可选" hint="主要发音语种，方言音色可留空">
+            <Field
+              label={isVoiceDesign ? "音色描述" : "风格指令"}
+              aside={isVoiceDesign ? "必填" : "可选"}
+              hint={
+                isVoiceDesign
+                  ? "用自然语言描述想要的音色，如「低沉的青年男声」"
+                  : "用自然语言描述语速、情感与风格"
+              }
+            >
               {({ id, ...rest }) => (
-                <Input
+                <Textarea
                   id={id}
-                  value={languageType}
-                  onChange={(e) => setLanguageType(e.target.value)}
-                  placeholder="如 Chinese / English；留空不指定"
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  rows={3}
+                  placeholder={
+                    isVoiceDesign
+                      ? "如「沉稳的中年男声，吐字清晰，略带沙哑」"
+                      : "如「低沉缓慢，带叹气感」；留空不指定"
+                  }
                   {...rest}
                 />
               )}
             </Field>
 
-            {isInstruct && (
-              <Field label="风格指令" aside="可选" hint="仅 instruct 模型生效">
-                {({ id, ...rest }) => (
-                  <Textarea
-                    id={id}
-                    value={instructions}
-                    onChange={(e) => setInstructions(e.target.value)}
-                    rows={3}
-                    placeholder="用自然语言描述语速、情感与风格，如「低沉缓慢，带叹气感」"
-                    {...rest}
-                  />
-                )}
-              </Field>
-            )}
+            <Field label="音频格式" hint="wav 无损 / mp3 通用">
+              {({ id, ...rest }) => (
+                <Select id={id} value={format} onChange={(e) => setFormat(e.target.value)} {...rest}>
+                  <option value="wav">wav</option>
+                  <option value="mp3">mp3</option>
+                </Select>
+              )}
+            </Field>
 
             <div className="border-t border-line pt-3">
               <Button
@@ -212,7 +226,11 @@ export default function QianwenTTSPanel() {
               >
                 开始合成
               </Button>
-              {!canSubmit && <p className="mt-2 text-[11px] text-muted">请先输入要合成的文本</p>}
+              {!canSubmit && (
+                <p className="mt-2 text-[11px] text-muted">
+                  {isVoiceDesign && !text.trim() ? "请先输入要合成的文本" : "请先完成必填项"}
+                </p>
+              )}
               {submitError && (
                 <p className="mt-2 flex items-start gap-1.5 text-[11px] text-danger">
                   <AlertTriangle size={12} strokeWidth={1.75} className="mt-0.5 shrink-0" />

@@ -34,6 +34,7 @@ type CredentialField struct {
 }
 
 // ProviderInfo 设置页一张卡的声明。卡声明属静态描述，当前值/已配置状态由 service 装配。
+// 平台跳转不做独立链接声明：描述文案里写明域名，前端统一把域名渲染成可点击链接。
 type ProviderInfo struct {
 	Name        string
 	Title       string

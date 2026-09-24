@@ -68,21 +68,23 @@ const themeMeta = {
 function HealthIndicator() {
   // 徽标跟随 WS 事件通道状态：WS 经 HTTP 升级建立，"open"即服务可达且实时通道可用，
   // 比轮询 /api/health 更强也更相关（任务进度依赖这条通道）。服务端 ping/pong 保证
-  // 状态真实；断了 2 秒自动重连，无需人工处理。
+  // 状态真实；断了 2 秒自动重连，无需人工处理。颜色即语义（信号绿=连接/黄=连接中/
+  // 红=断开），文字说明只留在悬浮提示与无障碍标签里。连接灯用 meter-vivid 而非
+  // 苔藓绿：状态灯需要从系统色中跳出（MASTER.md 声明的唯一豁免处）。
   const status = useWSStatus();
   const meta = {
-    open: { label: "实时连接", cls: "text-meter", title: "事件通道已连接，任务进度实时推送" },
-    connecting: { label: "连接中", cls: "text-warn", title: "正在建立事件通道" },
-    closed: { label: "已断开", cls: "text-danger", title: "事件通道中断，将自动重连" },
+    open: { cls: "text-meter-vivid", title: "事件通道已连接，任务进度实时推送" },
+    connecting: { cls: "text-warn", title: "正在建立事件通道" },
+    closed: { cls: "text-danger", title: "事件通道中断，将自动重连" },
   }[status];
   return (
     <span
-      className={`hidden items-center gap-1.5 text-[11px] sm:inline-flex ${meta.cls}`}
+      className={`hidden sm:inline-flex ${meta.cls}`}
       title={meta.title}
+      aria-label={meta.title}
       role="status"
     >
       <Activity size={13} strokeWidth={1.75} />
-      {meta.label}
     </span>
   );
 }

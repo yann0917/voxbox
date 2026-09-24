@@ -15,8 +15,14 @@ import (
 func TestNewRegistersTools(t *testing.T) {
 	svc := newTestService(t)
 	metas := svc.Registry().List()
-	if len(metas) != 35 { // 火山 8 + MVSep 1 + 千问 2 + gsgc 11（1 分离 + 10 站点功能）+ zhuanhuanmao 1 分离 + 音频剪辑 12
-		t.Fatalf("registered tools = %d, want 35", len(metas))
+	if len(metas) != 37 { // 火山 8 + MVSep 1 + 千问 2 + 小米 2 + gsgc 11（1 分离 + 10 站点功能）+ zhuanhuanmao 1 分离 + 音频剪辑 12
+		t.Fatalf("registered tools = %d, want 37", len(metas))
+	}
+	if _, ok := svc.Registry().Get("xiaomi", "tts"); !ok {
+		t.Error("xiaomi.tts not found")
+	}
+	if _, ok := svc.Registry().Get("xiaomi", "asr"); !ok {
+		t.Error("xiaomi.asr not found")
 	}
 	if _, ok := svc.Registry().Get("mvsep", "separate"); !ok {
 		t.Error("mvsep.separate not found")
@@ -78,8 +84,8 @@ func TestSaveProviderFieldsHotReload(t *testing.T) {
 	if _, ok := svc.Registry().Get("volcengine", "tts"); !ok {
 		t.Error("volcengine.tts missing after hot reload")
 	}
-	if len(svc.Registry().List()) != 35 {
-		t.Errorf("List len = %d, want 35（火山 8 + MVSep 1 + 千问 2 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12）", len(svc.Registry().List()))
+	if len(svc.Registry().List()) != 37 {
+		t.Errorf("List len = %d, want 37（火山 8 + MVSep 1 + 千问 2 + 小米 2 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12）", len(svc.Registry().List()))
 	}
 	// 持久化：重读磁盘配置与内存一致
 	persisted, err := config.Load()
@@ -134,8 +140,8 @@ func TestReloadVolcFromDisk(t *testing.T) {
 	if _, ok := svc.Registry().Get("volcengine", "tts"); !ok {
 		t.Error("volcengine.tts missing after reload")
 	}
-	if len(svc.Registry().List()) != 35 {
-		t.Errorf("List len = %d, want 35（火山 8 + MVSep 1 + 千问 2 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12）", len(svc.Registry().List()))
+	if len(svc.Registry().List()) != 37 {
+		t.Errorf("List len = %d, want 37（火山 8 + MVSep 1 + 千问 2 + 小米 2 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12）", len(svc.Registry().List()))
 	}
 }
 
@@ -331,6 +337,19 @@ func TestQianwenConnectionUnconfigured(t *testing.T) {
 	}
 	defer svc.Close()
 	msg, ok := svc.TestQianwenConnection()
+	if ok || msg == "" {
+		t.Errorf("未配置应 (false, 提示), got (%v, %q)", ok, msg)
+	}
+}
+
+// TestXiaomiConnection：未配置直接报未配置（不发请求）。
+func TestXiaomiConnectionUnconfigured(t *testing.T) {
+	svc, err := NewWithHome(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	msg, ok := svc.TestXiaomiConnection()
 	if ok || msg == "" {
 		t.Errorf("未配置应 (false, 提示), got (%v, %q)", ok, msg)
 	}

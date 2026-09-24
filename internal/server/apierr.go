@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
+	"github.com/yann0917/voxbox/internal/provider/xiaomi"
 	"github.com/yann0917/voxbox/internal/store"
 )
 
@@ -41,7 +42,7 @@ func failErr(c *gin.Context, err error) {
 	case errors.Is(err, store.ErrNotFound):
 		fail(c, CodeNotFound, msg)
 	case errors.Is(err, volcengine.ErrNoCred), errors.Is(err, volcengine.ErrAuth),
-		errors.Is(err, qianwen.ErrNoCred):
+		errors.Is(err, qianwen.ErrNoCred), errors.Is(err, xiaomi.ErrNoCred):
 		fail(c, CodeBadCredential, msg)
 	case strings.Contains(msg, "缺少必填参数"), strings.Contains(msg, "未知工具"), strings.Contains(msg, "参数错误"):
 		fail(c, CodeBadRequest, msg)

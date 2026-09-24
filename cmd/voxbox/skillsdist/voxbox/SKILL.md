@@ -22,6 +22,7 @@ description: 语音 AI 工具箱 CLI（voxbox / voxbox.exe）——语音合成�
    | `volc.mediakit.api_key` | 人声分离（MediaKit 引擎） |
    | `mvsep.api_token` | 人声分离（MVSep 引擎） |
    | `qianwen.api_key` | TTS / ASR（千问引擎 `--engine qianwen`） |
+   | `xiaomi.api_key` | TTS / ASR（小米 MiMo 引擎 `--engine xiaomi`） |
    | `storage.*` | 本地文件走「只收 URL」的上游时自动中转（分离/妙记/ASR 标准版） |
 
    缺失时请用户提供密钥，再 `voxbox config set <key> <value>`。**不要猜测或编造密钥**。
@@ -40,6 +41,7 @@ description: 语音 AI 工具箱 CLI（voxbox / voxbox.exe）——语音合成�
 # ---------- 语音合成 ----------
 voxbox tts "今天天气不错" --voice zh_male_dayixiansheng_v2_saturn_bigtts --out speech.mp3 --json
 voxbox tts "今天天气不错" --engine qianwen --out speech-qw.mp3 --json                  # 千问引擎（凭证 qianwen.api_key，默认音色 Cherry）
+voxbox tts "今天天气不错" --engine xiaomi --out speech-mi.mp3 --json                  # 小米引擎（凭证 xiaomi.api_key，默认音色 mimo_default，--voice 可选冰糖/茉莉/苏打/白桦等 9 预置音色）
 voxbox tts-long --file book.txt --timestamps --out audiobook.mp3 --json   # ≤10 万字，出 SRT
 voxbox tts-stream "用粤语说一段开场白" --explicit-dialect yue --subtitle --out intro.mp3 --json
 
@@ -47,6 +49,7 @@ voxbox tts-stream "用粤语说一段开场白" --explicit-dialect yue --subtitl
 voxbox asr recording.mp3 --out transcript.txt --json                      # 本地文件（一句话识别）
 voxbox asr --url "https://example.com/a.mp3" --version flash --json       # 公网 URL（极速版）
 voxbox asr --url "https://example.com/a.mp3" --engine qianwen --json      # 千问文件转写（异步，凭证 qianwen.api_key）
+voxbox asr recording.mp3 --engine xiaomi --out xiaomi.txt --json          # 小米同步转写（mp3/wav ≤7.5MB，凭证 xiaomi.api_key，无时间戳不产 SRT）
 
 # ---------- 播客 / 翻译 / 妙记 ----------
 voxbox podcast "介绍大模型在语音方向的应用" --speakers <voiceA>,<voiceB> --out podcast.mp3 --json

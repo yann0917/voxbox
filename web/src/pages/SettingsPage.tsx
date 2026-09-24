@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import { useState, type ChangeEvent, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AudioLines,
@@ -45,6 +45,7 @@ const CARD_NAMES: Record<string, string> = {
   mediakit: "MediaKit",
   mvsep: "MVSep",
   qianwen: "千问",
+  xiaomi: "小米 MiMo",
 };
 
 /** 单个存储类型的表单草稿（未保存输入）：全字符串便于受控；secret 只收集不回显。 */
@@ -113,6 +114,34 @@ function cardAside(p: ProviderShape) {
   );
 }
 
+/** 域名（可带路径，如 platform.qianwenai.com / console.volcengine.com/speech）；
+    前瞻排除：行尾ASCII句点（句子边界）不吞入。全角标点天然不在词法内。 */
+const DOMAIN_RE = /(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:\/[\w\-./]*(?<!\.))?/g;
+
+/** 卡片描述：文案里的域名渲染成新窗口跳转链接（后端只管把域名写进文案，前端统一加行为） */
+function CardDescription({ text }: { text: string }) {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(DOMAIN_RE)) {
+    const i = m.index ?? 0;
+    if (i > last) parts.push(text.slice(last, i));
+    parts.push(
+      <a
+        key={`${m[0]}-${i}`}
+        href={`https://${m[0]}`}
+        target="_blank"
+        rel="noreferrer"
+        className="underline decoration-line underline-offset-2 transition-colors duration-150 hover:text-accent hover:decoration-accent"
+      >
+        {m[0]}
+      </a>,
+    );
+    last = i + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return <p className="text-xs text-muted">{parts}</p>;
+}
+
 /** 动态凭证卡：字段类型驱动渲染，整卡独立保存。 */
 function ProviderCardForm({ card, onSaved }: { card: ProviderShape; onSaved: () => void }) {
   const { toast } = useToast();
@@ -137,7 +166,7 @@ function ProviderCardForm({ card, onSaved }: { card: ProviderShape; onSaved: () 
     <Card>
       <CardHeader title={card.title} icon={<KeyRound size={15} strokeWidth={1.75} />} aside={cardAside(card)} />
       <CardBody className="space-y-4">
-        <p className="text-xs text-muted">{card.description}</p>
+        <CardDescription text={card.description} />
         {card.fields.map((f) => (
           <Field key={f.key} label={f.label} hint={f.hint ?? (f.kind === "secret" && f.has_value ? "当前已配置" : undefined)}>
             {({ id, ...rest }) =>
@@ -439,7 +468,7 @@ export default function SettingsPage() {
                 aside={<span className="micro">{p.tools_count} 个工具</span>}
               />
               <CardBody className="space-y-2">
-                <p className="text-xs text-muted">{p.description}</p>
+                <CardDescription text={p.description} />
                 <p className="text-xs text-fg-2">本地运行，无需凭证，共 {p.tools_count} 个工具。</p>
               </CardBody>
             </Card>
@@ -453,7 +482,7 @@ export default function SettingsPage() {
                 <p className="break-all font-mono text-xs text-fg-2">{data?.data_dir ?? "—"}</p>
                 <p className="text-[11px] text-muted">
                   产物文件（音频、转写、字幕、对话稿）与任务数据库都保存在此目录；配置文件为
-                  <code className="font-mono"> ~/.voxbox/config.yaml</code>（权限 0600）。
+                  <code className="font-mono"> ~/.voxbox/config.yaml</code>。
                 </p>
               </div>
             </CardBody>

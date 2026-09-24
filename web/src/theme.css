@@ -25,11 +25,12 @@
   --color-fg-2: var(--fg-2);
   --color-muted: var(--muted);
 
-  /* 信号色：accent=操作，绿=电平/成功，红=错误，黄=警示 */
+  /* 信号色：accent=操作，绿=电平/成功（vivid 绿=连接状态灯），红=错误，黄=警示 */
   --color-accent: var(--accent);
   --color-accent-hi: var(--accent-hi);
   --color-accent-ink: var(--accent-ink);
   --color-meter: var(--meter);
+  --color-meter-vivid: var(--meter-vivid);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
 
@@ -67,6 +68,7 @@
   --accent-hi: #f2c184;
   --accent-ink: #2a1a06;
   --meter: #9fbe6f;
+  --meter-vivid: #22c55e;
   --warn: #f0c04c;
   --danger: #ff6d5c;
 
@@ -103,6 +105,7 @@
   --accent-hi: #754a2b;
   --accent-ink: #fffaf2;
   --meter: #5a6e2d;
+  --meter-vivid: #16a34a;
   --warn: #b45309;
   --danger: #b42318;
 

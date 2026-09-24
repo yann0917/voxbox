@@ -28,6 +28,9 @@ type Config struct {
 	// Qianwen 千问平台（platform.qianwenai.com）凭证：语音合成/识别共用一个 API Key，
 	// BaseURL 固定官方 maas.qianwenaiapi.com，不提供覆写。
 	Qianwen QianwenConfig
+	// Xiaomi 小米 MiMo 开放平台（api.xiaomimimo.com）凭证：OpenAI 兼容协议，
+	// BaseURL 固定官方，不提供覆写。
+	Xiaomi XiaomiConfig
 }
 
 type ServerConfig struct {
@@ -60,6 +63,9 @@ type MVSepConfig struct {
 
 // QianwenConfig 千问平台凭证：语音合成/识别共用一个 API Key。
 type QianwenConfig struct{ APIKey string }
+
+// XiaomiConfig 小米 MiMo 开放平台凭证：语音合成用 API Key。
+type XiaomiConfig struct{ APIKey string }
 
 // StorageConfig 对象存储（大文件中转）：语音识别/人声分离/妙记等 URL-only 工具的本地文件
 // 会在任务执行时转存到该桶并取预签名 URL 提交上游。Provider 留空表示未启用；
@@ -226,6 +232,7 @@ func configFromViper(v *viper.Viper) *Config {
 			BaseURL:  strings.TrimSpace(v.GetString("mvsep.base_url")),
 		},
 		Qianwen: QianwenConfig{APIKey: strings.TrimSpace(v.GetString("qianwen.api_key"))},
+		Xiaomi:  XiaomiConfig{APIKey: strings.TrimSpace(v.GetString("xiaomi.api_key"))},
 	}
 }
 
@@ -390,6 +397,7 @@ func List() ([]KV, error) {
 		{"mvsep.api_token", mask(cfg.MVSep.APIToken)},
 		{"mvsep.base_url", cfg.MVSep.BaseURL},
 		{"qianwen.api_key", mask(cfg.Qianwen.APIKey)},
+		{"xiaomi.api_key", mask(cfg.Xiaomi.APIKey)},
 	}
 	// 各通道段独立列出（bucket/AK/SK）；键即真实落盘布局，可直接指导 config set。
 	for _, name := range slices.Sorted(maps.Keys(cfg.StorageChannels)) {

@@ -260,3 +260,39 @@ func TestLoadQianwen(t *testing.T) {
 		t.Error("List() 缺 qianwen.api_key 行")
 	}
 }
+
+// TestLoadXiaomi 读取 xiaomi.api_key 凭证并确认 List() 打码列出（同 TestLoadQianwen 口径）。
+func TestLoadXiaomi(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VOXBOX_HOME", dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".voxbox"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	yaml := "xiaomi:\n  api_key: mi-key-456\n"
+	if err := os.WriteFile(filepath.Join(dir, ".voxbox", "config.yaml"), []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Xiaomi.APIKey != "mi-key-456" {
+		t.Errorf("Xiaomi.APIKey = %q, 期望 mi-key-456", cfg.Xiaomi.APIKey)
+	}
+	kvs, err := List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, kv := range kvs {
+		if kv.Key == "xiaomi.api_key" {
+			found = true
+			if kv.Value == "mi-key-456" || !strings.Contains(kv.Value, "*") {
+				t.Errorf("xiaomi.api_key 应打码列出, got %q", kv.Value)
+			}
+		}
+	}
+	if !found {
+		t.Error("List() 缺 xiaomi.api_key 行")
+	}
+}
