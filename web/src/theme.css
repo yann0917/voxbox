@@ -54,8 +54,8 @@
 /* ---------------- 暗色（默认）：暗夜烘焙间（深烘咖啡 + 焦糖铜） ---------------- */
 :root {
   --bg: #161009;
-  --panel: #1f1810;
-  --raise: #271e13;
+  --panel: rgba(31, 24, 16, 0.78);
+  --raise: rgba(39, 30, 19, 0.78);
   --raise-2: #322718;
   --inset: #100b05;
   --line: rgba(240, 205, 155, 0.11);
@@ -70,23 +70,28 @@
   --warn: #f0c04c;
   --danger: #ff6d5c;
 
+  /* 画布氛围：焦糖暖光双晕 + 图纸网格（景深来自光，不来自平涂） */
+  --atmosphere-primary: rgba(226, 163, 90, 0.15);
+  --atmosphere-secondary: rgba(240, 192, 76, 0.09);
+  --grid-color: rgba(240, 205, 155, 0.07);
+
   /* 材质：顶缘暖光 / 凹槽阴影 / 波形 idle */
   --edge-light: rgba(255, 225, 180, 0.06);
   --inset-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
   --wave-idle: rgba(246, 236, 221, 0.16);
   --noise-opacity: 0.025;
 
-  --elev-1: 0 1px 2px rgba(6, 3, 1, 0.55), inset 0 1px 0 rgba(255, 225, 180, 0.06);
-  --elev-2: 0 8px 24px -8px rgba(6, 3, 1, 0.7), inset 0 1px 0 rgba(255, 225, 180, 0.06);
-  --elev-3: 0 24px 48px -12px rgba(4, 2, 0, 0.8);
+  --elev-1: 0 1px 2px rgba(4, 2, 0, 0.4), 0 10px 28px -14px rgba(4, 2, 0, 0.55), inset 0 1px 0 rgba(255, 225, 180, 0.06);
+  --elev-2: 0 12px 32px -12px rgba(4, 2, 0, 0.65), inset 0 1px 0 rgba(255, 225, 180, 0.06);
+  --elev-3: 0 28px 56px -16px rgba(4, 2, 0, 0.85);
   color-scheme: dark;
 }
 
 /* ---------------- 亮色：暖纸上的铅字（暖纸 + 深咖啡，对齐 R2T2 demo） ---------------- */
 :root.light {
   --bg: #f7f0e6;
-  --panel: #fcf6ec;
-  --raise: #fffaf2;
+  --panel: rgba(252, 246, 236, 0.76);
+  --raise: rgba(255, 250, 242, 0.72);
   --raise-2: #f0e5d5;
   --inset: #ecdfcc;
   --line: rgba(90, 61, 38, 0.15);
@@ -101,14 +106,19 @@
   --warn: #b45309;
   --danger: #b42318;
 
+  /* 画布氛围：demo 同款焦糖暖光双晕 + 图纸网格 */
+  --atmosphere-primary: rgba(194, 142, 90, 0.34);
+  --atmosphere-secondary: rgba(232, 198, 157, 0.46);
+  --grid-color: rgba(111, 77, 48, 0.10);
+
   --edge-light: rgba(255, 255, 255, 0.8);
   --inset-shadow: inset 0 1px 2px rgba(90, 61, 38, 0.14);
   --wave-idle: rgba(90, 61, 38, 0.22);
   --noise-opacity: 0.02;
 
-  --elev-1: 0 1px 2px rgba(83, 51, 25, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  --elev-2: 0 8px 24px -10px rgba(83, 51, 25, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  --elev-3: 0 24px 48px -12px rgba(83, 51, 25, 0.24);
+  --elev-1: 0 1px 2px rgba(83, 51, 25, 0.06), 0 8px 24px -12px rgba(83, 51, 25, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --elev-2: 0 12px 32px -14px rgba(83, 51, 25, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --elev-3: 0 28px 56px -16px rgba(83, 51, 25, 0.28);
   color-scheme: light;
 }
 
@@ -127,6 +137,26 @@
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    /* 负 z 的氛围层要画在画布底色之上、内容之下，须自建堆叠上下文 */
+    isolation: isolate;
+  }
+
+  /* 画布景深（demo 同款）：焦糖暖光双晕铺底 + 42px 图纸网格，上下缘渐隐。
+     光晕与网格都在内容之下——面板因此「浮」在纸面上，而不是平涂色块。 */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -24%;
+    z-index: -2;
+    pointer-events: none;
+    background:
+      linear-gradient(var(--grid-color) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-color) 1px, transparent 1px),
+      radial-gradient(circle at 50% 42%, var(--atmosphere-primary), transparent 30%),
+      radial-gradient(circle at 14% 4%, var(--atmosphere-secondary), transparent 24%);
+    background-size: 42px 42px, 42px 42px, auto, auto;
+    mask-image: linear-gradient(to bottom, transparent, #000 14%, #000 86%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14%, #000 86%, transparent);
   }
 
   /* 画布胶片颗粒：统一材质、消除色带（MASTER §1.3-4，透明度红线 4%） */
@@ -208,13 +238,15 @@
     font-weight: 500;
   }
 
-  /* 卡面：顶缘冷光渐变（MASTER §1.3-1），Card 组件专用 */
+  /* 卡面：顶缘暖光渐变 + 毛玻璃（半透明 raise 透出画布氛围光），Card 组件专用 */
   .card-surface {
     background: linear-gradient(
       180deg,
       color-mix(in oklab, var(--raise), var(--edge-light) 55%) 0%,
       var(--raise) 52%
     );
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
 
   /* 电光青主按钮：渐变 + 顶缘高光 + 青光晕（MASTER §1.3-3） */

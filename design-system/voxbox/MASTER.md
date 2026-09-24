@@ -45,6 +45,9 @@
 | `--color-meter` | `#9FBE6F` | **苔藓绿**：成功、波形、电平（不做主操作色，大地色系与焦糖和谐） |
 | `--color-warn` | `#F0C04C` | 警示（亮琥珀，与铜 accent 拉开明度与色相） |
 | `--color-danger` | `#FF6D5C` | 错误、破坏性操作（暖珊瑚） |
+| `--atmosphere-primary` | `rgba(226,163,90,.15)` | 画布中心焦糖暖光（body::before） |
+| `--atmosphere-secondary` | `rgba(240,192,76,.09)` | 左上角琥珀次级光晕 |
+| `--grid-color` | `rgba(240,205,155,.07)` | 42px 图纸网格线 |
 
 ### 1.2 亮色（完整适配，非降级）——暖纸咖啡
 
@@ -66,16 +69,21 @@
 | `--color-meter` | `#5A6E2D` |
 | `--color-warn` | `#B45309` |
 | `--color-danger` | `#B42318` |
+| `--atmosphere-primary` | `rgba(194,142,90,.34)` |
+| `--atmosphere-secondary` | `rgba(232,198,157,.46)` |
+| `--grid-color` | `rgba(111,77,48,.10)` |
 
 亮色是「暖纸上的铅字」：暖纸画布 + 咖啡墨色（取自 R2T2 demo 暖纸主题），**禁止纯白 `#FFFFFF` 大面积做画布/面板**（纯白=通用后台即视感的根源），也**禁止蓝冷色任何形式回流**。meter 用暗橄榄绿而非 demo 的纯棕：voxbox 需要「绿=成功/电平」的语义区分，橄榄绿与大地色系和谐。
 
 ### 1.3 材质规则（全主题通用，组件层实现）
 
-1. **卡片 = 暖顶光面**：`.card-surface`——`linear-gradient(180deg, edge-light 混入 3%, raise)` 顶亮渐变 + `--shadow-1` 顶缘 1px 内高光。禁止再写裸 `bg-raise`。
-2. **输入 = 仪表凹槽**：底用 `--color-inset`（比容器深一档）+ `inset 0 1px 2px var(--inset-shadow)`；focus 时 accent 色边框+外环，内嵌阴影保留。
+1. **卡片 = 暖顶光玻璃面**：`.card-surface`——`linear-gradient(180deg, edge-light 混入 3%, raise)` 顶亮渐变 + `backdrop-filter: blur(10px)`（raise 为半透明色，透出画布氛围光）+ `--shadow-1` 环境投影。禁止再写裸 `bg-raise`。
+2. **输入 = 仪表凹槽**：底用 `--color-inset`（比容器深一档，**保持实色**保证可读性）+ `inset 0 1px 2px var(--inset-shadow)`；focus 时 accent 色边框+外环，内嵌阴影保留。
 3. **主操作按钮 = 焦糖束流**：`.btn-primary`——`linear-gradient(180deg, accent-hi, accent)` + 顶部内高光 + `0 2px 14px -4px` 焦糖光晕；hover 整体提亮，**禁止位移**。
 4. **画布噪点**：`body::after` 全屏 feTurbulence 噪点，暗色 `opacity .025`、亮色 `.02`，`pointer-events:none`，z 最顶层——胶片颗粒统一材质，**禁止任何大于 4% 的纹理透明度**。
 5. **波形 idle 色**：`--wave-idle` 随主题（暗 `rgba(246,236,221,.16)` / 亮 `rgba(90,61,38,.22)`），WavePlayer 从令牌读取，禁止硬编码。
+6. **画布氛围（景深的来源）**：`body::before` 固定层（`inset: -24%`，z -2）——焦糖暖光双晕（`--atmosphere-primary` 画面中心 + `--atmosphere-secondary` 左上角）叠 42px 图纸网格（`--grid-color` 1px 线），`mask-image` 上下缘 14% 渐隐。**面板因此「浮」在纸面上，禁止把 panel/raise 改回实色平涂**。
+7. **玻璃外壳**：侧栏/顶栏/移动抽屉/浮出菜单用半透明 `bg-panel` + `backdrop-blur-xl`（顶栏 `backdrop-blur`）——玻璃后面透出氛围光；`--panel`/`--raise` 的 alpha 是设计值，调整需两主题同步。
 
 **色彩纪律**：焦糖铜（暗）/深咖啡（亮）是唯一主操作色；绿只表示「信号/成功/电平」；红只表示「错误/破坏」；黄只表示「警示」。禁止第二个装饰性强调色（紫/粉霓虹一律不进界面）。
 
