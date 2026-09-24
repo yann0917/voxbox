@@ -60,7 +60,7 @@ voxbox 以 Model Context Protocol 把全部语音能力直接暴露给 AI Agent�
 | `voxbox_audio_clip` | **选区切片导出**：选区加淡入淡出与响度归一导出成片，铃声 `format=m4r`（iPhone 直接可用）、短视频用 mp3；`fade_in`/`fade_out` 默认 1/0.5 秒（0=关）、`loudness` 响度归一默认 -14 LUFS（0=关），选区可先用 `voxbox_audio_hook` 取候选 | `file`, `start`, `end` | 秒~十秒 |
 | `voxbox_audio_duck` | **口播闪避**：说话时人声自动压低 BGM（`bgm` 背景音乐、`vocal` 人声两轨绝对路径，files 顺序 `audio`=BGM、`audio2`=人声，序不可颠倒），单滑杆 `depth` 闪避深度默认 -12 dB（0=不压直通，域 -40~0，实际压深随语音密度过冲，约再加深 4~8dB）、`bgm_gain` 基线增益默认 -6、`loudness` 响度归一默认 -14 LUFS（0=关），`format` mp3|wav | `bgm`, `vocal` | 秒~十秒 |
 
-> 千问平台（qwen3-tts 合成 / qwen3-asr 转写）与小米 MiMo（MiMo-V2.5-TTS 合成 / mimo-v2.5-asr 转写）暂未开放 MCP 工具：配置 `qianwen.api_key` / `xiaomi.api_key` 后经 Web 控制台或 CLI（`tts`/`asr` 的 `--engine qianwen|xiaomi`）使用。
+> 千问平台（qwen3-tts 合成 / qwen3-asr 转写）、小米 MiMo（MiMo-V2.5-TTS 合成 / mimo-v2.5-asr 转写）与智谱（glm-tts 合成 / glm-asr 转写）暂未开放 MCP 工具：配置 `qianwen.api_key` / `xiaomi.api_key` / `zhipu.api_key` 后经 Web 控制台或 CLI（`tts`/`asr` 的 `--engine qianwen|xiaomi|zhipu`）使用。
 
 ### MVSep 分离的免费档约束
 

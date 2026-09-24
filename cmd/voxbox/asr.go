@@ -36,8 +36,26 @@ func newASRCommand() *cobra.Command {
 			if file == "" && audioURL == "" {
 				return fmt.Errorf("请提供音频文件或 --url")
 			}
-			if engine != "volcengine" && engine != "qianwen" && engine != "xiaomi" {
-				return fmt.Errorf("不支持的引擎 %q（可选 volcengine / qianwen / xiaomi）", engine)
+			if engine != "volcengine" && engine != "qianwen" && engine != "xiaomi" && engine != "zhipu" {
+				return fmt.Errorf("不支持的引擎 %q（可选 volcengine / qianwen / xiaomi / zhipu）", engine)
+			}
+			// 智谱仅提供短音频同步转写（≤30 秒，无版本概念），显式传 --version 视为参数冲突
+			if engine == "zhipu" {
+				if c.Flags().Changed("version") {
+					return fmt.Errorf("参数冲突：--engine zhipu 不支持 --version（智谱仅提供短音频同步转写）")
+				}
+				if srt && c.Flags().Changed("srt") {
+					return fmt.Errorf("参数冲突：--engine zhipu 无时间戳，不支持 --srt")
+				}
+				files, err := localAudioFile(file)
+				if err != nil {
+					return err
+				}
+				params := map[string]any{"prompt": "", "hotwords": hotwords}
+				if audioURL != "" {
+					params["url"] = audioURL
+				}
+				return runToolSync(c, "zhipu", "asr", params, files, outPath, jsonOut)
 			}
 			// 小米仅提供同步转写（无版本概念），显式传 --version 视为参数冲突
 			if engine == "xiaomi" {
@@ -113,7 +131,7 @@ func newASRCommand() *cobra.Command {
 	f.StringVar(&audioURL, "url", "", "公网音频 URL（与位置参数二选一）")
 	f.StringVar(&outPath, "out", "", "转写文本输出路径（默认数据目录自动命名）")
 	f.BoolVar(&srt, "srt", true, "额外产出 SRT 字幕（--srt=false 关闭；火山/千问生效，小米无时间戳不产 SRT）")
-	f.StringVar(&engine, "engine", "volcengine", "识别引擎: volcengine（火山引擎）| qianwen（千问，仅录音文件转写）| xiaomi（小米，同步转写 mp3/wav ≤7.5MB）")
+	f.StringVar(&engine, "engine", "volcengine", "识别引擎: volcengine（火山引擎）| qianwen（千问，仅录音文件转写）| xiaomi（小米，同步转写 mp3/wav ≤7.5MB）| zhipu（智谱，短音频同步转写 wav/mp3 ≤25MB/30 秒）")
 	f.StringVar(&qwenModel, "qwen-model", "qwen3-asr-flash-filetrans", "千问转写模型: qwen3-asr-flash-filetrans|qwen-audio-3.1-asr-flash-filetrans（仅 --engine qianwen 生效）")
 	f.BoolVar(&diarization, "diarization", false, "说话人分离（仅千问引擎；≤2 小时且单声道音频）")
 	f.StringVar(&hotwords, "hotwords", "", "热词，逗号分隔（原样透传）")

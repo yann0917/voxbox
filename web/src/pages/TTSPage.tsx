@@ -9,10 +9,11 @@ import TTSStreamPanel from "./tts/TTSStreamPanel";
 import TTSLongPanel from "./tts/TTSLongPanel";
 import QianwenTTSPanel from "./tts/QianwenTTSPanel";
 import XiaomiTTSPanel from "./tts/XiaomiTTSPanel";
+import ZhipuTTSPanel from "./tts/ZhipuTTSPanel";
 
 type TabKey = "sync" | "stream" | "long";
-/** 合成引擎：火山三通道 / 千问非流式 / 小米 MiMo（/tts?engine=…，默认火山） */
-type Engine = "volcengine" | "qianwen" | "xiaomi";
+/** 合成引擎：火山三通道 / 千问非流式 / 小米 MiMo / 智谱（/tts?engine=…，默认火山） */
+type Engine = "volcengine" | "qianwen" | "xiaomi" | "zhipu";
 
 const CHANNEL_ICONS: Record<TabKey, ReactNode> = {
   sync: <AudioLines size={13} strokeWidth={1.75} />,
@@ -30,19 +31,23 @@ const ENGINE_TABS: TabItem<Engine>[] = [
   { value: "volcengine", label: "火山引擎" },
   { value: "qianwen", label: "千问平台" },
   { value: "xiaomi", label: "小米 MiMo" },
+  { value: "zhipu", label: "智谱" },
 ];
 
-/** 语音合成聚合页：引擎 Tab 切换（火山三通道 / 千问非流式 / 小米 MiMo）。
+/** 语音合成聚合页：引擎 Tab 切换（火山三通道 / 千问非流式 / 小米 MiMo / 智谱）。
  *  火山侧三条通道接口代际与计费方式不同（详见各 Tab 说明条与「计费测算」页），
  *  按官方接口差异拆分实现，页面层仅做组织。 */
 export default function TTSPage() {
   const [params, setParams] = useSearchParams();
   const engineParam = params.get("engine");
   const engine: Engine =
-    engineParam === "qianwen" || engineParam === "xiaomi" ? engineParam : "volcengine";
+    engineParam === "qianwen" || engineParam === "xiaomi" || engineParam === "zhipu"
+      ? engineParam
+      : "volcengine";
   // undefined = 设置未加载完成，与未配置同走引导卡（保守态）
   const qianwenReady = useProviderConfigured("qianwen");
   const xiaomiReady = useProviderConfigured("xiaomi");
+  const zhipuReady = useProviderConfigured("zhipu");
 
   const tab: TabKey = TTS_CHANNELS.some((c) => c.key === params.get("tab"))
     ? (params.get("tab") as TabKey)
@@ -50,7 +55,7 @@ export default function TTSPage() {
   const info = TTS_CHANNELS.find((c) => c.key === tab)!;
 
   const switchEngine = (v: Engine) => {
-    // 火山为默认态；切千问/小米仅保留 engine 参数，通道 Tab 态一并清掉
+    // 火山为默认态；切云端引擎仅保留 engine 参数，通道 Tab 态一并清掉
     if (v === "volcengine") setParams({});
     else setParams({ engine: v });
   };
@@ -65,7 +70,7 @@ export default function TTSPage() {
     <>
       <PageHeader
         title="语音合成"
-        description="多引擎语音合成：火山引擎三通道 / 千问平台 / 小米 MiMo"
+        description="多引擎语音合成：火山引擎三通道 / 千问 / 小米 / 智谱"
         actions={
           <Link
             to="/history"
@@ -103,6 +108,19 @@ export default function TTSPage() {
               <p className="text-sm text-fg-2">尚未配置小米 MiMo 凭证。</p>
               <Link to="/settings" className="text-xs text-accent hover:opacity-80">
                 去设置页配置小米 API Key →
+              </Link>
+            </CardBody>
+          </Card>
+        )
+      ) : engine === "zhipu" ? (
+        zhipuReady ? (
+          <ZhipuTTSPanel />
+        ) : (
+          <Card>
+            <CardBody className="space-y-2">
+              <p className="text-sm text-fg-2">尚未配置智谱开放平台凭证。</p>
+              <Link to="/settings" className="text-xs text-accent hover:opacity-80">
+                去设置页配置智谱 API Key →
               </Link>
             </CardBody>
           </Card>

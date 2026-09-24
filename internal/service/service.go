@@ -23,6 +23,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
 	"github.com/yann0917/voxbox/internal/provider/xiaomi"
+	"github.com/yann0917/voxbox/internal/provider/zhipu"
 	"github.com/yann0917/voxbox/internal/store"
 	"github.com/yann0917/voxbox/internal/task"
 )
@@ -86,6 +87,9 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 		return nil, err
 	}
 	if err := xiaomi.RegisterAll(reg, *cfg, dataDir); err != nil {
+		return nil, err
+	}
+	if err := zhipu.RegisterAll(reg, *cfg, dataDir); err != nil {
 		return nil, err
 	}
 	if err := gsgc.RegisterAll(reg, *cfg, dataDir); err != nil {
@@ -228,6 +232,10 @@ func applyCardFields(nc *config.Config, name string, fields map[string]string) {
 		if v, ok := get("api_key"); ok && v != "" {
 			nc.Xiaomi.APIKey = v
 		}
+	case "zhipu":
+		if v, ok := get("api_key"); ok && v != "" {
+			nc.Zhipu.APIKey = v
+		}
 	}
 }
 
@@ -242,10 +250,12 @@ func (s *Service) reloadCard(name string, nc config.Config) {
 		qianwen.ReRegisterAll(s.reg, nc, nc.DataDir)
 	case "xiaomi":
 		xiaomi.ReRegisterAll(s.reg, nc, nc.DataDir)
+	case "zhipu":
+		zhipu.ReRegisterAll(s.reg, nc, nc.DataDir)
 	}
 }
 
-// ReloadDiskConfig 从磁盘配置热应用运行期可变段：火山/千问/小米凭证 + 对象存储。
+// ReloadDiskConfig 从磁盘配置热应用运行期可变段：火山/千问/小米/智谱凭证 + 对象存储。
 // 配置文件监听（config.Watch）的回调路径：服务运行中另一终端 voxbox config set、
 // 手工编辑 config.yaml 的变更即时生效，与 Web 设置保存（SaveProviderFields/SaveStorage
 // 同步热应用）殊途同归。仅替换这些段：端口与数据目录是启动期属性（监听已绑定、
@@ -258,11 +268,13 @@ func (s *Service) ReloadDiskConfig(disk *config.Config) {
 	nc.MVSep = disk.MVSep
 	nc.Qianwen = disk.Qianwen
 	nc.Xiaomi = disk.Xiaomi
+	nc.Zhipu = disk.Zhipu
 	s.cfg.Store(&nc)
 	volcengine.ReRegisterAll(s.reg, nc, nc.DataDir)
 	mvsep.ReRegisterAll(s.reg, nc, nc.DataDir)
 	qianwen.ReRegisterAll(s.reg, nc, nc.DataDir)
 	xiaomi.ReRegisterAll(s.reg, nc, nc.DataDir)
+	zhipu.ReRegisterAll(s.reg, nc, nc.DataDir)
 	s.rebuildStorageClient(nc.Storage)
 }
 
@@ -518,6 +530,22 @@ func (s *Service) TestQianwenConnection() (string, bool) {
 	client := qianwen.NewTTSClient(key, qianwen.BaseURL)
 	if _, err := client.Synthesize(ctx, qianwen.TTSReq{
 		Model: "qwen3-tts-flash", Text: "测", Voice: qianwen.DefaultVoice,
+	}); err != nil {
+		return err.Error(), false
+	}
+	return "连接成功", true
+}
+
+// TestZhipuConnection 智谱连通性探测：极短文本合成（消耗少量额度，同千问/小米模式）。
+func (s *Service) TestZhipuConnection() (string, bool) {
+	key := s.cfg.Load().Zhipu.APIKey
+	if key == "" {
+		return "未配置智谱 API Key：请执行 voxbox config set zhipu.api_key 或在 Web 设置页配置", false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := zhipu.NewTTSClient(key, zhipu.BaseURL).Synthesize(ctx, zhipu.TTSSynthesizeReq{
+		Text: "测", Voice: zhipu.DefaultVoice,
 	}); err != nil {
 		return err.Error(), false
 	}

@@ -296,3 +296,39 @@ func TestLoadXiaomi(t *testing.T) {
 		t.Error("List() 缺 xiaomi.api_key 行")
 	}
 }
+
+// TestLoadZhipu 读取 zhipu.api_key 凭证并确认 List() 打码列出（同 TestLoadQianwen 口径）。
+func TestLoadZhipu(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VOXBOX_HOME", dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".voxbox"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	yaml := "zhipu:\n  api_key: zp-key-789\n"
+	if err := os.WriteFile(filepath.Join(dir, ".voxbox", "config.yaml"), []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Zhipu.APIKey != "zp-key-789" {
+		t.Errorf("Zhipu.APIKey = %q, 期望 zp-key-789", cfg.Zhipu.APIKey)
+	}
+	kvs, err := List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, kv := range kvs {
+		if kv.Key == "zhipu.api_key" {
+			found = true
+			if kv.Value == "zp-key-789" || !strings.Contains(kv.Value, "*") {
+				t.Errorf("zhipu.api_key 应打码列出, got %q", kv.Value)
+			}
+		}
+	}
+	if !found {
+		t.Error("List() 缺 zhipu.api_key 行")
+	}
+}

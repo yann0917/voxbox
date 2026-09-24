@@ -21,7 +21,7 @@ func TestProviderCardsValid(t *testing.T) {
 		}
 		seen[c.Name] = true
 	}
-	for _, want := range []string{"volcengine", "mediakit", "mvsep", "qianwen", "xiaomi", "audiotool", "gsgc"} {
+	for _, want := range []string{"volcengine", "mediakit", "mvsep", "qianwen", "xiaomi", "zhipu", "audiotool", "gsgc"} {
 		if !seen[want] {
 			t.Errorf("缺少卡: %s", want)
 		}
@@ -73,6 +73,12 @@ func TestCardConfigured(t *testing.T) {
 	}
 	if cardConfigured("xiaomi", map[string]string{}) {
 		t.Error("小米空 key 不应视为已配置")
+	}
+	if !cardConfigured("zhipu", map[string]string{"api_key": "k"}) {
+		t.Error("智谱配 key 应视为已配置")
+	}
+	if cardConfigured("zhipu", map[string]string{}) {
+		t.Error("智谱空 key 不应视为已配置")
 	}
 }
 

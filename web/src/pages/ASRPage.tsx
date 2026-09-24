@@ -64,14 +64,15 @@ const URL_HINT: Record<"standard" | "idle" | "flash", string> = {
   flash: "公网音频地址（wav/mp3/ogg/spx/amr/aac/m4a），最大 100MB / 2 小时",
 };
 
-/** 识别引擎：火山引擎（一句话/标准/闲时/极速） / 千问平台文件转写 / 小米 MiMo 同步转写 */
-type Engine = "volcengine" | "qianwen" | "xiaomi";
+/** 识别引擎：火山引擎（一句话/标准/闲时/极速） / 千问平台文件转写 / 小米 MiMo 同步转写 / 智谱短音频 */
+type Engine = "volcengine" | "qianwen" | "xiaomi" | "zhipu";
 
 /** 引擎页签：恒可点（TabItem 无 disabled），未配置凭证时切过去渲染设置引导卡（与 TTSPage 同款） */
 const ENGINE_TABS: TabItem<Engine>[] = [
   { value: "volcengine", label: "火山引擎" },
   { value: "qianwen", label: "千问平台" },
   { value: "xiaomi", label: "小米 MiMo" },
+  { value: "zhipu", label: "智谱" },
 ];
 
 /** 千问 filetrans 转写模型（与后端 ParamSpecs 枚举一致） */
@@ -100,6 +101,10 @@ const MI_LANGUAGES: { value: string; label: string }[] = [
 /** 小米引擎白名单与载荷上限：官方仅收 mp3/wav，base64 后 ≤10MB（原始 7.5MB） */
 const MI_EXTS = ["mp3", "wav"];
 const MI_MAX_BYTES = 7.5 * 1024 * 1024;
+
+/** 智谱引擎：glm-asr-2512 短音频转写，wav/mp3 ≤25MB、≤30 秒（官方口径） */
+const ZP_EXTS = ["mp3", "wav"];
+const ZP_MAX_BYTES = 25 * 1024 * 1024;
 
 type Segment = { text: string; start_ms: number; end_ms: number };
 
@@ -205,14 +210,23 @@ export default function ASRPage() {
   // undefined = 设置未加载完成，与未配置同走引导卡（保守态，与 TTSPage 一致）
   const qianwenReady = useProviderConfigured("qianwen");
   const xiaomiReady = useProviderConfigured("xiaomi");
-  // 火山无需凭证卡；千问/小米未配置（或未加载完）时切过去渲染设置引导卡
-  const engineReady = engine === "qianwen" ? qianwenReady : engine === "xiaomi" ? xiaomiReady : true;
+  const zhipuReady = useProviderConfigured("zhipu");
+  // 火山无需凭证卡；云端引擎未配置（或未加载完）时切过去渲染设置引导卡
+  const engineReady =
+    engine === "qianwen"
+      ? qianwenReady
+      : engine === "xiaomi"
+        ? xiaomiReady
+        : engine === "zhipu"
+          ? zhipuReady
+          : true;
 
   /* 本地上传白名单：火山一句话版（WS 直发）mp3/wav/ogg/pcm；标准/闲时/极速与千问（对象存储
      中转，按 URL 扩展名推断格式）白名单一致 wav/mp3/ogg/spx/amr/aac/m4a；极速版另有 100MB 上限。 */
   const isXiaomi = engine === "xiaomi";
+  const isZhipu = engine === "zhipu";
   const sentenceFile = engine === "volcengine" && version === "sentence";
-  const allowedExts = isXiaomi ? MI_EXTS : sentenceFile ? SENTENCE_EXTS : URL_VERSION_EXTS;
+  const allowedExts = isZhipu ? ZP_EXTS : isXiaomi ? MI_EXTS : sentenceFile ? SENTENCE_EXTS : URL_VERSION_EXTS;
 
   /* WS 事件驱动当前任务进度；终态拉详情拿产物与 summary.segments */
   useEffect(() => {
@@ -291,8 +305,8 @@ export default function ASRPage() {
     if (v === "qianwen") {
       if (!storageEnabled) setMode("url");
       else setMode((m) => (m === "recording" ? "upload" : m));
-    } else if (v === "xiaomi") {
-      // 小米本地上传直读、URL 直下，两通道恒可用；录音 Tab 不提供，回落上传
+    } else if (v === "xiaomi" || v === "zhipu") {
+      // 小米/智谱本地上传直传、URL 直下，两通道恒可用；录音 Tab 不提供，回落上传
       setMode((m) => (m === "recording" ? "upload" : m));
     } else if (version === "sentence") {
       // 回到火山：一句话版没有 URL 通道（与 changeVersion 的规则一致）
@@ -304,7 +318,11 @@ export default function ASRPage() {
     mutationFn: async () => {
       // params 按引擎分支：火山 = language/version/hotwords；千问 = filetrans 四参（语言空串 = 自动识别）
       let params: Record<string, unknown>;
-      if (engine === "xiaomi") {
+      if (engine === "zhipu") {
+        // 智谱短音频转写：仅热词（prompt 前端不暴露），音频经 file_ids/artifact_input 通道进 Files
+        params = { prompt: "" };
+        if (hotwords.trim()) params.hotwords = hotwords.trim();
+      } else if (engine === "xiaomi") {
         // 小米同步转写：仅语种（空串 = 服务端自动识别），音频经 file_ids/artifact_input 通道进 Files
         params = { language: language.trim() };
       } else if (engine === "qianwen") {
@@ -324,8 +342,8 @@ export default function ASRPage() {
         if (hotwords.trim()) params.hotwords = hotwords.trim();
       }
       if (artifactMode) {
-        // artifact_input 模式：产物由服务端解析为本地文件（Files["audio"]），两引擎通用
-        // （千问侧经 EnsureURLInput 走对象存储中转）；params 不带 url/file_ids。
+        // artifact_input 模式：产物由服务端解析为本地文件（Files["audio"]），各引擎通用
+        // （千问侧经 EnsureURLInput 走对象存储中转，小米/智谱直传）；params 不带 url/file_ids。
         return fetchJSON<{ task_id: string }>("/api/tasks", {
           method: "POST",
           body: JSON.stringify({ provider: engine, tool: "asr", params, artifact_input: artifactId }),
@@ -378,11 +396,13 @@ export default function ASRPage() {
     const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
     if (!allowedExts.includes(ext)) {
       setFileError(
-        isXiaomi
-          ? `不支持的格式 .${ext || "未知"}：小米引擎仅支持 mp3 / wav`
-          : sentenceFile
-            ? `不支持的格式 .${ext || "未知"}：仅支持 mp3 / wav / ogg / pcm`
-            : `不支持的格式 .${ext || "未知"}：支持 wav / mp3 / ogg / spx / amr / aac / m4a`,
+        isZhipu
+          ? `不支持的格式 .${ext || "未知"}：智谱引擎仅支持 mp3 / wav（≤30 秒）`
+          : isXiaomi
+            ? `不支持的格式 .${ext || "未知"}：小米引擎仅支持 mp3 / wav`
+            : sentenceFile
+              ? `不支持的格式 .${ext || "未知"}：仅支持 mp3 / wav / ogg / pcm`
+              : `不支持的格式 .${ext || "未知"}：支持 wav / mp3 / ogg / spx / amr / aac / m4a`,
       );
       return;
     }
@@ -392,6 +412,10 @@ export default function ASRPage() {
     }
     if (isXiaomi && f.size > MI_MAX_BYTES) {
       setFileError(`小米引擎仅支持 7.5MB 内音频（当前 ${(f.size / 1024 / 1024).toFixed(1)}MB）`);
+      return;
+    }
+    if (isZhipu && f.size > ZP_MAX_BYTES) {
+      setFileError(`智谱引擎仅支持 25MB 内音频（当前 ${(f.size / 1024 / 1024).toFixed(0)}MB）`);
       return;
     }
     setFileError("");
@@ -476,16 +500,18 @@ export default function ASRPage() {
       ? "公网音频地址，异步转写，最大 2GB / 12 小时"
       : isXiaomi
         ? "公网音频地址（mp3/wav），同步转写，音频 ≤7.5MB"
-        : version === "sentence"
-          ? undefined
-          : URL_HINT[version];
+        : isZhipu
+          ? "公网音频地址（mp3/wav），同步转写，≤25MB / 30 秒"
+          : version === "sentence"
+            ? undefined
+            : URL_HINT[version];
   const seekTrack = { title: playTitle, sub: playSub };
 
   return (
     <>
       <PageHeader
         title="语音识别"
-        description="多引擎音频转文字（火山 / 千问 / 小米），输出分句时间戳与 SRT 字幕"
+        description="多引擎音频转文字（火山 / 千问 / 小米 / 智谱），输出分句时间戳与 SRT 字幕"
         actions={
           <Link
             to="/history"
@@ -506,9 +532,11 @@ export default function ASRPage() {
       {!engineReady ? (
         <Card>
           <CardBody className="space-y-2">
-            <p className="text-sm text-fg-2">尚未配置{engine === "qianwen" ? "千问平台" : "小米 MiMo"}凭证。</p>
+            <p className="text-sm text-fg-2">
+              尚未配置{engine === "qianwen" ? "千问平台" : engine === "xiaomi" ? "小米 MiMo" : "智谱开放平台"}凭证。
+            </p>
             <Link to="/settings" className="text-xs text-accent hover:opacity-80">
-              去设置页配置{engine === "qianwen" ? "千问" : "小米"} API Key →
+              去设置页配置{engine === "qianwen" ? "千问" : engine === "xiaomi" ? "小米" : "智谱"} API Key →
             </Link>
           </CardBody>
         </Card>
@@ -544,6 +572,7 @@ export default function ASRPage() {
                       提交时以 artifact_input 通道传入该产物，提交后可在下方试听源音轨。
                       {engine === "qianwen" && " 千问引擎会将本地产物经对象存储中转后转写。"}
                       {isXiaomi && " 小米引擎直接读取本地产物转写（mp3/wav）。"}
+                      {isZhipu && " 智谱引擎直传本地产物转写（mp3/wav，≤30 秒）。"}
                     </p>
                   </div>
                 ) : (
@@ -572,6 +601,24 @@ export default function ASRPage() {
                           />
                         )}
                       </Field>
+                    ) : isZhipu ? (
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted">
+                          glm-asr-2512 短音频转写：返回纯文本（无时间戳，不产 SRT）；本地文件直传，无需对象存储。
+                        </p>
+                        <Field label="热词" aside="可选" hint="逗号分隔，用于提升专有名词识别率">
+                          {({ id, ...rest }) => (
+                            <Input
+                              id={id}
+                              value={hotwords}
+                              onChange={(e) => setHotwords(e.target.value)}
+                              placeholder="智谱,语音识别"
+                              {...rest}
+                            />
+                          )}
+                        </Field>
+                        <DictFill field="hotwords" onFill={setHotwords} />
+                      </div>
                     ) : isXiaomi ? (
                       <p className="text-xs text-muted">
                         mimo-v2.5-asr 同步转写：返回纯文本（无时间戳，不产 SRT）；本地文件直读，无需对象存储。
@@ -611,7 +658,7 @@ export default function ASRPage() {
 
                     <Tabs<Mode>
                       items={
-                        isXiaomi
+                        isXiaomi || isZhipu
                           ? [
                               { value: "url" as const, label: "音频 URL", icon: <Link2 size={13} strokeWidth={1.75} /> },
                               { value: "upload" as const, label: "本地上传", icon: <Upload size={13} strokeWidth={1.75} /> },
@@ -674,7 +721,9 @@ export default function ASRPage() {
                                   ? "支持 wav / mp3 / ogg / pcm / spx / amr / aac / m4a"
                                   : isXiaomi
                                     ? "仅支持 mp3 / wav，7.5MB 内（base64 直传，无需对象存储）"
-                                    : "支持 wav / mp3 / ogg / spx / amr / aac / m4a；提交后自动经对象存储中转"}
+                                    : isZhipu
+                                      ? "仅支持 mp3 / wav，25MB 内、30 秒内（multipart 直传）"
+                                      : "支持 wav / mp3 / ogg / spx / amr / aac / m4a；提交后自动经对象存储中转"}
                               </p>
                             </>
                           )}
@@ -797,6 +846,7 @@ export default function ASRPage() {
                 aside={<span className="micro">{engine} · asr</span>}
               />
               <CardBody className="space-y-4">
+                {isZhipu ? null : (
                 <Field
                   label="语言"
                   hint={
@@ -804,7 +854,9 @@ export default function ASRPage() {
                       ? "留空自动识别语种"
                       : isXiaomi
                         ? "留空自动识别（官方支持中/英显式指定）"
-                        : "留空自动识别：中文、英文及上海/闽南/四川/陕西/粤语方言"
+                        : isZhipu
+                          ? "智谱自动识别多语言，无需指定"
+                          : "留空自动识别：中文、英文及上海/闽南/四川/陕西/粤语方言"
                   }
                 >
                   {({ id, ...rest }) => (
@@ -823,6 +875,7 @@ export default function ASRPage() {
                     </Select>
                   )}
                 </Field>
+                )}
                 {engine === "volcengine" && (
                   <div className="space-y-2">
                     <Field label="热词" aside="可选" hint="逗号分隔，用于提升专有名词识别率">

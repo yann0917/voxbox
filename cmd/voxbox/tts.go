@@ -47,6 +47,8 @@ func newTTSCommand() *cobra.Command {
 					voice = "Cherry"
 				case "xiaomi":
 					voice = "" // 后端回落官方默认 mimo_default
+				case "zhipu":
+					voice = "tongtong"
 				}
 			}
 			var params map[string]any
@@ -63,16 +65,25 @@ func newTTSCommand() *cobra.Command {
 				// voicedesign 由 --instructions 音色描述生成（tool 层校验必填）
 				params = map[string]any{"text": text, "voice": voice, "format": format,
 					"model": mimoModel, "instructions": instructions}
+			case "zhipu":
+				// 智谱产物固定 wav（response_format 默认 pcm 不可直接播放）；speed/volume 可选
+				params = map[string]any{"text": text, "voice": voice}
+				if speedRatio != 1.0 {
+					params["speed"] = speedRatio
+				}
+				if volumeRatio != 1.0 {
+					params["volume"] = volumeRatio
+				}
 			default:
-				return fmt.Errorf("不支持的引擎 %q（可选 volcengine / qianwen / xiaomi）", engine)
+				return fmt.Errorf("不支持的引擎 %q（可选 volcengine / qianwen / xiaomi / zhipu）", engine)
 			}
 			return runToolSync(c, engine, "tts", params, nil, outPath, jsonOut)
 		},
 	}
 	f := cmd.Flags()
 	f.StringVar(&textFile, "file", "", "从文件读取文本")
-	f.StringVar(&engine, "engine", "volcengine", "合成引擎: volcengine（火山引擎）| qianwen（千问）| xiaomi（小米 MiMo）")
-	f.StringVar(&voice, "voice", "zh_female_cancan_mars_bigtts", "音色 ID（--engine qianwen 默认 Cherry，可选 48 官方音色；--engine xiaomi 默认 mimo_default，可选 9 官方预置音色）")
+	f.StringVar(&engine, "engine", "volcengine", "合成引擎: volcengine（火山引擎）| qianwen（千问）| xiaomi（小米 MiMo）| zhipu（智谱）")
+	f.StringVar(&voice, "voice", "zh_female_cancan_mars_bigtts", "音色 ID（--engine qianwen 默认 Cherry，可选 48 官方音色；--engine xiaomi 默认 mimo_default，可选 9 官方预置音色；--engine zhipu 默认 tongtong，支持官方与复刻音色）")
 	f.StringVar(&format, "format", "mp3", "音频格式: mp3|wav|pcm|ogg_opus（火山全支持；小米仅 wav|mp3；千问由上游决定）")
 	f.StringVar(&qwenModel, "qwen-model", "qwen3-tts-flash", "千问模型: qwen3-tts-flash|qwen3-tts-instruct-flash（仅 --engine qianwen 生效）")
 	f.StringVar(&mimoModel, "mimo-model", "mimo-v2.5-tts", "小米模型: mimo-v2.5-tts|mimo-v2.5-tts-voicedesign（仅 --engine xiaomi 生效）")

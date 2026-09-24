@@ -14,10 +14,11 @@
 | 语音妙记 | 音视频 URL 转结构化纪要：转写+说话人、全文总结、待办/问答提取、章节总结、中英翻译（≤2h、<1G） | HTTP 异步（lark submit/query，结果链接 24h 有效立即转存） |
 | 千问平台语音 | qwen3-tts 非流式合成（48 官方音色、instruct 模型风格指令）+ qwen3-asr 录音文件转写（长音频 ≤12h、说话人分离、SRT 字幕） | DashScope 兼容 HTTP（固定入口，Bearer API Key） |
 | 小米 MiMo 语音 | MiMo-V2.5-TTS 系列合成（9 官方预置音色、自然语言风格指令、文本描述定制音色 voicedesign）+ mimo-v2.5-asr 同步转写（mp3/wav ≤7.5MB，中英自动识别，输出纯文本） | OpenAI 兼容 chat/completions（固定入口，Bearer API Key） |
+| 智谱平台语音 | glm-tts 合成（官方 7 音色 + 复刻音色、语速/音量调节、wav）+ glm-asr-2512 短音频转写（wav/mp3 ≤25MB/30 秒、热词与上下文、输出纯文本）+ 音色复刻/删除（接口对接，前端暂未展示） | REST（固定入口 open.bigmodel.cn，Bearer API Key） |
 
 ## 特性
 
-- **双形态**：`voxbox tts/asr/podcast/separate/translate/minutes` 命令行直用（`tts`/`asr` 均支持 `--engine volcengine|qianwen|xiaomi` 三引擎，`separate --engine mvsep|gsgc|zhuanhuanmao|mediakit` 四引擎切换；脚本/agent 友好，`--json` 机器可读输出）；`voxbox serve` 启动 Web 控制台。
+- **双形态**：`voxbox tts/asr/podcast/separate/translate/minutes` 命令行直用（`tts`/`asr` 均支持 `--engine volcengine|qianwen|xiaomi|zhipu` 四引擎，`separate --engine mvsep|gsgc|zhuanhuanmao|mediakit` 四引擎切换；脚本/agent 友好，`--json` 机器可读输出）；`voxbox serve` 启动 Web 控制台。
 - **单二进制**：前端产物 go:embed 内嵌，goroutine 任务池 + SQLite 状态，零外部依赖部署；纯 Go sqlite 驱动，可交叉编译（`make dist`）。
 - **可扩展**：Provider 抽象层，新平台/新工具以「实现接口 + 注册」接入，前端表单与 CLI 由参数 schema 驱动。
 - **Agent 可调用**：`voxbox skill install` 把 skill 装到本机 agent 目录（WorkBuddy / Claude Code / CodeBuddy），agent 即可按 CLI 调用全部能力——**skill 已 go:embed 进二进制，只分发可执行文件也自带**；`voxbox mcp` 提供 stdio MCP server（15 个工具，见 [docs/mcp.md](docs/mcp.md)），Claude Code 等 MCP 客户端可直连。
@@ -49,6 +50,9 @@ make all
 # 配置小米 MiMo 凭证（MiMo-V2.5-TTS 合成，与火山/千问凭证相互独立）
 ./bin/voxbox config set xiaomi.api_key <API Key>
 
+# 配置智谱开放平台凭证（glm-tts 合成 / glm-asr 短音频转写，与火山/千问/小米凭证相互独立）
+./bin/voxbox config set zhipu.api_key <API Key>
+
 # CLI 合成（机器可读输出，退出码 0 成功）
 ./bin/voxbox tts "你好，voxbox" --out /tmp/hello.mp3 --json
 
@@ -75,6 +79,8 @@ make all
 # 小米引擎（tts --engine xiaomi；音色缺省 mimo_default，--mimo-model voicedesign 时 --instructions 为音色描述）
 ./bin/voxbox tts "你好，小米" --engine xiaomi --voice 冰糖 --out /tmp/mimo.mp3 --json
 ./bin/voxbox asr /tmp/rec.mp3 --engine xiaomi --out /tmp/xiaomi.txt --json   # 小米同步转写（mp3/wav ≤7.5MB，本地直读无需对象存储）
+./bin/voxbox tts "你好，智谱" --engine zhipu --voice tongtong --out /tmp/zhipu.wav --json   # 智谱合成（wav，官方/复刻音色，语速 --speed-ratio 音量 --volume-ratio）
+./bin/voxbox asr /tmp/short.mp3 --engine zhipu --out /tmp/zhipu.txt --json   # 智谱短音频转写（wav/mp3 ≤25MB/30 秒，--hotwords 热词）
 
 # 主题一键生成双人播客（--speakers 必填：两个音色 ID 逗号分隔，用 voxbox voices list 查询，支持 --scene/--lang 筛选）
 ./bin/voxbox podcast "用五分钟聊聊本地大模型" \

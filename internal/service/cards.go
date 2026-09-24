@@ -13,6 +13,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
 	"github.com/yann0917/voxbox/internal/provider/xiaomi"
+	"github.com/yann0917/voxbox/internal/provider/zhipu"
 )
 
 // providerCards 全部卡声明（按 Order 排序）。新增厂商 = 包内声明 + 此处加一行。
@@ -23,6 +24,7 @@ func providerCards() []provider.ProviderInfo {
 		mvsep.ProviderCard(),
 		qianwen.ProviderCard(),
 		xiaomi.ProviderCard(),
+		zhipu.ProviderCard(),
 		audiotool.ProviderCard(),
 		gsgc.ProviderCard(),
 	}
@@ -43,6 +45,7 @@ func cardFieldValues(cfg *config.Config) map[string]map[string]string {
 		"mvsep":    {"api_token": cfg.MVSep.APIToken, "base_url": cfg.MVSep.BaseURL},
 		"qianwen":  {"api_key": cfg.Qianwen.APIKey},
 		"xiaomi":   {"api_key": cfg.Xiaomi.APIKey},
+		"zhipu":    {"api_key": cfg.Zhipu.APIKey},
 	}
 }
 
@@ -51,7 +54,7 @@ func cardConfigured(name string, vals map[string]string) bool {
 	switch name {
 	case "volcengine":
 		return (vals["app_id"] != "" && vals["access_token"] != "") || vals["api_key"] != ""
-	case "mediakit", "qianwen", "xiaomi":
+	case "mediakit", "qianwen", "xiaomi", "zhipu":
 		return vals["api_key"] != ""
 	case "mvsep":
 		return vals["api_token"] != ""

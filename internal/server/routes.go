@@ -17,6 +17,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider/mvsep"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
+	"github.com/yann0917/voxbox/internal/provider/zhipu"
 	"github.com/yann0917/voxbox/internal/store"
 	"github.com/yann0917/voxbox/internal/subtitle"
 	"github.com/yann0917/voxbox/internal/task"
@@ -553,7 +554,7 @@ type providerTest struct {
 
 func (s *Server) testConnection(c *gin.Context) {
 	// 按卡动态探测：volcengine 极短合成、mediakit 鉴权探测、mvsep token+免费额度、
-	// qianwen/xiaomi 极短合成；storage 桶探活（HeadBucket 不计费）。
+	// qianwen/xiaomi/zhipu 极短合成；storage 桶探活（HeadBucket 不计费）。
 	tests := []struct {
 		name string
 		fn   func() (string, bool)
@@ -563,6 +564,7 @@ func (s *Server) testConnection(c *gin.Context) {
 		{"mvsep", s.svc.TestMVSepConnection},
 		{"qianwen", s.svc.TestQianwenConnection},
 		{"xiaomi", s.svc.TestXiaomiConnection},
+		{"zhipu", s.svc.TestZhipuConnection},
 	}
 	results := make([]providerTest, 0, len(tests))
 	for _, tt := range tests {
@@ -631,10 +633,25 @@ func (s *Server) mvsepSeparationGet(c *gin.Context) {
 }
 
 // listVoices 音色列表：?provider=qianwen 返回千问非实时音色（含官方试听 URL 与模型支持矩阵），
+// ?provider=zhipu 运行时拉取智谱音色（官方 + 复刻，含试听 URL；未配置凭证回落官方静态表），
 // 缺省为火山引擎音色（场景/语种/方言筛选字段）。
 func (s *Server) listVoices(c *gin.Context) {
-	if c.Query("provider") == "qianwen" {
+	switch c.Query("provider") {
+	case "qianwen":
 		ok(c, gin.H{"voices": qianwen.Voices()})
+		return
+	case "zhipu":
+		if key := s.svc.Config().Zhipu.APIKey; key != "" {
+			voices, err := zhipu.NewVoiceClient(key, zhipu.BaseURL).List(c.Request.Context(), "", "")
+			if err == nil && len(voices) > 0 {
+				ok(c, gin.H{"voices": voices})
+				return
+			}
+			// 配置了 key 但拉取失败：报错暴露凭证/网络问题，避免静默降级掩盖配置错误
+			failErr(c, err)
+			return
+		}
+		ok(c, gin.H{"voices": zhipu.OfficialVoices})
 		return
 	}
 	ok(c, gin.H{"voices": volcengine.Voices()})
