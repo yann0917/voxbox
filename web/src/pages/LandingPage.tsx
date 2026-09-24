@@ -83,9 +83,9 @@ export default function LandingPage() {
         <div className="mx-auto max-w-[1100px] px-4 py-20 md:px-8 md:py-28">
           <p className="micro mb-4 text-accent">一键部署 · 单二进制 · 数据自有</p>
           <h1 className="max-w-3xl text-3xl font-semibold leading-tight tracking-tight md:text-5xl md:leading-[1.15]">
-            语音工具箱，
+            多引擎语音工具箱，
             <br />
-            像一间暖灯长明的工作室
+            自托管，开箱即用
           </h1>
           <p className="mt-5 max-w-2xl text-sm leading-relaxed text-fg-2 md:text-base">
             合成、识别、分离、翻译、妙记、字幕——火山引擎与千问平台双云端引擎，加上本地 ffmpeg
