@@ -502,7 +502,7 @@ function WaveEditor({ src, sel, onSelChange }: {
 
       const css = getComputedStyle(canvas);
       const idle = css.getPropertyValue("--wave-idle").trim() || "rgba(240,234,222,.16)";
-      const accent = css.getPropertyValue("--accent").trim() || "#22d3ee";
+      const accent = css.getPropertyValue("--accent").trim() || "#e2a35a";
       const x0 = dur > 0 ? (Math.min(sel.start, dur) / dur) * w : 0;
       const x1 = dur > 0 ? (Math.min(sel.end, dur) / dur) * w : w;
 

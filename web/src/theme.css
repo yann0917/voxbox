@@ -4,7 +4,8 @@
    voxbox 设计令牌
    源文件：design-system/voxbox/MASTER.md —— 改这里前先改那里
    暗色为默认（:root），亮色为覆盖（:root.light）
-   方向：深空午夜蓝 + 电光青信号（材质三律见 MASTER §0/§1.3）
+   方向：暗夜烘焙（暖棕黑 + 焦糖铜）× 暖纸咖啡（亮色对齐 R2T2 demo）
+   （材质三律见 MASTER §0/§1.3）
    ============================================================ */
 
 @theme inline {
@@ -24,7 +25,7 @@
   --color-fg-2: var(--fg-2);
   --color-muted: var(--muted);
 
-  /* 信号色：青=操作，绿=电平/成功，红=错误，黄=警示 */
+  /* 信号色：accent=操作，绿=电平/成功，红=错误，黄=警示 */
   --color-accent: var(--accent);
   --color-accent-hi: var(--accent-hi);
   --color-accent-ink: var(--accent-ink);
@@ -50,64 +51,64 @@
   --ease-out-quint: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-/* ---------------- 暗色（默认）：深空午夜蓝 ---------------- */
+/* ---------------- 暗色（默认）：暗夜烘焙间（深烘咖啡 + 焦糖铜） ---------------- */
 :root {
-  --bg: #070b15;
-  --panel: #0c1322;
-  --raise: #101a2e;
-  --raise-2: #16233c;
-  --inset: #060b16;
-  --line: rgba(157, 200, 255, 0.09);
-  --line-strong: rgba(157, 200, 255, 0.18);
-  --fg: #e9f1ff;
-  --fg-2: #a3b4d0;
-  --muted: #66799a;
-  --accent: #22d3ee;
-  --accent-hi: #7debfa;
-  --accent-ink: #05242b;
-  --meter: #34d399;
-  --warn: #f5c042;
-  --danger: #ff6b7a;
+  --bg: #161009;
+  --panel: #1f1810;
+  --raise: #271e13;
+  --raise-2: #322718;
+  --inset: #100b05;
+  --line: rgba(240, 205, 155, 0.11);
+  --line-strong: rgba(240, 205, 155, 0.22);
+  --fg: #f6ecdd;
+  --fg-2: #cdb697;
+  --muted: #937f66;
+  --accent: #e2a35a;
+  --accent-hi: #f2c184;
+  --accent-ink: #2a1a06;
+  --meter: #9fbe6f;
+  --warn: #f0c04c;
+  --danger: #ff6d5c;
 
-  /* 材质：顶缘冷光 / 凹槽阴影 / 波形 idle */
-  --edge-light: rgba(190, 224, 255, 0.07);
+  /* 材质：顶缘暖光 / 凹槽阴影 / 波形 idle */
+  --edge-light: rgba(255, 225, 180, 0.06);
   --inset-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
-  --wave-idle: rgba(233, 241, 255, 0.16);
+  --wave-idle: rgba(246, 236, 221, 0.16);
   --noise-opacity: 0.025;
 
-  --elev-1: 0 1px 2px rgba(2, 8, 20, 0.55), inset 0 1px 0 rgba(190, 224, 255, 0.06);
-  --elev-2: 0 8px 24px -8px rgba(2, 8, 20, 0.7), inset 0 1px 0 rgba(190, 224, 255, 0.06);
-  --elev-3: 0 24px 48px -12px rgba(1, 5, 14, 0.8);
+  --elev-1: 0 1px 2px rgba(6, 3, 1, 0.55), inset 0 1px 0 rgba(255, 225, 180, 0.06);
+  --elev-2: 0 8px 24px -8px rgba(6, 3, 1, 0.7), inset 0 1px 0 rgba(255, 225, 180, 0.06);
+  --elev-3: 0 24px 48px -12px rgba(4, 2, 0, 0.8);
   color-scheme: dark;
 }
 
-/* ---------------- 亮色：破晓的同一间信号站（冷雾白） ---------------- */
+/* ---------------- 亮色：暖纸上的铅字（暖纸 + 深咖啡，对齐 R2T2 demo） ---------------- */
 :root.light {
-  --bg: #e9eef6;
-  --panel: #f2f5fa;
-  --raise: #fafcff;
-  --raise-2: #e2e9f3;
-  --inset: #dfe6f1;
-  --line: rgba(23, 48, 91, 0.13);
-  --line-strong: rgba(23, 48, 91, 0.22);
-  --fg: #0d1930;
-  --fg-2: #42536e;
-  --muted: #5b6b87;
-  --accent: #0e7490;
-  --accent-hi: #155e75;
-  --accent-ink: #ffffff;
-  --meter: #059669;
+  --bg: #f7f0e6;
+  --panel: #fcf6ec;
+  --raise: #fffaf2;
+  --raise-2: #f0e5d5;
+  --inset: #ecdfcc;
+  --line: rgba(90, 61, 38, 0.15);
+  --line-strong: rgba(90, 61, 38, 0.3);
+  --fg: #241a13;
+  --fg-2: #4e3b2d;
+  --muted: #7c6654;
+  --accent: #543521;
+  --accent-hi: #754a2b;
+  --accent-ink: #fffaf2;
+  --meter: #5a6e2d;
   --warn: #b45309;
-  --danger: #dc2626;
+  --danger: #b42318;
 
-  --edge-light: rgba(255, 255, 255, 0.7);
-  --inset-shadow: inset 0 1px 2px rgba(23, 48, 91, 0.12);
-  --wave-idle: rgba(23, 48, 91, 0.2);
-  --noise-opacity: 0.018;
+  --edge-light: rgba(255, 255, 255, 0.8);
+  --inset-shadow: inset 0 1px 2px rgba(90, 61, 38, 0.14);
+  --wave-idle: rgba(90, 61, 38, 0.22);
+  --noise-opacity: 0.02;
 
-  --elev-1: 0 1px 2px rgba(23, 48, 91, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  --elev-2: 0 8px 24px -10px rgba(23, 48, 91, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  --elev-3: 0 24px 48px -12px rgba(23, 48, 91, 0.22);
+  --elev-1: 0 1px 2px rgba(83, 51, 25, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --elev-2: 0 8px 24px -10px rgba(83, 51, 25, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --elev-3: 0 24px 48px -12px rgba(83, 51, 25, 0.24);
   color-scheme: light;
 }
 
