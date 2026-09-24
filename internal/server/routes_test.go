@@ -212,7 +212,7 @@ func doJSON(t *testing.T, ac *http.Client, method, url, body string) (int, envel
 }
 
 // providerFieldsFromSettings 从 GET /api/settings 的 providers 数组取指定卡的字段映射
-//（key → 字段对象：text/select 有 value，secret 有 has_value）。
+// （key → 字段对象：text/select 有 value，secret 有 has_value）。
 func providerFieldsFromSettings(t *testing.T, data map[string]any, card string) map[string]map[string]any {
 	t.Helper()
 	providers, _ := data["providers"].([]any)
