@@ -440,7 +440,7 @@ export default function SettingsPage() {
               />
               <CardBody className="space-y-2">
                 <p className="text-xs text-muted">{p.description}</p>
-                <p className="text-xs text-fg-2">本地运行，无需凭证、离线可用，共 {p.tools_count} 个工具。</p>
+                <p className="text-xs text-fg-2">本地运行，无需凭证，共 {p.tools_count} 个工具。</p>
               </CardBody>
             </Card>
           ))}

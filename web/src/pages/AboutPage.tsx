@@ -73,7 +73,7 @@ export default function AboutPage() {
           </p>
           <p className="text-sm leading-relaxed text-fg-2">
             命令行面向脚本与 agent（<code className="rounded bg-inset px-1.5 py-0.5 font-mono text-xs">--json</code> 输出机器可读结果，
-            退出码区分成功 / 参数 / 失败 / 凭证）；Web 控制台按「深空信号站」的调性设计，
+            退出码区分成功 / 参数 / 失败 / 凭证）；Web 控制台按「暖调工作室」的调性设计，
             提供波形试听、计费测算与任务历史。两者共享同一份数据目录与任务记录。
           </p>
         </CardBody>

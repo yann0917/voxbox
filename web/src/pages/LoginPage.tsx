@@ -56,7 +56,7 @@ export default function LoginPage() {
           </div>
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-fg">voxbox</h1>
-            <p className="mt-1 text-xs text-muted">火山引擎语音能力控制台 · 自托管部署</p>
+            <p className="mt-1 text-xs text-muted">多引擎语音工作台 · 自托管部署</p>
           </div>
         </div>
 

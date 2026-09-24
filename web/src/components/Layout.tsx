@@ -243,9 +243,9 @@ export default function Layout() {
         </nav>
         <div className={`mt-auto p-4 ${navCollapsed ? "hidden" : "hidden lg:block"}`}>
           <p className="micro leading-relaxed opacity-70">
-            火山引擎
+            多引擎
             <br />
-            语音能力控制台
+            语音工作台
           </p>
         </div>
       </aside>
