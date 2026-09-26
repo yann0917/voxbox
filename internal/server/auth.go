@@ -68,6 +68,18 @@ func toUserDTO(u *store.User) userDTO {
 	return userDTO{ID: u.ID, Username: u.Username, Role: u.Role, MustChangePassword: u.MustChangePassword, HasToken: hasToken}
 }
 
+// adminUsername 引导管理员用户名：VOXBOX_ADMIN_USERNAME（去首尾空白）优先，缺省 "admin"。
+// EnsureBootstrapAdmin（引导建行）与 desktopPrincipal（桌面免登录身份）必须同源取值，
+// 否则自定义用户名的桌面部署引导出别的行、免登录身份却找 "admin"，直接软砖。
+// 每次现读 env 不缓存：os.Getenv 开销可忽略（仅无会话/token 的请求走到），且测试
+// t.Setenv 即插即用；进程环境实际启动后不变，缓存只多一个初始化时序坑。
+func adminUsername() string {
+	if v := strings.TrimSpace(os.Getenv("VOXBOX_ADMIN_USERNAME")); v != "" {
+		return v
+	}
+	return "admin"
+}
+
 // EnsureBootstrapAdmin 首次启动（users 表为空）创建管理员：密码取 VOXBOX_ADMIN_PASSWORD
 // 环境变量（部署自动化），否则生成 10 位无歧义随机密码，由 serve 打印到控制台（仅此一次）。
 // 返回空串表示已存在用户，无需引导。
@@ -79,10 +91,7 @@ func (s *Server) EnsureBootstrapAdmin() (string, error) {
 	if n > 0 {
 		return "", nil
 	}
-	username := "admin"
-	if v := strings.TrimSpace(os.Getenv("VOXBOX_ADMIN_USERNAME")); v != "" {
-		username = v
-	}
+	username := adminUsername()
 	password := os.Getenv("VOXBOX_ADMIN_PASSWORD")
 	generated := false
 	if password == "" {
@@ -244,13 +253,14 @@ func (s *Server) sessionPrincipal(token string) *Principal {
 }
 
 // desktopPrincipal 桌面形态（VOXBOX_DESKTOP=1）免登录身份：以库内 admin 用户注入，
-// 任务归属/搜索范围与真实用户行一致；admin 行由 EnsureBootstrapAdmin 保证存在。
+// 任务归属/搜索范围与真实用户行一致；admin 行由 EnsureBootstrapAdmin 保证存在，
+// 用户名同源 adminUsername()（VOXBOX_ADMIN_USERNAME 自定义时两处一致）。
 // MustChangePassword 不透传（保持 false），首启强制改密流程自然跳过。
 func (s *Server) desktopPrincipal() *Principal {
 	if !s.desktop {
 		return nil
 	}
-	u, err := s.svc.DB().GetUserByUsername("admin")
+	u, err := s.svc.DB().GetUserByUsername(adminUsername())
 	if err != nil {
 		return nil
 	}
