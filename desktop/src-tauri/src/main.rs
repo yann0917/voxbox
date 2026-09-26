@@ -151,7 +151,8 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 }
 
 /// 启动后静默检查更新；有新版弹确认框，同意后下载安装并重启。
-/// 检查失败静默忽略（离线/仓库无 release 时不应打扰使用）。
+/// 检查失败静默忽略（离线/仓库无 release 时不应打扰使用）；下载/安装失败弹窗反馈，
+/// 留在当前版本继续可用。
 async fn check_for_updates(app: &tauri::AppHandle) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
     use tauri_plugin_updater::UpdaterExt;
@@ -179,8 +180,15 @@ async fn check_for_updates(app: &tauri::AppHandle) {
         return;
     }
     if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
-        eprintln!("更新下载/安装失败：{e}");
+        // 失败必须有可见反馈（stderr 用户看不到）：弹窗告知后停在当前版本继续可用。
+        win.dialog()
+            .message(format!("更新下载/安装失败：\n{e}"))
+            .title("VoxBox 更新")
+            .kind(MessageDialogKind::Error)
+            .blocking_show();
         return;
     }
+    // app.restart() 必须在非主线程调用才会先触发 RunEvent::Exit（回调里 kill sidecar）
+    // 再重启进程——check_for_updates 跑在 async task 即满足，勿挪到主线程（会跳过 Exit 事件）。
     app.restart();
 }
