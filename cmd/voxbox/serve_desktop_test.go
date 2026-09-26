@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -78,7 +79,7 @@ func TestServePortZeroReadyLineAndDialable(t *testing.T) {
 	_ = conn.Close()
 }
 
-// 既有行为回归：不传 --port 时沿用配置默认 8081（就绪行同样打印）。
+// 既有行为回归：显式 --port 覆盖配置默认端口（就绪行同样打印）。
 func TestServeDefaultPortFromConfig(t *testing.T) {
 	bin := buildVoxbox(t)
 	cmd := exec.Command(bin, "serve", "--port", "18099")
@@ -106,5 +107,43 @@ func TestServePortFlagDefault(t *testing.T) {
 	}
 	if f.DefValue != "-1" {
 		t.Fatalf("--port 默认值 = %q, want -1", f.DefValue)
+	}
+}
+
+// 桌面模式首启静默引导：admin 行照常创建，但初始密码绝不外泄到输出。
+func TestServeDesktopModeSilentBootstrap(t *testing.T) {
+	bin := buildVoxbox(t)
+	cmd := exec.Command(bin, "serve", "--port", "0")
+	cmd.Env = append(os.Environ(), "VOXBOX_HOME="+t.TempDir(), "VOXBOX_DESKTOP=1")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var errBuf strings.Builder
+	go func() {
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			mu.Lock()
+			errBuf.WriteString(sc.Text())
+			errBuf.WriteString("\n")
+			mu.Unlock()
+		}
+	}()
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _, _ = cmd.Process.Wait() })
+
+	waitReadyLine(t, stdout, 30*time.Second)
+	time.Sleep(2 * time.Second)
+	mu.Lock()
+	defer mu.Unlock()
+	if s := errBuf.String(); strings.Contains(s, "初始密码") || strings.Contains(s, "首次启动已创建管理员账号") {
+		t.Fatalf("桌面模式泄露引导密码输出:\n%s", s)
 	}
 }

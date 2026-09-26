@@ -44,7 +44,7 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("初始化管理员账号失败: %w", err)
 			}
-			if initialPassword != "" {
+			if initialPassword != "" && os.Getenv("VOXBOX_DESKTOP") != "1" {
 				username := os.Getenv("VOXBOX_ADMIN_USERNAME")
 				if username == "" {
 					username = "admin"
