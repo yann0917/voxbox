@@ -8,8 +8,15 @@
     "windows": [],
     "security": { "csp": null }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERDNTI3NUQwMzAwODI4N0MKUldSOEtBZ3cwSFZTM0tYM2lic2psRkN5WlRmbEU2SzdQNXFWVmNSM0dEbGtvUFhkTlMwZTZyQ2oK",
+      "endpoints": ["https://github.com/yann0917/voxbox/releases/latest/download/latest.json"]
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico", "icons/icon.png"],
     "externalBin": ["binaries/voxbox"]
   }

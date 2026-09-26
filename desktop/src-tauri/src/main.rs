@@ -25,6 +25,7 @@ fn main() {
         }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(SidecarChild(Mutex::new(None)))
         .on_window_event(|window, event| {
             // 关窗 = 隐藏到托盘：长文本合成/播客等后台任务继续跑。
@@ -39,7 +40,13 @@ fn main() {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 match spawn_sidecar(&handle).await {
-                    Ok(port) => open_main_window(&handle, port),
+                    Ok(port) => {
+                        open_main_window(&handle, port);
+                        let h = handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            check_for_updates(&h).await;
+                        });
+                    }
                     Err(err) => {
                         handle
                             .dialog()
@@ -141,4 +148,39 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     Ok(())
+}
+
+/// 启动后静默检查更新；有新版弹确认框，同意后下载安装并重启。
+/// 检查失败静默忽略（离线/仓库无 release 时不应打扰使用）。
+async fn check_for_updates(app: &tauri::AppHandle) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = match app.updater() {
+        Ok(u) => u,
+        Err(_) => return,
+    };
+    let update = match updater.check().await {
+        Ok(Some(u)) => u,
+        _ => return,
+    };
+    let Some(win) = app.get_webview_window("main") else {
+        return;
+    };
+    let confirmed = win
+        .dialog()
+        .message(format!("发现新版本 {}，是否立即更新？", update.version))
+        .title("VoxBox 更新")
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "立即更新".into(),
+            "稍后".into(),
+        ))
+        .blocking_show();
+    if !confirmed {
+        return;
+    }
+    if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
+        eprintln!("更新下载/安装失败：{e}");
+        return;
+    }
+    app.restart();
 }
