@@ -1,4 +1,4 @@
-.PHONY: build test web skills all clean dist vet fmt
+.PHONY: build test web skills all clean dist vet fmt desktop desktop-dev
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -53,4 +53,19 @@ dist: web
 	@echo "产物："; ls -1 dist
 
 clean:
-	rm -rf bin dist
+	rm -rf bin dist desktop/src-tauri/binaries
+
+# ---- 桌面版（Tauri 2 壳 + Go sidecar）----
+# 本机只出 darwin 包；Windows/发布产物走 CI（.github/workflows/desktop-release.yml）。
+HOST_TRIPLE := $(shell rustc -vV | awk '/host:/{print $$2}')
+DESKTOP_BIN := desktop/src-tauri/binaries/voxbox-$(HOST_TRIPLE)
+
+# updater 签名需要私钥：TAURI_SIGNING_PRIVATE_KEY=~/.tauri/voxbox.key make desktop
+desktop: web skills
+	go build -ldflags "$(LDFLAGS)" -o "$(DESKTOP_BIN)" ./cmd/voxbox
+# CI=true 让 bundler 自动 --skip-jenkins 跳过 Finder 装配 DMG——本机未授权 Finder 自动化（AppleEvent -1712）必败
+	cd desktop && CI=true cargo tauri build
+
+desktop-dev: web skills
+	go build -ldflags "$(LDFLAGS)" -o "$(DESKTOP_BIN)" ./cmd/voxbox
+	cd desktop && cargo tauri dev
