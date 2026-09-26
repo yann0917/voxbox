@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -99,7 +102,35 @@ func newServeCommand() *cobra.Command {
 			addr := ln.Addr().String()
 			fmt.Printf("VOXBOX_READY addr=%s\n", addr) // stdout 机器可读就绪行（桌面壳契约，绑定后发出）
 			fmt.Fprintf(os.Stderr, "voxbox Web 已启动: http://%s\n", addr)
-			return http.Serve(ln, handler)
+
+			// 优雅关闭：SIGINT/SIGTERM 后停止接新连接、等在途请求排空（上限 10s）。
+			// 不等待 WebSocket 等劫持连接（进程退出即断，浏览器可自动重连），
+			// 也不排空任务池——长任务不阻塞退出，任务状态本就落 SQLite，重启后可见；
+			// SQLite 与 Service.Close 同理由进程退出回收。再收到一次信号立即退出（开发期兜底）。
+			httpSrv := &http.Server{Handler: handler}
+			serveErr := make(chan error, 1)
+			go func() { serveErr <- httpSrv.Serve(ln) }()
+
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+			defer signal.Stop(sigCh)
+			select {
+			case err := <-serveErr:
+				return err // Serve 意外返回（非 shutdown 路径）：透传给 RunE
+			case sig := <-sigCh:
+				fmt.Fprintf(os.Stderr, "收到 %v，正在退出（在途请求最多等 10s；再按一次立即退出）…\n", sig)
+			}
+			go func() {
+				<-sigCh
+				fmt.Fprintln(os.Stderr, "再次收到退出信号，立即退出")
+				os.Exit(1)
+			}()
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+				fmt.Fprintf(os.Stderr, "优雅关闭超时/出错（%v），强制收尾\n", err)
+			}
+			return nil
 		},
 	}
 	cmd.Flags().IntVar(&port, "port", -1, "端口（默认取配置，0 为系统分配空闲端口）")
