@@ -91,12 +91,14 @@ function HealthIndicator() {
 }
 
 /** 账号菜单：头像点击弹下拉（账号信息 + 退出登录）。顶栏唯一账号入口——移动端
- *  (<sm) 不隐藏，退出功能随菜单始终可达。Esc / 点击菜单外关闭（Modal 的 Escape
+ *  (<sm) 不隐藏，浏览器形态下退出功能随菜单始终可达；桌面形态下 /login 不可达
+ *  （DesktopGate 直达工作台），退出后无登录页可回，故不渲染退出项。
+ *  Esc / 点击菜单外关闭（Modal 的 Escape
  *  监听惯例 + pointerdown 外点判定），菜单内点击不关。
  *  退出走二次确认：菜单项只关菜单并回调 onAskLogout；ConfirmDialog 由 Layout 在
  *  根层渲染——顶栏 backdrop-blur 是 fixed 后代的包含块，弹窗放菜单里会被锁进
  *  56px 高的顶栏内居中（出屏裁切）。 */
-function UserMenu({ username, role, onAskLogout }: { username: string; role: string; onAskLogout: () => void }) {
+function UserMenu({ username, role, desktop, onAskLogout }: { username: string; role: string; desktop: boolean; onAskLogout: () => void }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -142,17 +144,19 @@ function UserMenu({ username, role, onAskLogout }: { username: string; role: str
             <p className="truncate text-xs font-medium text-fg">{username}</p>
             <p className="micro mt-0.5">{roleLabel}</p>
           </div>
-          <button
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onAskLogout();
-            }}
-            className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-xs text-fg-2 transition-colors duration-150 hover:bg-raise-2 hover:text-fg"
-          >
-            <LogOut size={13} strokeWidth={1.75} />
-            退出登录
-          </button>
+          {!desktop && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onAskLogout();
+              }}
+              className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-xs text-fg-2 transition-colors duration-150 hover:bg-raise-2 hover:text-fg"
+            >
+              <LogOut size={13} strokeWidth={1.75} />
+              退出登录
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -295,7 +299,7 @@ export default function Layout() {
             <IconButton label={themeMeta[pref].label} onClick={cycleTheme}>
               <ThemeIcon size={16} strokeWidth={1.75} />
             </IconButton>
-            {me && <UserMenu username={me.username} role={me.role} onAskLogout={() => setLogoutConfirm(true)} />}
+            {me && <UserMenu username={me.username} role={me.role} desktop={me?.desktop === true} onAskLogout={() => setLogoutConfirm(true)} />}
           </div>
         </header>
 

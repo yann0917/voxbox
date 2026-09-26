@@ -9,6 +9,9 @@ export interface Me {
   role: string;
   must_change_password: boolean;
   has_token: boolean;
+  // 桌面形态标记：VOXBOX_DESKTOP=1 时后端返回 true；浏览器下恒缺省（undefined），
+  // 前端据此做形态分流（公开路由直达工作台、退出项与 Token 卡隐藏）。
+  desktop?: boolean;
 }
 
 export const fetchMe = () => fetchJSON<Me>("/api/auth/me");

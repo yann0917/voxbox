@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-r
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Layout from "./components/Layout";
 import RequireAuth from "./components/RequireAuth";
+import { useMe } from "./lib/auth";
 import { ToastProvider } from "./ui";
 
 // 页面路由级代码分割：每页独立 chunk 按需加载（Layout 壳与全局播放器保持常驻），
@@ -45,15 +46,23 @@ function LegacyPostRedirect({ tab }: { tab: "mixer" | "clip" | "duck" }) {
   return <Navigate to={`/post?${next.toString()}`} replace />;
 }
 
+// 桌面形态公开路由门：desktop=true 时 Landing/登录页不可达，一律直达工作台。
+// 非桌面（浏览器）下 desktop 恒为 undefined，公开路由行为不变。
+function DesktopGate({ children }: { children: React.ReactNode }) {
+  const { data } = useMe();
+  if (data?.desktop) return <Navigate to="/workbench" replace />;
+  return <>{children}</>;
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={qc}>
       <ToastProvider>
         <BrowserRouter>
           <Routes>
-            {/* 公开路由：产品展示页与登录页（无侧栏壳） */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<LoginPage />} />
+            {/* 公开路由：产品展示页与登录页（无侧栏壳）；桌面形态经 DesktopGate 直达工作台 */}
+            <Route path="/" element={<DesktopGate><LandingPage /></DesktopGate>} />
+            <Route path="/login" element={<DesktopGate><LoginPage /></DesktopGate>} />
             {/* 应用路由：登录门 + 首启强制改密 */}
             <Route
               element={

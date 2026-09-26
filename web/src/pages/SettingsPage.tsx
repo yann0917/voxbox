@@ -528,31 +528,34 @@ export default function SettingsPage() {
             </CardBody>
           </Card>
 
-          <Card>
-            <CardHeader title="API Token" icon={<KeyRound size={15} strokeWidth={1.75} />} />
-            <CardBody className="space-y-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  variant="secondary"
-                  onClick={() => rotate.mutate()}
-                  loading={rotate.isPending}
-                  icon={<KeyRound size={14} strokeWidth={1.75} />}
-                >
-                  {me?.has_token === false ? "生成 Token" : "重置 Token"}
-                </Button>
-                {newToken && (
-                  <code className="block max-w-xl flex-1 overflow-x-auto rounded-[var(--radius-sm)] border border-line bg-inset px-3 py-2 font-mono text-xs text-fg">
-                    {newToken}
-                  </code>
-                )}
-              </div>
-              <p className="text-[11px] text-muted">
-                {newToken
-                  ? "Token 仅此一次完整显示，请立即复制保存；再次重置会使旧 Token 立即失效。"
-                  : "供 MCP HTTP 与 CLI 远程调用鉴权（Authorization: Bearer tbx_...），服务端只保存哈希，丢失只能重置。"}
-              </p>
-            </CardBody>
-          </Card>
+          {/* 桌面形态下 Token 只为 MCP/CLI 远程鉴权服务，桌面版不暴露 CLI/MCP 入口，故整卡隐藏 */}
+          {me?.desktop !== true && (
+            <Card>
+              <CardHeader title="API Token" icon={<KeyRound size={15} strokeWidth={1.75} />} />
+              <CardBody className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    variant="secondary"
+                    onClick={() => rotate.mutate()}
+                    loading={rotate.isPending}
+                    icon={<KeyRound size={14} strokeWidth={1.75} />}
+                  >
+                    {me?.has_token === false ? "生成 Token" : "重置 Token"}
+                  </Button>
+                  {newToken && (
+                    <code className="block max-w-xl flex-1 overflow-x-auto rounded-[var(--radius-sm)] border border-line bg-inset px-3 py-2 font-mono text-xs text-fg">
+                      {newToken}
+                    </code>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted">
+                  {newToken
+                    ? "Token 仅此一次完整显示，请立即复制保存；再次重置会使旧 Token 立即失效。"
+                    : "供 MCP HTTP 与 CLI 远程调用鉴权（Authorization: Bearer tbx_...），服务端只保存哈希，丢失只能重置。"}
+                </p>
+              </CardBody>
+            </Card>
+          )}
         </div>
       )}
     </>
