@@ -78,18 +78,21 @@ func newServeCommand() *cobra.Command {
 			if host == "" {
 				host = "127.0.0.1"
 			}
-			if cfg.Server.Port == 0 {
-				ln, err := net.Listen("tcp", host+":0")
-				if err != nil {
+			// 统一绑定监听（显式端口与 0 端口同路径）：必须先 bind 后发就绪行，
+			// 否则消费方（桌面壳/e2e）读到 VOXBOX_READY 时 socket 可能尚未可连。
+			// ln 不 Close、直接交给 http.Serve，同时消除 listen-close-rebind 竞态。
+			ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, cfg.Server.Port))
+			if err != nil {
+				if cfg.Server.Port == 0 {
 					return fmt.Errorf("分配空闲端口失败: %w", err)
 				}
-				cfg.Server.Port = ln.Addr().(*net.TCPAddr).Port
-				_ = ln.Close()
+				return fmt.Errorf("监听 %s:%d 失败: %w", host, cfg.Server.Port, err)
 			}
-			addr := fmt.Sprintf("%s:%d", host, cfg.Server.Port)
-			fmt.Printf("VOXBOX_READY addr=%s\n", addr) // stdout 机器可读就绪行（桌面壳契约）
+			cfg.Server.Port = ln.Addr().(*net.TCPAddr).Port
+			addr := ln.Addr().String()
+			fmt.Printf("VOXBOX_READY addr=%s\n", addr) // stdout 机器可读就绪行（桌面壳契约，绑定后发出）
 			fmt.Fprintf(os.Stderr, "voxbox Web 已启动: http://%s\n", addr)
-			return http.ListenAndServe(addr, handler)
+			return http.Serve(ln, handler)
 		},
 	}
 	cmd.Flags().IntVar(&port, "port", -1, "端口（默认取配置，0 为系统分配空闲端口）")
