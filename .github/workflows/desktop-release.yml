@@ -1,0 +1,86 @@
+name: desktop-release
+
+# tag desktop-v* 触发；三平台矩阵构建 + updater 签名 + GitHub Release（含 latest.json）
+on:
+  push:
+    tags: ["desktop-v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest      # Apple Silicon
+            triple: aarch64-apple-darwin
+            ext: ""
+            bundles: dmg
+          - os: macos-13          # Intel
+            triple: x86_64-apple-darwin
+            ext: ""
+            bundles: dmg
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+            ext: ".exe"
+            bundles: nsis
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # 前端产物 + skill 进 embed 目录（等价 make web skills，Windows runner 无 make）
+      - name: Build web assets
+        run: |
+          cd web && npm ci && npm run build && cd ..
+          rm -rf cmd/voxbox/webdist && mkdir -p cmd/voxbox/webdist
+          cp -r web/dist/* cmd/voxbox/webdist/
+          rm -rf cmd/voxbox/skillsdist && mkdir -p cmd/voxbox/skillsdist
+          cp -r skills/voxbox cmd/voxbox/skillsdist/
+
+      - name: Build Go sidecar
+        run: |
+          VERSION="${GITHUB_REF_NAME#desktop-v}"
+          go build -ldflags "-s -w -X main.version=$VERSION" \
+            -o "desktop/src-tauri/binaries/voxbox-${{ matrix.triple }}${{ matrix.ext }}" ./cmd/voxbox
+          if [ "${{ matrix.os }}" != "windows-latest" ]; then
+            codesign --force --sign - "desktop/src-tauri/binaries/voxbox-${{ matrix.triple }}"
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      # bundle 版本对齐 tag，updater 版本比较依赖它
+      - name: Sync version
+        run: |
+          node -e "const fs=require('fs');const p='desktop/src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')" "${GITHUB_REF_NAME#desktop-v}"
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: desktop
+          args: ["--bundles", "${{ matrix.bundles }}"]
+          tagName: ${{ github.ref_name }}
+          releaseName: "VoxBox ${{ github.ref_name }}"
+          releaseBody: "桌面版安装包与自动更新清单。macOS 首次打开：右键 → 打开；Windows：SmartScreen 点「仍要运行」。"
+          releaseDraft: false
+          prerelease: false

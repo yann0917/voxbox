@@ -138,6 +138,17 @@ make all
 
 > 各火山能力需在控制台开通对应服务：语音三件套开「豆包语音」、机器翻译开 `volc.speech.mt`、语音妙记开 `volc.lark.minutes`、人声分离开 AI MediaKit；开通后数分钟内生效。
 
+## 桌面版（Tauri 2）
+
+双击即用的桌面应用：免登录直达工作台、关窗驻留托盘（后台任务不中断）、GitHub Releases 自动更新。
+
+- **下载**：GitHub Releases 的 `desktop-v*` 标签下取 DMG（macOS，分 arm64/Intel）/ NSIS 安装器（Windows）。
+- **macOS 首次打开**：未做 Apple 公证，右键应用 → 「打开」→ 再点「打开」即可（仅首次）；`xattr -cr /Applications/VoxBox.app` 等效。
+- **Windows 首次运行**：SmartScreen 弹窗点「更多信息」→「仍要运行」。
+- **更新**：应用启动时静默检查新版本，弹窗确认后自动下载安装并重启。
+- **本地构建**：`TAURI_SIGNING_PRIVATE_KEY=~/.tauri/voxbox.key make desktop`（依赖 Rust 工具链与 tauri-cli，sidecar 契约见 `docs/superpowers/specs/2026-09-26-tauri-desktop-design.md`）。
+- 桌面版不含 CLI/MCP/skill install——这些继续用 `make dist` 的单二进制发行包。
+
 ## 构建与发布
 
 ```bash
