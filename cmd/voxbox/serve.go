@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 
@@ -26,7 +27,7 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if port != 0 {
+			if port >= 0 {
 				cfg.Server.Port = port
 			}
 			svc, err := service.New(cfg)
@@ -77,11 +78,20 @@ func newServeCommand() *cobra.Command {
 			if host == "" {
 				host = "127.0.0.1"
 			}
+			if cfg.Server.Port == 0 {
+				ln, err := net.Listen("tcp", host+":0")
+				if err != nil {
+					return fmt.Errorf("分配空闲端口失败: %w", err)
+				}
+				cfg.Server.Port = ln.Addr().(*net.TCPAddr).Port
+				_ = ln.Close()
+			}
 			addr := fmt.Sprintf("%s:%d", host, cfg.Server.Port)
+			fmt.Printf("VOXBOX_READY addr=%s\n", addr) // stdout 机器可读就绪行（桌面壳契约）
 			fmt.Fprintf(os.Stderr, "voxbox Web 已启动: http://%s\n", addr)
 			return http.ListenAndServe(addr, handler)
 		},
 	}
-	cmd.Flags().IntVar(&port, "port", 0, "端口（默认取配置）")
+	cmd.Flags().IntVar(&port, "port", -1, "端口（默认取配置，0 为系统分配空闲端口）")
 	return cmd
 }
