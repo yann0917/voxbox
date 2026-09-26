@@ -11,3 +11,5 @@ cmd/voxbox/webdist/*
 .DS_Store
 .agent/
 qingmusic-go/
+# SDD worktree 工作区（superpowers subagent-driven-development）
+.worktrees/
