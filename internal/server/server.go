@@ -4,6 +4,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 
 	"github.com/yann0917/voxbox/internal/service"
 	"github.com/yann0917/voxbox/internal/store"
@@ -12,11 +13,12 @@ import (
 type Server struct {
 	svc        *service.Service
 	hub        *Hub
+	desktop    bool         // 桌面形态（VOXBOX_DESKTOP=1）：未登录请求注入库内 admin 免登录直达
 	mcpHandler http.Handler // MCP Streamable HTTP 端点（serve 装配时可选挂载，须在 Handler() 之前）
 }
 
 func New(svc *service.Service) *Server {
-	return &Server{svc: svc, hub: NewHub()}
+	return &Server{svc: svc, hub: NewHub(), desktop: os.Getenv("VOXBOX_DESKTOP") == "1"}
 }
 
 func (s *Server) Hub() *Hub { return s.hub }

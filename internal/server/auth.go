@@ -58,6 +58,7 @@ type userDTO struct {
 	ID                 string `json:"id"`
 	Username           string `json:"username"`
 	Role               string `json:"role"`
+	Desktop            bool   `json:"desktop"`
 	MustChangePassword bool   `json:"must_change_password"`
 	HasToken           bool   `json:"has_token"`
 }
@@ -208,6 +209,11 @@ func (s *Server) requireAuth() gin.HandlerFunc {
 				return
 			}
 		}
+		if p := s.desktopPrincipal(); p != nil {
+			c.Set(principalKey, p)
+			c.Next()
+			return
+		}
 		unauthorized(c)
 	}
 }
@@ -237,6 +243,20 @@ func (s *Server) sessionPrincipal(token string) *Principal {
 	return &Principal{ID: u.ID, Username: u.Username, Role: u.Role, MustChangePassword: u.MustChangePassword}
 }
 
+// desktopPrincipal 桌面形态（VOXBOX_DESKTOP=1）免登录身份：以库内 admin 用户注入，
+// 任务归属/搜索范围与真实用户行一致；admin 行由 EnsureBootstrapAdmin 保证存在。
+// MustChangePassword 不透传（保持 false），首启强制改密流程自然跳过。
+func (s *Server) desktopPrincipal() *Principal {
+	if !s.desktop {
+		return nil
+	}
+	u, err := s.svc.DB().GetUserByUsername("admin")
+	if err != nil {
+		return nil
+	}
+	return &Principal{ID: u.ID, Username: u.Username, Role: u.Role}
+}
+
 // authenticate "Authorization: Bearer tbx_..." → 身份；非 tbx_ 前缀（如 MediaKit 的
 // Bearer）不在此通道，返回 nil 交给 Cookie 分支。
 func (s *Server) authenticate(header string) *Principal {
@@ -256,6 +276,9 @@ func (s *Server) authenticate(header string) *Principal {
 func (s *Server) mcpAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		p := s.authenticate(c.GetHeader("Authorization"))
+		if p == nil {
+			p = s.desktopPrincipal()
+		}
 		if p == nil {
 			c.Header("WWW-Authenticate", `Bearer realm="voxbox"`)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
@@ -323,7 +346,15 @@ func (s *Server) me(c *gin.Context) {
 		failErr(c, err)
 		return
 	}
-	ok(c, toUserDTO(u))
+	d := toUserDTO(u)
+	d.Desktop = s.desktop
+	if s.desktop {
+		// 桌面形态首启强制改密流程整体跳过（spec：注入 Principal MustChangePassword=false）；
+		// must_change_password 透传自库内 admin 行（引导后恒 true），此处须压掉，
+		// 否则前端会弹强制改密。
+		d.MustChangePassword = false
+	}
+	ok(c, d)
 }
 
 // changePassword 自助改密：验证旧密码 → 更新 → 全端会话下线（前端改密后回登录页）。
