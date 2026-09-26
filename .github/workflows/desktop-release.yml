@@ -11,18 +11,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest      # Apple Silicon
+          # Apple Silicon：runner 原生 arm64，Go/Rust 按宿主 triple 出包
+          - os: macos-latest
             triple: aarch64-apple-darwin
             ext: ""
-            bundles: dmg
-          - os: macos-13          # Intel
+            goarch: arm64
+            rust_target: ""
+            tauri_args: "--bundles dmg"
+          # Intel：macos-13 runner 已退役（2025-12 下线），改 arm runner 双交叉编译：
+          # sidecar GOARCH=amd64 + Rust --target x86_64（先 rustup target add）
+          - os: macos-latest
             triple: x86_64-apple-darwin
             ext: ""
-            bundles: dmg
+            goarch: amd64
+            rust_target: x86_64-apple-darwin
+            tauri_args: "--bundles dmg --target x86_64-apple-darwin"
           - os: windows-latest
             triple: x86_64-pc-windows-msvc
             ext: ".exe"
-            bundles: nsis
+            goarch: amd64
+            rust_target: ""
+            tauri_args: "--bundles nsis"
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -51,16 +60,24 @@ jobs:
           rm -rf cmd/voxbox/skillsdist && mkdir -p cmd/voxbox/skillsdist
           cp -r skills/voxbox cmd/voxbox/skillsdist/
 
+      # GOARCH 显式化：Intel 腿在 arm runner 上交叉编译，宿主架构不再与 triple 巧合一致
       - name: Build Go sidecar
+        env:
+          GOARCH: ${{ matrix.goarch }}
         run: |
           VERSION="${GITHUB_REF_NAME#desktop-v}"
           go build -ldflags "-s -w -X main.version=$VERSION" \
             -o "desktop/src-tauri/binaries/voxbox-${{ matrix.triple }}${{ matrix.ext }}" ./cmd/voxbox
+          # 交叉出的 x86_64 slice 在 arm host 上一样可签（Mach-O 任意架构均支持 ad-hoc）
           if [ "${{ matrix.os }}" != "windows-latest" ]; then
             codesign --force --sign - "desktop/src-tauri/binaries/voxbox-${{ matrix.triple }}"
           fi
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Rust target（交叉编译腿）
+        if: matrix.rust_target != ''
+        run: rustup target add ${{ matrix.rust_target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -71,6 +88,7 @@ jobs:
         run: |
           node -e "const fs=require('fs');const p='desktop/src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')" "${GITHUB_REF_NAME#desktop-v}"
 
+      # tauri-action 的 args 经 stringArgv 按空白切分（输入恒为字符串），矩阵直接带完整串
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -78,9 +96,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: desktop
-          args: ["--bundles", "${{ matrix.bundles }}"]
+          args: ${{ matrix.tauri_args }}
           tagName: ${{ github.ref_name }}
           releaseName: "VoxBox ${{ github.ref_name }}"
           releaseBody: "桌面版安装包与自动更新清单。macOS 首次打开：右键 → 打开；Windows：SmartScreen 点「仍要运行」。"
           releaseDraft: false
           prerelease: false
+
+      # I2：latest.json 只在本次 tag release 上，updater endpoint 指向固定的 desktop-latest
+      # 指针 release——否则 latest 与 CLI 发布通道互踩（latest 被别的 release 抢走就 404/错版本）。
+      - name: Sync desktop-latest 更新指针
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --pattern "latest.json" --output latest.json --clobber
+          gh release view desktop-latest >/dev/null 2>&1 || gh release create desktop-latest --title "VoxBox desktop 更新通道" --notes "自动维护的 latest.json 指针，随 desktop-v* 发布刷新，勿手动编辑"
+          gh release upload desktop-latest latest.json --clobber
