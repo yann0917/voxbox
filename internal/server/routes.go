@@ -70,6 +70,9 @@ func (s *Server) Handler() http.Handler {
 		api.GET("/mvsep/status", s.mvsepStatus)
 		api.GET("/mvsep/history", s.mvsepHistory)
 		api.GET("/mvsep/separation", s.mvsepSeparationGet)
+		// AI 助手（悬浮面板）：模型目录 + 流式对话（SSE）
+		api.GET("/assistant/models", s.assistantModels)
+		api.POST("/assistant/chat", s.assistantChat)
 		// WS 进度通道：登录后浏览器带 Cookie 升级；快照按用户过滤（admin 收全量）。
 		api.GET("/ws", s.wsProgress)
 	}

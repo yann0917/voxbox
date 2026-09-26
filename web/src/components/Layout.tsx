@@ -33,6 +33,7 @@ import { usePlayer } from "../lib/player";
 import { useWSStatus } from "../lib/ws";
 import PlayerBar from "./PlayerBar";
 import TaskToasts from "./TaskToasts";
+import AssistantWidget from "./AssistantWidget";
 import { IconButton, Skeleton, useToast, ConfirmDialog } from "../ui";
 
 const nav = [
@@ -325,6 +326,7 @@ export default function Layout() {
         />
       )}
       <TaskToasts />
+      <AssistantWidget />
     </div>
   );
 }
