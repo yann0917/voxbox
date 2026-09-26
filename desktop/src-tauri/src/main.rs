@@ -57,27 +57,34 @@ async fn spawn_sidecar(app: &tauri::AppHandle) -> Result<u16, String> {
     let (mut rx, child) = cmd.spawn().map_err(|e| format!("sidecar 启动失败：{e}"))?;
     *app.state::<SidecarChild>().0.lock().unwrap() = Some(child);
 
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    while std::time::Instant::now() < deadline {
-        match rx.recv().await {
-            Some(CommandEvent::Stdout(line)) => {
-                let text = String::from_utf8_lossy(&line);
-                if let Some(rest) = text.trim().strip_prefix(READY_PREFIX) {
-                    let addr = rest.trim();
-                    return addr
-                        .rsplit(':')
-                        .next()
-                        .and_then(|p| p.parse::<u16>().ok())
-                        .ok_or_else(|| format!("就绪行端口解析失败：{addr}"));
+    // 就绪等待必须有整体 deadline：挂死的后端（无输出也不退出）会让 recv() 无限期阻塞，
+    // 靠循环条件自己查时钟永远轮不到——超时要用 tokio 定时器从外部打断，而不是循环内自查。
+    let wait_ready = async move {
+        loop {
+            match rx.recv().await {
+                Some(CommandEvent::Stdout(line)) => {
+                    let text = String::from_utf8_lossy(&line);
+                    if let Some(rest) = text.trim().strip_prefix(READY_PREFIX) {
+                        let addr = rest.trim();
+                        break addr
+                            .rsplit(':')
+                            .next()
+                            .and_then(|p| p.parse::<u16>().ok())
+                            .ok_or_else(|| format!("就绪行端口解析失败：{addr}"));
+                    }
                 }
+                Some(CommandEvent::Error(e)) => break Err(e),
+                Some(CommandEvent::Terminated(_)) => break Err("后端进程在就绪前退出".into()),
+                None => break Err("后端输出流意外关闭".into()),
+                _ => {}
             }
-            Some(CommandEvent::Error(e)) => return Err(e),
-            Some(CommandEvent::Terminated(_)) => return Err("后端进程在就绪前退出".into()),
-            None => return Err("后端输出流意外关闭".into()),
-            _ => {}
         }
+    };
+    match tokio::time::timeout(std::time::Duration::from_secs(30), wait_ready).await {
+        Ok(result) => result,
+        // 超时与其它失败同路：错误对话框 + exit(1)，不留静默白屏。
+        Err(_) => Err("等待后端就绪超时（30s）".into()),
     }
-    Err("等待后端就绪超时（30s）".into())
 }
 
 /// 就绪后创建主窗口，直达工作台（桌面模式免登录，Task 2 已保证）。

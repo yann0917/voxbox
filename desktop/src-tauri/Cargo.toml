@@ -12,3 +12,5 @@ tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# tauri 内部虽基于 tokio，但直接调用 tokio::time::timeout 需要显式声明依赖
+tokio = { version = "1", features = ["time"] }
