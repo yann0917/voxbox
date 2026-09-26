@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -23,6 +24,12 @@ func newServeCommand() *cobra.Command {
 		Use:   "serve",
 		Short: "启动 Web 控制台",
 		RunE: func(c *cobra.Command, args []string) error {
+			// 桌面模式：桌面壳（父进程）被强杀/崩溃/系统注销时，壳侧来不及 kill 子进程，
+			// 看门狗兜底自杀，防止孤儿后端继续占端口。CLI 独立使用不启用。
+			if os.Getenv("VOXBOX_DESKTOP") == "1" {
+				stopWatchdog := startParentWatchdog(os.Getppid, time.Second, func() { os.Exit(0) })
+				defer stopWatchdog()
+			}
 			cfg, err := config.Load()
 			if err != nil {
 				return err
