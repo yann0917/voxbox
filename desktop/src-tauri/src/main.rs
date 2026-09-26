@@ -15,10 +15,27 @@ const READY_PREFIX: &str = "VOXBOX_READY addr=";
 
 fn main() {
     tauri::Builder::default()
+        // 单实例必须最先注册（官方要求）：二启进程立即退出，回调里唤起已有主窗口。
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(SidecarChild(Mutex::new(None)))
+        .on_window_event(|window, event| {
+            // 关窗 = 隐藏到托盘：长文本合成/播客等后台任务继续跑。
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(|app| {
+            // 托盘要在 spawn 之前就位：后端失败弹窗期间用户也有可操作的驻留入口。
+            build_tray(app.handle())?;
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 match spawn_sidecar(&handle).await {
@@ -97,4 +114,31 @@ fn open_main_window(app: &tauri::AppHandle, port: u16) {
         .build()
         .expect("failed to create main window");
     let _ = win.set_focus();
+}
+
+/// 托盘：关窗驻留后从这里唤回或退出。图标用 bundler 生成的默认窗口图标。
+fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::TrayIconBuilder;
+    let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
+    TrayIconBuilder::with_id("main-tray")
+        .icon(app.default_window_icon().expect("bundler icon").clone())
+        .icon_as_template(false)
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .build(app)?;
+    Ok(())
 }
