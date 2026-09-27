@@ -846,6 +846,35 @@ func TestModelArchiveInstall(t *testing.T) {
 	}
 }
 
+func TestModelArchiveIncompleteWhitelist(t *testing.T) {
+	// 白名单成员缺失(归档只含部分成员):下载走完且 sha256 相符,但解包不完整
+	// → 终态 failed 且不写 manifest;命中的成员已解出,归档本体保留供重试复用。
+	payload := makeTar(t, map[string][]byte{
+		"top/model.int8.onnx": []byte("onnx-data"),
+		// top/tokens.txt 缺失
+	}, func(b *bytes.Buffer) []byte { return gzBytes(t, b.Bytes()) })
+	srv := directServer(t, map[string][]byte{"/model.tar.gz": payload})
+	sum := sha256.Sum256(payload)
+	entries := []Entry{modelArchiveEntry(srv.URL+"/model.tar.gz", int64(len(payload)), hex.EncodeToString(sum[:]))}
+	m, modelsDir, _ := newTestManager(t, entries)
+	if err := m.Start("sense-test"); err != nil {
+		t.Fatal(err)
+	}
+	v := waitFor(t, m, "sense-test", StatusFailed)
+	if !strings.Contains(v.Error, "解包不完整") || !strings.Contains(v.Error, "tokens.txt") {
+		t.Fatalf("应报解包不完整并指明缺失成员,实际: %s", v.Error)
+	}
+	if _, err := os.Stat(filepath.Join(modelsDir, "sense-test", "manifest.json")); !os.IsNotExist(err) {
+		t.Fatal("解包不完整不应写 manifest")
+	}
+	if _, err := os.Stat(filepath.Join(modelsDir, "sense-test", "model.int8.onnx")); err != nil {
+		t.Fatalf("命中的白名单成员应已解出: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(modelsDir, "sense-test", "model.tar.gz")); err != nil {
+		t.Fatalf("失败时归档本体应保留供重试复用: %v", err)
+	}
+}
+
 func TestModelArchiveSHAMismatch(t *testing.T) {
 	// 裁定 4:模型归档条目 ArchiveSHA256 非空即校验,不符报失败
 	payload := gzBytes(t, func() []byte {
@@ -863,6 +892,24 @@ func TestModelArchiveSHAMismatch(t *testing.T) {
 	v := waitFor(t, m, "sense-test", StatusFailed)
 	if !strings.Contains(v.Error, "校验失败") {
 		t.Fatalf("归档 sha256 不符应报校验失败,实际: %s", v.Error)
+	}
+}
+
+func TestDirectLinkMissing404(t *testing.T) {
+	// 直链条目(Repo 为空)404:文案不再渲染空 repo 段,直述失败的具体文件 URL
+	srv := directServer(t, nil) // 空文件表:任何路径都 404
+	e := Entry{
+		ID: "tts-gguf", Kind: "tts", Name: "TTS", Summary: "TTS 直链条目",
+		SizeBytes: 100, Requirements: Requirements{Device: "metal"},
+		License: "Apache-2.0", LicenseURL: "https://example.com/t",
+		Files:    []string{"qwen.gguf"},
+		FileURLs: map[string]string{"qwen.gguf": srv.URL + "/qwen.gguf"},
+	}
+	m, _, _ := newTestManager(t, []Entry{e})
+	_ = m.Start("tts-gguf")
+	v := waitFor(t, m, "tts-gguf", StatusFailed)
+	if !strings.Contains(v.Error, "模型文件不存在或已下架") || !strings.Contains(v.Error, srv.URL+"/qwen.gguf") {
+		t.Fatalf("直链 404 应直述 URL,实际: %s", v.Error)
 	}
 }
 

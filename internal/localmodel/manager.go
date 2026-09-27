@@ -492,6 +492,17 @@ func (m *Manager) runArchive(ctx context.Context, e Entry) {
 		m.setFailed(e.ID, "解包失败: "+err.Error())
 		return
 	}
+	if e.Kind != "engine" {
+		// 白名单成员必须全部在位(引擎由 findBinaries 强制):模型归档在写 manifest
+		// 前逐个核对,缺任一即失败且不产出 manifest。校验放在删除归档之前——
+		// 重试可直接复用盘上归档,不必整包重下。
+		for _, f := range e.ExtractFiles {
+			if _, err := os.Stat(filepath.Join(dest, filepath.FromSlash(f))); err != nil {
+				m.setFailed(e.ID, "解包不完整:缺少 "+f+"(归档可能损坏),请删除后重试")
+				return
+			}
+		}
+	}
 	if err := os.Remove(archivePath); err != nil {
 		m.setFailed(e.ID, err.Error())
 		return
@@ -583,7 +594,8 @@ func contentRangeTotal(cr string) (int64, bool) {
 
 // probe 用 Range: bytes=0-0 探测单文件:取真实大小与 Range 支持,同时前置发现 404/下架。
 func (m *Manager) probe(ctx context.Context, e Entry, file string) (int64, bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.fileURLFor(e, file), nil)
+	fileURL := m.fileURLFor(e, file)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
 	if err != nil {
 		return 0, false, err
 	}
@@ -615,6 +627,10 @@ func (m *Manager) probe(ctx context.Context, e Entry, file string) (int64, bool,
 		}
 		return 0, false, fmt.Errorf("远端未返回文件大小,无法校验完整性")
 	case http.StatusForbidden, http.StatusNotFound:
+		if e.Repo == "" {
+			// 直链条目(Repo 为空)没有 repo 段可渲染:直述失败的具体文件地址
+			return 0, false, fmt.Errorf("模型文件不存在或已下架:%s(可打开 %s 确认)", fileURL, e.LicenseURL)
+		}
 		return 0, false, fmt.Errorf("模型不存在或已下架:%s(可打开 %s 确认)", e.Repo, e.LicenseURL)
 	default:
 		return 0, false, fmt.Errorf("魔搭响应异常: HTTP %d", resp.StatusCode)
