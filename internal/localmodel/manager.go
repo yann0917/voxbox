@@ -359,6 +359,20 @@ func (m *Manager) fileURL(e Entry, file string) string {
 	return fmt.Sprintf("%s/api/v1/models/%s/repo?%s", m.baseURL, e.Repo, q.Encode())
 }
 
+// contentRangeTotal 解析 Content-Range: bytes S-E/N 头,返回总大小 N;缺失/畸形/非正返回 false。
+// probe 的 206 路径与「200 怪癖」路径共用(魔搭对非 LFS 小文件的探测回 200 却带真实大小的该头)。
+func contentRangeTotal(cr string) (int64, bool) {
+	i := strings.LastIndexByte(cr, '/')
+	if !strings.HasPrefix(cr, "bytes ") || i < 0 {
+		return 0, false
+	}
+	total, err := strconv.ParseInt(cr[i+1:], 10, 64)
+	if err != nil || total <= 0 {
+		return 0, false
+	}
+	return total, true
+}
+
 // probe 用 Range: bytes=0-0 探测单文件:取真实大小与 Range 支持,同时前置发现 404/下架。
 func (m *Manager) probe(ctx context.Context, e Entry, file string) (int64, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.fileURL(e, file), nil)
@@ -375,16 +389,19 @@ func (m *Manager) probe(ctx context.Context, e Entry, file string) (int64, bool,
 	switch resp.StatusCode {
 	case http.StatusPartialContent:
 		cr := resp.Header.Get("Content-Range") // bytes 0-0/N
-		i := strings.LastIndexByte(cr, '/')
-		if !strings.HasPrefix(cr, "bytes ") || i < 0 {
-			return 0, false, fmt.Errorf("响应 Content-Range 异常: %q", cr)
-		}
-		total, err := strconv.ParseInt(cr[i+1:], 10, 64)
-		if err != nil || total <= 0 {
+		total, ok := contentRangeTotal(cr)
+		if !ok {
 			return 0, false, fmt.Errorf("响应 Content-Range 异常: %q", cr)
 		}
 		return total, true, nil
 	case http.StatusOK:
+		// 魔搭怪癖:非 LFS 小文件(直链无 302)对 bytes=0-0 回 200 + Content-Range: bytes 0-0/N
+		// (N 为真实大小)+ Content-Length: 1(单字节 body)。此时大小必须取 N——采信
+		// Content-Length 会把小文件记成 1 字节,既污染 total_bytes 又拖垮 rangeOK 触发续传回零。
+		// 真实续传请求(bytes=S-)实测走 302 → CDN 206,Range 有效,故 canRange=true。
+		if total, ok := contentRangeTotal(resp.Header.Get("Content-Range")); ok {
+			return total, true, nil
+		}
 		if resp.ContentLength > 0 {
 			return resp.ContentLength, false, nil
 		}

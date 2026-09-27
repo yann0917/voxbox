@@ -188,14 +188,15 @@ func fileMap(pairs ...any) map[string][]byte {
 
 // fakeScope 可编程假魔搭:固定文件表,支持 Range(可关),按文件阻塞以稳定测试暂停/单飞行。
 type fakeScope struct {
-	t       *testing.T
-	files   map[string][]byte
-	noRange bool                     // 恒 200(模拟不支持 Range 的上游)
-	blockMu sync.Mutex               // 保护 block:handler goroutine 写入与测试轮询读并发
-	block   map[string]chan struct{} // 文件 → 关闭后才继续写剩余字节
-	blockN  map[string]int64         // 文件 → 先写多少字节后阻塞(仅无 Range 的 200 分支)
-	hits    atomic.Int64             // 带 offset>0 的 Range 续传请求数
-	srv     *httptest.Server
+	t        *testing.T
+	files    map[string][]byte
+	noRange  bool                     // 恒 200(模拟不支持 Range 的上游)
+	quirk200 bool                     // 模拟魔搭非 LFS 怪癖:bytes=0-0 回 200 + 真实大小 Content-Range + 1 字节 body
+	blockMu  sync.Mutex               // 保护 block:handler goroutine 写入与测试轮询读并发
+	block    map[string]chan struct{} // 文件 → 关闭后才继续写剩余字节
+	blockN   map[string]int64         // 文件 → 先写多少字节后阻塞(仅无 Range 的 200 分支)
+	hits     atomic.Int64             // 带 offset>0 的 Range 续传请求数
+	srv      *httptest.Server
 }
 
 func newFakeScope(t *testing.T, files map[string][]byte) *fakeScope {
@@ -234,6 +235,14 @@ func newFakeScope(t *testing.T, files map[string][]byte) *fakeScope {
 		var start int64
 		if _, err := fmt.Sscanf(rng, "bytes=%d-", &start); err != nil || start < 0 || start > int64(len(data)) {
 			http.Error(w, "bad range", http.StatusRequestedRangeNotSatisfiable)
+			return
+		}
+		if f.quirk200 && start == 0 {
+			// 魔搭怪癖:探测请求回 200(非 206)+ 真实大小的 Content-Range + Content-Length: 1
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes 0-0/%d", len(data)))
+			w.Header().Set("Content-Length", "1")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(data[:1])
 			return
 		}
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, int64(len(data))-1, len(data)))
@@ -347,6 +356,52 @@ func TestDownloadStopAndResume(t *testing.T) {
 	waitFor(t, m, "asr-small", StatusInstalled)
 	if f.hits.Load() < 1 {
 		t.Fatal("续传应发出 offset>0 的 Range 请求")
+	}
+	got, err := os.ReadFile(filepath.Join(base, "asr-small", "a.bin"))
+	if err != nil || !bytes.Equal(got, content) {
+		t.Fatalf("续传后内容不符: %v", err)
+	}
+}
+
+func TestProbe200WithContentRange(t *testing.T) {
+	// 魔搭非 LFS 文件怪癖(线上实证):bytes=0-0 探测回 200 + Content-Range: bytes 0-0/N
+	// (N 为真实大小)+ Content-Length: 1。probe 采信 Content-Length 会把小文件记成 1 字节:
+	// total_bytes 被污染、rangeOK 全局为假 → 续传回零重下,且第二个文件起必然
+	// 「下载不完整:已收 N 字节,预期 1」→ 永远装不上。修复后 200+Content-Range 应取 N
+	// 并视为支持 Range:盘面预置的 .part 必须走 Range 续传(不回零),total 为真实大小和。
+	// (盘面预置而非跑一轮再暂停:旧实现下回零重下会重新进入阻塞分支,测试收尾会悬死。)
+	content := bytes.Repeat([]byte("m"), 693) // 复现线上 configuration.json 693 字节的量级
+	f := newFakeScope(t, fileMap("a.bin", content, "b.bin", []byte("ok")))
+	f.quirk200 = true
+	entries := testEntries()
+	m, base := newTestManager(t, entries, func(base string) {
+		dir := filepath.Join(base, "asr-small")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// 半程盘面:a.bin 已收前 256 字节(.part)
+		if err := os.WriteFile(filepath.Join(dir, "a.bin.part"), content[:256], 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	m.baseURL = f.srv.URL
+
+	v := viewOrFatal(t, m, "asr-small")
+	if !v.HasPartial || v.DownloadedBytes != 256 {
+		t.Fatalf("预置盘面应识别为可续传 256 字节,实际 %+v", v)
+	}
+	if err := m.Start("asr-small"); err != nil {
+		t.Fatal(err)
+	}
+	v = waitFor(t, m, "asr-small", StatusInstalled)
+	if v.TotalBytes != int64(len(content))+2 {
+		t.Fatalf("total_bytes 应为真实大小和 %d(而非被怪癖污染的 1+1),实际 %d", len(content)+2, v.TotalBytes)
+	}
+	if v.DownloadedBytes != v.TotalBytes {
+		t.Fatalf("installed 进度应为 %d,实际 %+v", v.TotalBytes, v)
+	}
+	if f.hits.Load() < 1 {
+		t.Fatal("续传应发出 offset>0 的 Range 请求(.part 未被废弃)")
 	}
 	got, err := os.ReadFile(filepath.Join(base, "asr-small", "a.bin"))
 	if err != nil || !bytes.Equal(got, content) {
