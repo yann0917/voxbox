@@ -51,6 +51,10 @@ type TTSRuntime struct {
 
 type procStarter func(cmd *exec.Cmd) error
 
+// healthClient 健康探针专用短超时 client:不用 DefaultClient(无超时),
+// server 起不来时不至于占死连接;单请求 5s 足够本机回环。
+var healthClient = &http.Client{Timeout: 5 * time.Second}
+
 func NewTTSRuntime(dataDir string, models *localmodel.Manager) *TTSRuntime {
 	return &TTSRuntime{
 		dataDir:        dataDir,
@@ -116,7 +120,12 @@ func (t *TTSRuntime) ensureHealth(ctx context.Context) (string, error) {
 			t.mu.Unlock()
 			continue
 		}
-		resp, err := http.Get(base + "/health")
+		// 探针带 ctx + 短超时:ctx 取消立即中断轮询,server 挂起时单请求也有上限
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/health", nil)
+		if err != nil {
+			return "", err
+		}
+		resp, err := healthClient.Do(req)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == 200 {

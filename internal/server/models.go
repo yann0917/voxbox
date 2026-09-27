@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"runtime"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yann0917/voxbox/internal/localmodel"
@@ -12,7 +13,20 @@ import (
 // 全部本地操作无凭证,不触碰 ErrNoCred 映射;写入操作沿用 requireAuth(单用户工具,不做 admin 门)。
 
 func (s *Server) listModels(c *gin.Context) {
-	ok(c, gin.H{"items": s.svc.LocalModels().List()})
+	all := s.svc.LocalModels().List()
+	items := make([]localmodel.ModelView, 0, len(all))
+	for _, v := range all {
+		// 平台过滤(spec §3.1):无当前平台资产的引擎条目在该平台不展示,
+		// 否则用户会看到条目但下载必败(如 linux/arm64 无 audiocpp 资产)。
+		// 只过滤 HTTP 视图;Manager.List() 保持完整目录供内部消费者使用。
+		if v.Entry.Kind == "engine" {
+			if _, ok := v.Entry.ArchiveFor(runtime.GOOS, runtime.GOARCH); !ok {
+				continue
+			}
+		}
+		items = append(items, v)
+	}
+	ok(c, gin.H{"items": items})
 }
 
 // modelFail 统一错误映射:未知模型 → NotFound,其余 → BadRequest(文案已可定位)。

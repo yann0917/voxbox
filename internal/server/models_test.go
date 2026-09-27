@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -44,6 +45,37 @@ func TestModelsListShape(t *testing.T) {
 	}
 }
 
+// TestModelsEngineEntriesHavePlatformAsset 平台过滤契约(spec §3.1):HTTP 视图里的
+// engine 条目必须声明当前平台资产,无资产的平台不展示该条目(否则下载必败)。
+func TestModelsEngineEntriesHavePlatformAsset(t *testing.T) {
+	ts, _, ac := newTestServer(t)
+	resp, err := ac.Get(ts.URL + "/api/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var e envelope
+	if err := decodeBody(resp, &e); err != nil {
+		t.Fatal(err)
+	}
+	items := e.Data.(map[string]any)["items"].([]any)
+	platform := runtime.GOOS + "/" + runtime.GOARCH
+	engines := 0
+	for _, it := range items {
+		item := it.(map[string]any)
+		if item["kind"] != "engine" {
+			continue
+		}
+		engines++
+		assets, _ := item["assets"].(map[string]any)
+		if _, ok := assets[platform]; !ok {
+			t.Fatalf("engine 条目 %v 未声明平台 %s 资产,不应在该平台展示: %#v", item["id"], platform, item)
+		}
+	}
+	if engines == 0 {
+		t.Fatal("内嵌目录应含 engine 条目,过滤逻辑可能过严")
+	}
+}
+
 func TestModelsUnknownIDNotFound(t *testing.T) {
 	ts, _, ac := newTestServer(t)
 	for _, spec := range []struct{ method, path string }{
@@ -63,7 +95,6 @@ func TestModelsUnknownIDNotFound(t *testing.T) {
 		}
 	}
 }
-
 func TestModelsStopWhenIdle(t *testing.T) {
 	ts, _, ac := newTestServer(t)
 	// 内嵌目录首个条目(空闲态):Stop 应报「未在下载」业务错误

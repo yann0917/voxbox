@@ -23,7 +23,7 @@ func (s *Server) localReady(c *gin.Context) {
 		return
 	}
 	m := s.svc.LocalModels()
-	var missing []missingItem
+	missing := []missingItem{} // ready=true 时序列化为 [] 而非 null,前端省判空
 	ensure := func(kind, id string) {
 		e, ok := m.GetEntry(id)
 		if !ok {
