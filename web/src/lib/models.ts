@@ -21,6 +21,7 @@ export interface ModelItem {
   license: string;
   license_url: string;
   status: ModelStatus;
+  requires_engine?: string; // tts/asr 条目:依赖的引擎 id(engine 条目无此字段)
   has_partial: boolean;
   downloaded_bytes: number;
   total_bytes: number;
@@ -55,4 +56,31 @@ export function formatSize(n: number): string {
   if (n >= 2 ** 30) return `${(n / 2 ** 30).toFixed(1)} GB`;
   if (n >= 2 ** 20) return `${(n / 2 ** 20).toFixed(0)} MB`;
   return `${n} B`;
+}
+
+export interface LocalReadyMissing {
+  type: "engine" | "model";
+  id: string;
+  name: string;
+}
+
+export interface LocalReady {
+  ready: boolean;
+  missing: LocalReadyMissing[];
+}
+
+/** 本地推理就绪查询(引擎+模型依赖链一次判定);挂载即拉,下载完成后回到页面会自动刷新。 */
+export function useLocalReady(tool: "tts" | "asr") {
+  return useQuery({
+    queryKey: ["local-ready", tool],
+    queryFn: () => fetchJSON<LocalReady>(`/api/local/ready?tool=${tool}`),
+  });
+}
+
+/** 本地预置音色(CustomVoice GGUF 的 9 个 speaker)。 */
+export function useLocalVoices() {
+  return useQuery({
+    queryKey: ["voices", "local"],
+    queryFn: () => fetchJSON<{ voices: { id: string; name: string }[] }>("/api/voices?provider=local"),
+  });
 }
