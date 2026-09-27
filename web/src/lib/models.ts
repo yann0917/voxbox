@@ -15,6 +15,8 @@ export interface ModelItem {
   revision: string;
   name: string;
   kind: string; // asr | tts(开放枚举)
+  /** tts 模型族:qwen3_tts | index_tts2(仅 tts 条目有;asr/engine 无)。 */
+  family?: string;
   summary: string;
   size_bytes: number;
   requirements: ModelRequirements;
