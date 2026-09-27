@@ -187,13 +187,17 @@ func (m *Manager) setFailed(id, msg string) {
 }
 
 // setFailedLocked 已持锁的失败态写入(diskResidue 做盘 IO,Start 预检复用)。
-// 未知 id 无状态可写,直接返回(防御 nil 解引用)。
+// 终态与 active 清除同临界区,消除「状态已 failed 而 Start 仍被 ErrBusy 误拒」的窗口;
+// 按 id 条件清除,避免 Start 预检失败误伤其他在途下载。未知 id 无状态可写,直接返回(防御 nil 解引用)。
 func (m *Manager) setFailedLocked(id, msg string) {
 	st := m.states[id]
 	if st == nil {
 		return
 	}
 	st.Status, st.Error = StatusFailed, msg
+	if m.active == id {
+		m.active, m.cancel = "", nil
+	}
 	has, downloaded := diskResidue(m.modelDir(id))
 	st.HasPartial, st.DownloadedBytes = has, downloaded
 }
@@ -269,6 +273,7 @@ func (m *Manager) Delete(id string) error {
 // run 下载主循环:逐文件 probe(真实大小+Range 支持+404 前置发现)→ 流式下载(.part+续传)
 // → 校验 → 写 manifest。取消(Stop)回 idle+可续传,真实错误进 failed。
 func (m *Manager) run(ctx context.Context, e Entry) {
+	// 安全网:终态写入点已各自同临界区清 active,此处仅在异常路径兜底。
 	defer func() {
 		m.mu.Lock()
 		if m.active == e.ID {
@@ -323,16 +328,23 @@ func (m *Manager) run(ctx context.Context, e Entry) {
 	m.mu.Lock()
 	st := m.states[e.ID]
 	st.Status, st.HasPartial, st.DownloadedBytes, st.TotalBytes, st.Error = StatusInstalled, false, total, total, ""
+	if m.active == e.ID { // installed 终态与 active 清除同临界区
+		m.active, m.cancel = "", nil
+	}
 	m.mu.Unlock()
 }
 
 // finish 区分取消与真实错误:取消(Stop)→ idle+可续传(错误清空);其余 → failed。
+// 两分支的终态写入都与 active 清除同临界区,保证「idle/failed 可见 ⇒ 可立即 Start」。
 func (m *Manager) finish(ctx context.Context, id string, err error) {
 	if ctx.Err() != nil {
 		m.mu.Lock()
 		st := m.states[id]
 		has, downloaded := diskResidue(m.modelDir(id))
 		st.Status, st.HasPartial, st.DownloadedBytes, st.Error = StatusIdle, has, downloaded, ""
+		if m.active == id {
+			m.active, m.cancel = "", nil
+		}
 		m.mu.Unlock()
 		return
 	}
