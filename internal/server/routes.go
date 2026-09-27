@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yann0917/voxbox/internal/config"
+	"github.com/yann0917/voxbox/internal/provider/local"
 	"github.com/yann0917/voxbox/internal/provider/mvsep"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
@@ -70,6 +71,8 @@ func (s *Server) Handler() http.Handler {
 		api.GET("/mvsep/status", s.mvsepStatus)
 		api.GET("/mvsep/history", s.mvsepHistory)
 		api.GET("/mvsep/separation", s.mvsepSeparationGet)
+		// 本地推理就绪查询:一次判定引擎+模型依赖链(「本地」页签引导卡数据源)
+		api.GET("/local/ready", s.localReady)
 		// 本地语音模型管理(无凭证,全部登录用户可读可操作)
 		api.GET("/models", s.listModels)
 		api.POST("/models/open-dir", s.openModelsDir)
@@ -661,6 +664,9 @@ func (s *Server) listVoices(c *gin.Context) {
 			return
 		}
 		ok(c, gin.H{"voices": zhipu.OfficialVoices})
+		return
+	case "local":
+		ok(c, gin.H{"voices": local.CustomVoices()})
 		return
 	}
 	ok(c, gin.H{"voices": volcengine.Voices()})

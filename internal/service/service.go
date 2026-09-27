@@ -16,10 +16,12 @@ import (
 
 	"github.com/yann0917/voxbox/internal/config"
 	"github.com/yann0917/voxbox/internal/localmodel"
+	"github.com/yann0917/voxbox/internal/localruntime"
 	"github.com/yann0917/voxbox/internal/objectstorage"
 	"github.com/yann0917/voxbox/internal/provider"
 	"github.com/yann0917/voxbox/internal/provider/audiotool"
 	"github.com/yann0917/voxbox/internal/provider/gsgc"
+	"github.com/yann0917/voxbox/internal/provider/local"
 	"github.com/yann0917/voxbox/internal/provider/mvsep"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
@@ -39,6 +41,9 @@ type Service struct {
 
 	// models 本地语音模型管理器:构造期扫盘恢复,与 config 热更新无关(模型目录随 dataDir)。
 	models *localmodel.Manager
+
+	// ttsRuntime 本地合成引擎(audiocpp_server)生命周期管理:Close 时回收子进程。
+	ttsRuntime *localruntime.TTSRuntime
 
 	// storageMu 守护对象存储客户端的替换（Web 保存存储配置 / 配置文件监听热更新）。
 	// 任务提交经 Engine.SetStorageClient 的 getter 取当前客户端，进行中任务不受替换影响。
@@ -103,7 +108,14 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 	if err := audiotool.RegisterAll(reg, dataDir); err != nil {
 		return nil, err
 	}
-	s := &Service{db: db, reg: reg, models: localmodel.NewManager(dataDir)}
+	models := localmodel.NewManager(dataDir)
+	s := &Service{db: db, reg: reg, models: models}
+	// 本地推理工具注册:与 audiotool 同为无凭证本地能力,注册一次不参与热更新重注册。
+	ttsRuntime := localruntime.NewTTSRuntime(dataDir, models)
+	if err := local.RegisterAll(reg, dataDir, models, ttsRuntime); err != nil {
+		return nil, err
+	}
+	s.ttsRuntime = ttsRuntime
 	s.cfg.Store(cfg)
 	s.rebuildStorageClient(cfg.Storage)
 	return s, nil
@@ -391,7 +403,13 @@ func (s *Service) TestStorageConnection() (string, bool) {
 	return "连接成功", true
 }
 
-func (s *Service) Close() error { return nil } // gorm/sqlite 由进程退出回收；预留关闭钩子
+// Close 回收本地合成引擎子进程(gorm/sqlite 由进程退出回收)。
+func (s *Service) Close() error {
+	if s.ttsRuntime != nil {
+		return s.ttsRuntime.Close()
+	}
+	return nil
+}
 
 // TestMVSepConnection MVSep 连通性探测：GET /api/app/user 验证 token 并顺带取回
 // 账户名；未配置时直接报未配置，不发请求。

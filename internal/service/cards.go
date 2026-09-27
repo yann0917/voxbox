@@ -9,6 +9,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider"
 	"github.com/yann0917/voxbox/internal/provider/audiotool"
 	"github.com/yann0917/voxbox/internal/provider/gsgc"
+	"github.com/yann0917/voxbox/internal/provider/local"
 	"github.com/yann0917/voxbox/internal/provider/mvsep"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
@@ -27,6 +28,7 @@ func providerCards() []provider.ProviderInfo {
 		zhipu.ProviderCard(),
 		audiotool.ProviderCard(),
 		gsgc.ProviderCard(),
+		local.ProviderCard(),
 	}
 	sort.SliceStable(cards, func(i, j int) bool { return cards[i].Order < cards[j].Order })
 	return cards
