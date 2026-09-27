@@ -23,13 +23,17 @@ import (
 
 // SynthRequest 一次合成请求(参数与 audiocpp_server /v1/tasks/run 对齐)。
 type SynthRequest struct {
-	ModelID  string // 已安装的 qwen3 GGUF 条目 id
+	ModelID  string // 已安装的 TTS 条目 id(qwen3 GGUF / IndexTTS2.5 GGUF)
 	Text     string
-	RefWav   string // 克隆:参考 wav 绝对路径(已转码 24k mono pcm16);空=preset 模式
+	RefWav   string // 克隆:参考 wav 绝对路径(24k mono pcm16);空=preset 模式
 	RefText  string // 克隆:参考音频转写;空则走 x_vector_only_mode
 	Speaker  string // preset:预置音色名
 	Instruct string // 可选风格指令
 	Language string
+
+	// —— IndexTTS2.5 情感控制(qwen3 服务端会忽略,透传无害)——
+	EmotionText  string  // 情感描述文本;非空 → emotion_text + use_emotion_text:true
+	EmotionAlpha float64 // 情感强度 0-1;∈(0,1) 才下发(1.0 为默认全强度,不发送)
 }
 
 // TTSRuntime audiocpp_server 生命周期管理:懒启动、健康轮询、崩溃自愈、退出回收。
@@ -162,7 +166,7 @@ func (t *TTSRuntime) startLocked() (string, error) {
 			backend = "cpu"
 		}
 	}
-	// models[]:已安装的 qwen3 GGUF 条目逐个注册(family 固定 qwen3_tts)
+	// models[]:已安装的 tts 条目逐个注册(family 取目录条目:index_tts2/qwen3_tts)
 	type serverModel struct {
 		ID     string `json:"id"`
 		Family string `json:"family"`
@@ -180,10 +184,14 @@ func (t *TTSRuntime) startLocked() (string, error) {
 		if err != nil {
 			continue // 已安装但文件异常:跳过,Run 时会再校验
 		}
-		serverModels = append(serverModels, serverModel{ID: e.Entry.ID, Family: "qwen3_tts", Path: p, Task: "tts", Mode: "offline"})
+		family := e.Entry.Family
+		if family == "" {
+			family = "qwen3_tts" // 防御:目录已强制 tts 必填 family,空值回落 qwen3
+		}
+		serverModels = append(serverModels, serverModel{ID: e.Entry.ID, Family: family, Path: p, Task: "tts", Mode: "offline"})
 	}
 	if len(serverModels) == 0 {
-		return "", fmt.Errorf("没有已安装的本地 TTS 模型:请到设置页下载 Qwen3-TTS")
+		return "", fmt.Errorf("没有已安装的本地 TTS 模型:请到设置页下载(Qwen3-TTS / IndexTTS)")
 	}
 	cfg := map[string]any{
 		"host": "127.0.0.1", "port": port, "backend": backend, "device": 0,
@@ -241,6 +249,15 @@ func (t *TTSRuntime) Synthesize(ctx context.Context, req SynthRequest, report fu
 	}
 	if req.Instruct != "" {
 		opts["instruct"] = req.Instruct
+	}
+	// IndexTTS2.5 情感控制:情感文本非空才启用;强度默认 1.0(全强度)不下发,
+	// 仅 (0,1) 开区间透传(qwen3 服务端不识别这些键,忽略无害)
+	if req.EmotionText != "" {
+		opts["emotion_text"] = req.EmotionText
+		opts["use_emotion_text"] = true
+	}
+	if req.EmotionAlpha > 0 && req.EmotionAlpha < 1 {
+		opts["emotion_alpha"] = req.EmotionAlpha
 	}
 	if len(opts) > 0 {
 		inner["options"] = opts

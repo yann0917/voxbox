@@ -3,6 +3,7 @@ package local
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/yann0917/voxbox/internal/localmodel"
 	"github.com/yann0917/voxbox/internal/localruntime"
 	"github.com/yann0917/voxbox/internal/provider"
+	"github.com/yann0917/voxbox/internal/voicelib"
 )
 
 func newTestPkg(t *testing.T) (string, *localmodel.Manager) {
@@ -23,7 +25,7 @@ func newTestPkg(t *testing.T) (string, *localmodel.Manager) {
 
 func TestTTSRequiresEngineAndModel(t *testing.T) {
 	_, m := newTestPkg(t)
-	tts := newTTSTool(t.TempDir(), m, nil) // runtime nil:synthesizeFn seam 会替换
+	tts := newTTSTool(t.TempDir(), m, nil, nil) // runtime/voices nil:synthesizeFn seam 会替换
 	if _, err := tts.Run(context.Background(), provider.TaskInput{Params: map[string]any{
 		"model": "qwen3-tts-base-q8", "mode": "clone",
 	}}, func(p int, note string, d map[string]any) {}); err == nil {
@@ -33,7 +35,7 @@ func TestTTSRequiresEngineAndModel(t *testing.T) {
 
 func TestTTSCloneRequiresRefAudio(t *testing.T) {
 	dataDir, m := newTestPkg(t)
-	tts := newTTSTool(t.TempDir(), m, nil)
+	tts := newTTSTool(t.TempDir(), m, nil, nil)
 	// 播种 audiocpp 引擎与 base 模型的已安装态,让 Run 走到参考音频校验分支
 	seedEngine(t, dataDir, m, "audiocpp", "audiocpp_server")
 	seedModelFile(t, dataDir, m, "qwen3-tts-base-q8", "x.gguf")
@@ -47,7 +49,7 @@ func TestTTSCloneRequiresRefAudio(t *testing.T) {
 
 func TestTTSModeModelMismatch(t *testing.T) {
 	dataDir, m := newTestPkg(t)
-	tts := newTTSTool(t.TempDir(), m, nil)
+	tts := newTTSTool(t.TempDir(), m, nil, nil)
 	seedEngine(t, dataDir, m, "audiocpp", "audiocpp_server")
 	// seedModel 安装一个 base 条目,然后 preset 模式选 speaker → 应报模式/模型不匹配
 	seedModelFile(t, dataDir, m, "qwen3-tts-base-q8", "x.gguf")
@@ -88,7 +90,7 @@ func TestTTSHappyPathPreset(t *testing.T) {
 	dataDir, m := newTestPkg(t)
 	seedEngine(t, dataDir, m, "audiocpp", "audiocpp_server")
 	seedModelFile(t, dataDir, m, "qwen3-tts-customvoice-q8", "qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf")
-	tts := newTTSTool(dataDir, m, nil) // runtime nil:synthesizeFn 走 seam 注入
+	tts := newTTSTool(dataDir, m, nil, nil) // runtime/voices nil:synthesizeFn 走 seam 注入
 	outWav := filepath.Join(dataDir, "tts", "local_fake.wav")
 	if err := os.MkdirAll(filepath.Dir(outWav), 0o755); err != nil {
 		t.Fatal(err)
@@ -176,6 +178,210 @@ func TestASRHappyPath(t *testing.T) {
 	}
 	if art.Meta["engine"] != "sherpa-onnx" || art.Meta["model"] != "sensevoice-int8" || art.Meta["lang"] != "zh" {
 		t.Fatalf("artifact Meta 应含 engine/model/lang: %+v", art.Meta)
+	}
+}
+
+// —— Task 3:index_tts2 家族 / voice_id 克隆 / 情感透传 / 语言按家族 ——
+
+// seedIndexTTS 播种 audiocpp 引擎 + index_tts2 条目(内置 catalog 的 index-tts2_5-q8)的已安装态。
+func seedIndexTTS(t *testing.T, dataDir string, m *localmodel.Manager) {
+	t.Helper()
+	seedEngine(t, dataDir, m, "audiocpp", "audiocpp_server")
+	seedModelFile(t, dataDir, m, "index-tts2_5-q8", "index-tts2_5-q8_0.gguf")
+}
+
+// seedVoice 手工落一个音色目录(绕过 ffmpeg 入库):8 位 hex id + voice.wav,
+// 返回成品 wav 绝对路径(与 voicelib.Path 的返回口径一致)。
+func seedVoice(t *testing.T, dataDir, id string) string {
+	t.Helper()
+	dir := filepath.Join(dataDir, "voices", id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wav := filepath.Join(dir, "voice.wav")
+	if err := os.WriteFile(wav, []byte("RIFFfake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return wav
+}
+
+// fakeOutWav 造一个可作合成产物的假 wav(相对 dataDir 落盘)。
+func fakeOutWav(t *testing.T, dataDir string) string {
+	t.Helper()
+	outWav := filepath.Join(dataDir, "tts", "local_fake.wav")
+	if err := os.MkdirAll(filepath.Dir(outWav), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outWav, []byte("RIFF...."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return outWav
+}
+
+// noSynthStub 校验失败路径专用的合成 seam:意外走到合成即当场报错,
+// 避免前置 synthesizeFn==nil 守卫抢先返回「引擎不可用」掩盖真实校验行为。
+func noSynthStub(t *testing.T) func(ctx context.Context, req localruntime.SynthRequest, report func(p int, note string)) (string, error) {
+	return func(ctx context.Context, req localruntime.SynthRequest, report func(p int, note string)) (string, error) {
+		t.Errorf("校验应在此前拒绝请求,不应到达合成: %+v", req)
+		return "", fmt.Errorf("不应到达合成")
+	}
+}
+
+// TestTTSIndexPresetRejected index_tts2 为纯克隆模型:preset 模式直述不支持。
+func TestTTSIndexPresetRejected(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedIndexTTS(t, dataDir, m)
+	tts := newTTSTool(dataDir, m, nil, nil)
+	tts.synthesizeFn = noSynthStub(t)
+	_, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "index-tts2_5-q8", "mode": "preset", "speaker": "Vivian", "text": "你好"},
+	}, func(p int, note string, d map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "IndexTTS 为克隆模型") {
+		t.Fatalf("index 条目 preset 应直述不支持: %v", err)
+	}
+}
+
+// TestTTSCloneWithVoiceID voice_id 克隆:RefWav 直接取库内 wav 绝对路径(不经 convertRef,
+// ffmpeg 置障验证);情感与 language 按 index_tts2 家族透传;不传 language 回落 auto。
+func TestTTSCloneWithVoiceID(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedIndexTTS(t, dataDir, m)
+	voices := voicelib.New(dataDir)
+	wantWav := seedVoice(t, dataDir, "abcdef12")
+	tts := newTTSTool(dataDir, m, nil, voices)
+	tts.lookPath = func(string) (string, error) { return "", fmt.Errorf("ffmpeg 不可用") }
+	outWav := fakeOutWav(t, dataDir)
+	var got localruntime.SynthRequest
+	tts.synthesizeFn = func(ctx context.Context, req localruntime.SynthRequest, report func(p int, note string)) (string, error) {
+		got = req
+		return outWav, nil
+	}
+	if _, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{
+			"model": "index-tts2_5-q8", "mode": "clone", "voice_id": "abcdef12",
+			"text": "你好", "language": "zh", "emotion_text": "兴奋", "emotion_alpha": 0.7,
+		},
+		Files: map[string]string{},
+	}, func(p int, note string, d map[string]any) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got.RefWav != wantWav {
+		t.Fatalf("RefWav 应为库内 wav 绝对路径 %q,实际 %q", wantWav, got.RefWav)
+	}
+	if got.EmotionText != "兴奋" || got.EmotionAlpha != 0.7 {
+		t.Fatalf("情感参数应透传: %+v", got)
+	}
+	if got.Language != "zh" {
+		t.Fatalf("index 家族语言应透传 zh: %+v", got)
+	}
+	// 不传 language → 回落 auto;不传情感 → 零值
+	if _, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "index-tts2_5-q8", "mode": "clone", "voice_id": "abcdef12", "text": "你好"},
+		Files:  map[string]string{},
+	}, func(p int, note string, d map[string]any) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got.Language != "auto" || got.EmotionText != "" || got.EmotionAlpha != 0 {
+		t.Fatalf("缺省 language 应回落 auto 且情感为零值: %+v", got)
+	}
+}
+
+// TestTTSCloneVoiceIDPrecedence voice_id 与临时上传参考音频同传:voice_id 优先。
+func TestTTSCloneVoiceIDPrecedence(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedIndexTTS(t, dataDir, m)
+	voices := voicelib.New(dataDir)
+	wantWav := seedVoice(t, dataDir, "abcdef12")
+	tts := newTTSTool(dataDir, m, nil, voices)
+	tts.lookPath = func(string) (string, error) { return "", fmt.Errorf("ffmpeg 不可用") }
+	outWav := fakeOutWav(t, dataDir)
+	var got localruntime.SynthRequest
+	tts.synthesizeFn = func(ctx context.Context, req localruntime.SynthRequest, report func(p int, note string)) (string, error) {
+		got = req
+		return outWav, nil
+	}
+	upload := filepath.Join(dataDir, "upload.wav")
+	if err := os.WriteFile(upload, []byte("RIFFupload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "index-tts2_5-q8", "mode": "clone", "voice_id": "abcdef12", "text": "你好"},
+		Files:  map[string]string{"audio": upload},
+	}, func(p int, note string, d map[string]any) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got.RefWav != wantWav || got.RefWav == upload {
+		t.Fatalf("voice_id 应优先于临时上传: got=%q want=%q upload=%q", got.RefWav, wantWav, upload)
+	}
+}
+
+// TestTTSCloneVoiceNotFound voice_id 指向不存在的音色(或音色库未注入)→ 直述错误。
+func TestTTSCloneVoiceNotFound(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedIndexTTS(t, dataDir, m)
+	params := map[string]any{"model": "index-tts2_5-q8", "mode": "clone", "voice_id": "deadbeef", "text": "你好"}
+	run := func(tts *ttsTool) error {
+		tts.synthesizeFn = noSynthStub(t)
+		_, err := tts.Run(context.Background(), provider.TaskInput{Params: params, Files: map[string]string{}},
+			func(p int, note string, d map[string]any) {})
+		return err
+	}
+	if err := run(newTTSTool(dataDir, m, nil, voicelib.New(dataDir))); err == nil || !strings.Contains(err.Error(), "音色不存在或未加载") {
+		t.Fatalf("音色库为空应直述不存在: %v", err)
+	}
+	if err := run(newTTSTool(dataDir, m, nil, nil)); err == nil || !strings.Contains(err.Error(), "音色不存在或未加载") {
+		t.Fatalf("音色库未注入应直述不存在: %v", err)
+	}
+}
+
+// TestTTSLanguageByFamily 语言校验按家族:qwen3 只收全名,index 只收小写码;
+// 校验先于参考音频要求(参数错误优先直述)。
+func TestTTSLanguageByFamily(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedEngine(t, dataDir, m, "audiocpp", "audiocpp_server")
+	seedModelFile(t, dataDir, m, "qwen3-tts-base-q8", "x.gguf")
+	seedModelFile(t, dataDir, m, "index-tts2_5-q8", "index-tts2_5-q8_0.gguf")
+	tts := newTTSTool(dataDir, m, nil, nil)
+	tts.synthesizeFn = noSynthStub(t)
+	run := func(params map[string]any) error {
+		_, err := tts.Run(context.Background(), provider.TaskInput{Params: params, Files: map[string]string{}},
+			func(p int, note string, d map[string]any) {})
+		return err
+	}
+	if err := run(map[string]any{"model": "qwen3-tts-base-q8", "mode": "clone", "language": "auto", "text": "你好"}); err == nil || !strings.Contains(err.Error(), "语言") {
+		t.Fatalf("qwen3 应拒绝 auto: %v", err)
+	}
+	if err := run(map[string]any{"model": "index-tts2_5-q8", "mode": "clone", "language": "Korean", "text": "你好"}); err == nil || !strings.Contains(err.Error(), "语言") {
+		t.Fatalf("index 应拒绝 Korean: %v", err)
+	}
+}
+
+// TestTTSQwen3IgnoresEmotion 情感参数仅 index_tts2 透传:qwen3 条目同传情感 → 忽略,
+// 合法语言(Korean)照常透传(customvoice/base 匹配校验回归)。
+func TestTTSQwen3IgnoresEmotion(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedEngine(t, dataDir, m, "audiocpp", "audiocpp_server")
+	seedModelFile(t, dataDir, m, "qwen3-tts-customvoice-q8", "qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf")
+	tts := newTTSTool(dataDir, m, nil, nil)
+	outWav := fakeOutWav(t, dataDir)
+	var got localruntime.SynthRequest
+	tts.synthesizeFn = func(ctx context.Context, req localruntime.SynthRequest, report func(p int, note string)) (string, error) {
+		got = req
+		return outWav, nil
+	}
+	if _, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{
+			"model": "qwen3-tts-customvoice-q8", "mode": "preset", "speaker": "Vivian", "text": "你好",
+			"language": "Korean", "emotion_text": "兴奋", "emotion_alpha": 0.7,
+		},
+	}, func(p int, note string, d map[string]any) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got.Language != "Korean" {
+		t.Fatalf("qwen3 合法语言应透传: %+v", got)
+	}
+	if got.EmotionText != "" || got.EmotionAlpha != 0 {
+		t.Fatalf("qwen3 应忽略情感参数: %+v", got)
 	}
 }
 

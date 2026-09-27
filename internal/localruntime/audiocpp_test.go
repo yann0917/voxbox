@@ -95,6 +95,56 @@ func TestSynthesizeRequestOptions(t *testing.T) {
 	}
 }
 
+// TestSynthesizeEmotionOptions 情感透传:EmotionText 非空 → emotion_text + use_emotion_text;
+// EmotionAlpha ∈(0,1) → emotion_alpha(index_tts2 家族语义,audiocpp 层只管透传)。
+func TestSynthesizeEmotionOptions(t *testing.T) {
+	var captured atomic.Value
+	srv := fakeAudiocpp(t, nil, &captured)
+	defer srv.Close()
+	rt := NewTTSRuntime(t.TempDir(), nil)
+	rt.BaseURL = srv.URL
+	defer rt.Close()
+	_, err := rt.Synthesize(context.Background(), SynthRequest{
+		Text: "今天真开心", EmotionText: "兴奋", EmotionAlpha: 0.7,
+	}, func(p int, note string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := captured.Load().(map[string]any)["request"].(map[string]any)
+	opts, ok := inner["options"].(map[string]any)
+	if !ok {
+		t.Fatalf("应携带 options: %v", inner)
+	}
+	if opts["emotion_text"] != "兴奋" || opts["use_emotion_text"] != true || opts["emotion_alpha"] != 0.7 {
+		t.Fatalf("情感参数不符: %v", opts)
+	}
+}
+
+// TestSynthesizeEmotionAlphaDefaultOmitted EmotionAlpha=1.0(默认全强度)不出现在 options;
+// EmotionText 为空时不发 use_emotion_text。
+func TestSynthesizeEmotionAlphaDefaultOmitted(t *testing.T) {
+	var captured atomic.Value
+	srv := fakeAudiocpp(t, nil, &captured)
+	defer srv.Close()
+	rt := NewTTSRuntime(t.TempDir(), nil)
+	rt.BaseURL = srv.URL
+	defer rt.Close()
+	_, err := rt.Synthesize(context.Background(), SynthRequest{
+		Text: "x", EmotionAlpha: 1.0,
+	}, func(p int, note string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := captured.Load().(map[string]any)["request"].(map[string]any)
+	opts, _ := inner["options"].(map[string]any)
+	if _, exists := opts["emotion_alpha"]; exists {
+		t.Fatalf("EmotionAlpha=1.0 不应出现在 options: %v", opts)
+	}
+	if _, exists := opts["use_emotion_text"]; exists {
+		t.Fatalf("EmotionText 为空不应发 use_emotion_text: %v", opts)
+	}
+}
+
 func TestSynthesizeWaitsForHealth(t *testing.T) {
 	var ready atomic.Bool
 	var hits atomic.Int64
@@ -145,6 +195,78 @@ func seedTTSManager(t *testing.T, dir string) *localmodel.Manager {
 	writeManifest(filepath.Join(dir, "engines", "audiocpp"), "audiocpp", `,"binary":"pkg/bin/audiocpp_server"`)
 	writeManifest(filepath.Join(dir, "models", "qwen3-tts-base-q8"), "qwen3-tts-base-q8", "")
 	return localmodel.NewManager(dir)
+}
+
+// seedInstalledModel 播种一个内置目录(catalog)已有 tts 条目的已安装盘面:
+// 目录条目由内嵌 catalog.json 提供,这里只补 manifest 与占位模型文件。
+func seedInstalledModel(t *testing.T, dir string, m *localmodel.Manager, id, fileName string) {
+	t.Helper()
+	modelDir := filepath.Join(dir, "models", id)
+	if err := os.MkdirAll(modelDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("fake-model-bytes")
+	if err := os.WriteFile(filepath.Join(modelDir, fileName), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mf := map[string]any{
+		"id":       id,
+		"revision": "master",
+		"files":    []map[string]any{{"path": fileName, "size": len(data)}},
+	}
+	raw, err := json.Marshal(mf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modelDir, "manifest.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !m.Installed(id) {
+		t.Fatalf("播种模型 %s 后 Installed 仍为 false,播种布局与访问器判定不符", id)
+	}
+}
+
+// TestServerConfigFamilyPerEntry server.json 的 models[].family 取自目录条目:
+// index_tts2 条目注册为 index_tts2,qwen3 条目回归 qwen3_tts。
+func TestServerConfigFamilyPerEntry(t *testing.T) {
+	dir := t.TempDir()
+	m := seedTTSManager(t, dir)
+	seedInstalledModel(t, dir, m, "index-tts2_5-q8", "index-tts2_5-q8_0.gguf")
+	rt := NewTTSRuntime(dir, m)
+	rt.healthInterval = 5 * time.Millisecond
+	rt.procAttr = func(cmd *exec.Cmd) error { return startFakeOnConfigPort(t, cmd) }
+	defer rt.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := rt.ensureHealth(ctx); err != nil {
+		t.Fatalf("拉起假 server 应就绪: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "engines", "audiocpp-server.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	famByID := map[string]string{}
+	for _, mm := range cfg.Models {
+		id, _ := mm["id"].(string)
+		fam, _ := mm["family"].(string)
+		famByID[id] = fam
+	}
+	if len(cfg.Models) != 2 {
+		t.Fatalf("应注册 2 个已安装 tts 条目,实际 %d: %v", len(cfg.Models), famByID)
+	}
+	if famByID["qwen3-tts-base-q8"] != "qwen3_tts" {
+		t.Fatalf("qwen3 条目 family 应回归 qwen3_tts: %v", famByID)
+	}
+	if famByID["index-tts2_5-q8"] != "index_tts2" {
+		t.Fatalf("index 条目 family 应为 index_tts2: %v", famByID)
+	}
 }
 
 // startFakeOnConfigPort 从 cmd 参数解析 --config 的 server.json,按其中 host/port 起真

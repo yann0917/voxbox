@@ -116,7 +116,7 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 	s := &Service{db: db, reg: reg, models: models, voices: voicelib.New(dataDir)}
 	// 本地推理工具注册:与 audiotool 同为无凭证本地能力,注册一次不参与热更新重注册。
 	ttsRuntime := localruntime.NewTTSRuntime(dataDir, models)
-	if err := local.RegisterAll(reg, dataDir, models, ttsRuntime); err != nil {
+	if err := local.RegisterAll(reg, dataDir, models, ttsRuntime, s.voices); err != nil {
 		return nil, err
 	}
 	s.ttsRuntime = ttsRuntime

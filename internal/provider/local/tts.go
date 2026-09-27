@@ -6,12 +6,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/yann0917/voxbox/internal/localmodel"
 	"github.com/yann0917/voxbox/internal/localruntime"
 	"github.com/yann0917/voxbox/internal/provider"
+	"github.com/yann0917/voxbox/internal/voicelib"
 )
 
 const (
@@ -19,18 +21,25 @@ const (
 	refMaxBytes   = 20 << 20
 )
 
+// indexLanguages index_tts2 家族支持的语言码(空回落 auto)。
+var indexLanguages = map[string]bool{"auto": true, "zh": true, "en": true, "ja": true, "es": true, "ar": true}
+
+// qwen3Languages qwen3_tts 家族支持的语言全名(空回落 Chinese)。
+var qwen3Languages = map[string]bool{"Chinese": true, "English": true, "Japanese": true, "Korean": true}
+
 type ttsTool struct {
 	dataDir string
 	models  *localmodel.Manager
 	tts     *localruntime.TTSRuntime
+	voices  *voicelib.Library // 音色库(可 nil,测试 seam):voice_id 克隆的直接来源
 
 	// 测试 seam:缺省绑 TTSRuntime.Synthesize;转码 ffmpeg 可替换探测。
 	synthesizeFn func(ctx context.Context, req localruntime.SynthRequest, report func(p int, note string)) (string, error)
 	lookPath     func(string) (string, error)
 }
 
-func newTTSTool(dataDir string, models *localmodel.Manager, tts *localruntime.TTSRuntime) *ttsTool {
-	t := &ttsTool{dataDir: dataDir, models: models, tts: tts, lookPath: exec.LookPath}
+func newTTSTool(dataDir string, models *localmodel.Manager, tts *localruntime.TTSRuntime, voices *voicelib.Library) *ttsTool {
+	t := &ttsTool{dataDir: dataDir, models: models, tts: tts, voices: voices, lookPath: exec.LookPath}
 	if tts != nil {
 		// 测试路径 tts 可为 nil,缺省 synthesizeFn 保持 nil,Run 前置守卫兜底;
 		// 生产路径(RegisterAll/AllTools)tts 非 nil,必绑真实实现。
@@ -41,25 +50,31 @@ func newTTSTool(dataDir string, models *localmodel.Manager, tts *localruntime.TT
 
 func (t *ttsTool) Meta() provider.ToolMeta {
 	return provider.ToolMeta{Provider: "local", Name: "tts", Title: "本地语音合成",
-		Description: "audio.cpp 引擎驱动已安装的 Qwen3-TTS:参考音频克隆或预置音色,离线合成。", Group: "合成"}
+		Description: "audio.cpp 引擎驱动已安装的本地 TTS(Qwen3-TTS / IndexTTS):参考音频、音色库克隆或预置音色,离线合成;IndexTTS 支持情感文本控制。", Group: "合成"}
 }
 
 func (t *ttsTool) ParamSpecs() []provider.ParamSpec {
 	return []provider.ParamSpec{
 		{Key: "text", Label: "合成文本", Type: provider.ParamText, Required: true, Group: "本地推理"},
 		{Key: "model", Label: "本地模型", Type: provider.ParamEnum, Required: true, Group: "本地推理",
-			Placeholder: "设置页已安装的 Qwen3-TTS 条目"},
+			Placeholder: "设置页已安装的本地 TTS 条目"},
 		{Key: "mode", Label: "音色模式", Type: provider.ParamEnum, Required: true, Default: "clone",
 			Options: []provider.ParamOption{{Value: "clone", Label: "参考音频克隆"}, {Value: "preset", Label: "预置音色"}}, Group: "本地推理"},
 		{Key: "ref_text", Label: "参考音频转写", Type: provider.ParamText, Group: "本地推理",
 			Placeholder: "参考音频实际说的内容(留空走纯音色克隆)"},
+		{Key: "voice_id", Label: "音色库音色", Type: provider.ParamString, Group: "本地推理",
+			Placeholder: "从音色库选择,优先于临时上传"},
 		{Key: "speaker", Label: "预置音色", Type: provider.ParamEnum, Group: "本地推理",
 			Options: speakerOptions()},
 		{Key: "instruct", Label: "风格指令", Type: provider.ParamString, Group: "本地推理",
 			Placeholder: "如:Very happy and energetic"},
-		{Key: "language", Label: "语言", Type: provider.ParamEnum, Default: "Chinese",
-			Options: []provider.ParamOption{{Value: "Chinese", Label: "中文"}, {Value: "English", Label: "英文"},
-				{Value: "Japanese", Label: "日语"}, {Value: "Korean", Label: "韩语"}}, Group: "本地推理"},
+		// 语言取值由所选模型家族决定(qwen3 全名 / index 小写码),前端按家族渲染下拉
+		{Key: "language", Label: "语言", Type: provider.ParamString, Group: "本地推理",
+			Placeholder: "由所选模型决定"},
+		{Key: "emotion_text", Label: "情感文本", Type: provider.ParamString, Group: "本地推理",
+			Placeholder: "选填,如:非常兴奋(IndexTTS 2.5)"},
+		{Key: "emotion_alpha", Label: "情感强度", Type: provider.ParamFloat, Group: "本地推理",
+			Placeholder: "0-1,默认 1.0"},
 	}
 }
 
@@ -95,15 +110,43 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	if !t.models.Installed(modelID) {
 		return provider.TaskOutput{}, fmt.Errorf("本地模型未安装:请到设置页「本地环境」下载 %s", e.Name)
 	}
-	// 模式与模型变体匹配:文件名含 customvoice 才支持 preset;含 base 才支持 clone
-	switch {
-	case mode == "preset" && !strings.Contains(e.ID, "customvoice"):
-		return provider.TaskOutput{}, fmt.Errorf("预置音色需要 CustomVoice 模型:当前 %s 为克隆模型,请切换音色模式或下载 CustomVoice 条目", e.Name)
-	case mode == "clone" && strings.Contains(e.ID, "customvoice"):
-		return provider.TaskOutput{}, fmt.Errorf("参考音频克隆需要 Base 模型:当前 %s 为预置音色模型,请切换音色模式或下载 Base 条目", e.Name)
+	// 家族与模式匹配:index_tts2 为纯克隆模型(无预置音色);qwen3 家族沿用文件名
+	// 变体匹配校验(customvoice 条目支持 preset,base 条目支持 clone)。
+	if e.Family == "index_tts2" && mode == "preset" {
+		return provider.TaskOutput{}, fmt.Errorf("IndexTTS 为克隆模型,不支持预置音色")
+	}
+	if e.Family != "index_tts2" {
+		switch {
+		case mode == "preset" && !strings.Contains(e.ID, "customvoice"):
+			return provider.TaskOutput{}, fmt.Errorf("预置音色需要 CustomVoice 模型:当前 %s 为克隆模型,请切换音色模式或下载 CustomVoice 条目", e.Name)
+		case mode == "clone" && strings.Contains(e.ID, "customvoice"):
+			return provider.TaskOutput{}, fmt.Errorf("参考音频克隆需要 Base 模型:当前 %s 为预置音色模型,请切换音色模式或下载 Base 条目", e.Name)
+		}
+	}
+	// 语言校验按家族:qwen3 收全名、index 收小写码,非法值直述;空值回落家族默认
+	language := paramString(in.Params, "language", "")
+	if e.Family == "index_tts2" {
+		if language == "" {
+			language = "auto"
+		}
+		if !indexLanguages[language] {
+			return provider.TaskOutput{}, fmt.Errorf("参数错误: IndexTTS 语言仅支持 auto|zh|en|ja|es|ar,当前 %s", language)
+		}
+	} else {
+		if language == "" {
+			language = "Chinese"
+		}
+		if !qwen3Languages[language] {
+			return provider.TaskOutput{}, fmt.Errorf("参数错误: Qwen3-TTS 语言仅支持 Chinese|English|Japanese|Korean,当前 %s", language)
+		}
 	}
 
-	req := localruntime.SynthRequest{ModelID: modelID, Language: paramString(in.Params, "language", "Chinese")}
+	req := localruntime.SynthRequest{ModelID: modelID, Language: language}
+	// 情感参数仅 index_tts2 家族透传(qwen3 无此语义,直接忽略)
+	if e.Family == "index_tts2" {
+		req.EmotionText = paramString(in.Params, "emotion_text", "")
+		req.EmotionAlpha = paramFloat(in.Params, "emotion_alpha")
+	}
 	if text := paramString(in.Params, "text", ""); text == "" {
 		// 文本不在 params:与云端 TTS 一致由工具页 params.text 传入
 		return provider.TaskOutput{}, fmt.Errorf("缺少必填参数: text")
@@ -112,17 +155,31 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	}
 	switch mode {
 	case "clone":
-		ref := in.Files["audio"]
-		if ref == "" {
-			return provider.TaskOutput{}, fmt.Errorf("克隆模式需要参考音频:请上传或录制 3-60 秒清晰人声")
+		// 参考音频二选一:params.voice_id(音色库,优先)或临时上传(旧路,ffmpeg 转码)
+		if voiceID := paramString(in.Params, "voice_id", ""); voiceID != "" {
+			if t.voices == nil {
+				return provider.TaskOutput{}, fmt.Errorf("音色不存在或未加载: %s", voiceID)
+			}
+			wav, err := t.voices.Path(voiceID)
+			if err != nil {
+				return provider.TaskOutput{}, fmt.Errorf("音色不存在或未加载: %s", voiceID)
+			}
+			// 库内成品已是 24kHz 单声道 pcm16,直接作参考音频,不经 convertRef 转码
+			req.RefWav = wav
+			req.RefText = paramString(in.Params, "ref_text", "")
+		} else {
+			ref := in.Files["audio"]
+			if ref == "" {
+				return provider.TaskOutput{}, fmt.Errorf("克隆模式需要参考音频:请从音色库选择,或上传/录制 3-60 秒清晰人声")
+			}
+			converted, err := t.convertRef(ctx, ref)
+			if err != nil {
+				return provider.TaskOutput{}, err
+			}
+			defer os.Remove(converted)
+			req.RefWav = converted
+			req.RefText = paramString(in.Params, "ref_text", "")
 		}
-		converted, err := t.convertRef(ctx, ref)
-		if err != nil {
-			return provider.TaskOutput{}, err
-		}
-		defer os.Remove(converted)
-		req.RefWav = converted
-		req.RefText = paramString(in.Params, "ref_text", "")
 	case "preset":
 		sp := paramString(in.Params, "speaker", "")
 		if sp == "" {
@@ -195,5 +252,32 @@ func paramString(params map[string]any, key, def string) string {
 		return s
 	default:
 		return def
+	}
+}
+
+// paramFloat 宽容取参(float64/int 及数字字符串均可;缺失/不可解析归 0,
+// 与 paramString 同款宽容口径)。消费方按 (0,1) 开区间自行裁剪。
+func paramFloat(params map[string]any, key string) float64 {
+	v, ok := params[key]
+	if !ok || v == nil {
+		return 0
+	}
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
+		if err != nil {
+			return 0
+		}
+		return f
+	default:
+		return 0
 	}
 }
