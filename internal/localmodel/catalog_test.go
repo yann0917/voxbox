@@ -36,15 +36,16 @@ func TestParseCatalogAcceptsValid(t *testing.T) {
 
 func TestParseCatalogRejects(t *testing.T) {
 	cases := map[string][]Entry{
-		"id重复": {validEntry(), func() Entry { e := validEntry(); e.Repo = "org/m2"; return e }()},
-		"缺字段":  {func() Entry { e := validEntry(); e.Name = ""; return e }()},
-		"非法设备": {func() Entry { e := validEntry(); e.Requirements.Device = "tpu"; return e }()},
-		"无文件":  {func() Entry { e := validEntry(); e.Files = nil; return e }()},
-		"大小非法": {func() Entry { e := validEntry(); e.SizeBytes = 0; return e }()},
-		"上级穿越": {func() Entry { e := validEntry(); e.Files = []string{"../model.bin"}; return e }()},
-		"绝对路径": {func() Entry { e := validEntry(); e.Files = []string{"/etc/passwd"}; return e }()},
-		"反斜杠":  {func() Entry { e := validEntry(); e.Files = []string{`dir\model.bin`}; return e }()},
-		"未规范化": {func() Entry { e := validEntry(); e.Files = []string{"./model.bin"}; return e }()},
+		"id重复":        {validEntry(), func() Entry { e := validEntry(); e.Repo = "org/m2"; return e }()},
+		"缺字段":         {func() Entry { e := validEntry(); e.Name = ""; return e }()},
+		"非法设备":        {func() Entry { e := validEntry(); e.Requirements.Device = "tpu"; return e }()},
+		"无文件":         {func() Entry { e := validEntry(); e.Files = nil; return e }()},
+		"大小非法":        {func() Entry { e := validEntry(); e.SizeBytes = 0; return e }()},
+		"上级穿越":        {func() Entry { e := validEntry(); e.Files = []string{"../model.bin"}; return e }()},
+		"绝对路径":        {func() Entry { e := validEntry(); e.Files = []string{"/etc/passwd"}; return e }()},
+		"反斜杠":         {func() Entry { e := validEntry(); e.Files = []string{`dir\model.bin`}; return e }()},
+		"未规范化":        {func() Entry { e := validEntry(); e.Files = []string{"./model.bin"}; return e }()},
+		"保留名manifest": {func() Entry { e := validEntry(); e.Files = []string{"manifest.json"}; return e }()},
 	}
 	for name, entries := range cases {
 		_, err := parseCatalog(mustJSON(t, entries))

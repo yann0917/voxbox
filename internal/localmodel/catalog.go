@@ -75,6 +75,11 @@ func parseCatalog(data []byte) ([]Entry, error) {
 				strings.HasPrefix(path.Clean(f), "..") || path.Clean(f) != f {
 				return nil, fmt.Errorf("条目 %s 文件路径非法: %q", e.ID, f)
 			}
+			if f == "manifest.json" {
+				// 保留名:manifest.json 是安装完成标记,清单文件同名会覆盖标记,
+				// restore 读到非法 manifest 会把已安装模型静默变回未安装。
+				return nil, fmt.Errorf("条目 %s 文件名 manifest.json 为安装标记保留: %q", e.ID, f)
+			}
 		}
 	}
 	return entries, nil

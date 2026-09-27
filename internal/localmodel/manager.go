@@ -257,11 +257,12 @@ func (m *Manager) Delete(id string) error {
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrUnknownModel, id)
 	}
-	if m.active == id {
-		return fmt.Errorf("模型正在下载,请先暂停再删除")
-	}
+	// verifying 期间 active 仍为该 id,校验态检查必须在前,否则误报「正在下载」。
 	if m.states[id].Status == StatusVerifying {
 		return fmt.Errorf("模型校验中,请稍后再删除")
+	}
+	if m.active == id {
+		return fmt.Errorf("模型正在下载,请先暂停再删除")
 	}
 	if err := os.RemoveAll(m.modelDir(id)); err != nil {
 		return fmt.Errorf("删除模型目录失败: %w", err)
@@ -359,18 +360,39 @@ func (m *Manager) fileURL(e Entry, file string) string {
 	return fmt.Sprintf("%s/api/v1/models/%s/repo?%s", m.baseURL, e.Repo, q.Encode())
 }
 
+// contentRangeStart 解析 Content-Range: bytes S-E/N 头,返回起始偏移 S 与总大小 N;
+// 缺失/畸形(start 或 total 非数字、start 为负、total 非正)返回 false。
+// fetchOne 的 206 起始偏移校验与 probe 的总长解析(contentRangeTotal)共用。
+func contentRangeStart(cr string) (start, total int64, ok bool) {
+	const prefix = "bytes "
+	if !strings.HasPrefix(cr, prefix) {
+		return 0, 0, false
+	}
+	i := strings.LastIndexByte(cr, '/')
+	if i < 0 {
+		return 0, 0, false
+	}
+	head := cr[len(prefix):i] // S-E
+	dash := strings.IndexByte(head, '-')
+	if dash < 0 {
+		return 0, 0, false
+	}
+	start, err := strconv.ParseInt(head[:dash], 10, 64)
+	if err != nil || start < 0 {
+		return 0, 0, false
+	}
+	total, err = strconv.ParseInt(cr[i+1:], 10, 64)
+	if err != nil || total <= 0 {
+		return 0, 0, false
+	}
+	return start, total, true
+}
+
 // contentRangeTotal 解析 Content-Range: bytes S-E/N 头,返回总大小 N;缺失/畸形/非正返回 false。
 // probe 的 206 路径与「200 怪癖」路径共用(魔搭对非 LFS 小文件的探测回 200 却带真实大小的该头)。
 func contentRangeTotal(cr string) (int64, bool) {
-	i := strings.LastIndexByte(cr, '/')
-	if !strings.HasPrefix(cr, "bytes ") || i < 0 {
-		return 0, false
-	}
-	total, err := strconv.ParseInt(cr[i+1:], 10, 64)
-	if err != nil || total <= 0 {
-		return 0, false
-	}
-	return total, true
+	_, total, ok := contentRangeStart(cr)
+	return total, ok
 }
 
 // probe 用 Range: bytes=0-0 探测单文件:取真实大小与 Range 支持,同时前置发现 404/下架。
@@ -436,9 +458,25 @@ func appendToFile(path string, b []byte) (int, error) {
 	return f.Write(b)
 }
 
+// regetFromZero 丢弃当前响应(排水后关闭),从零重发不带 Range 的普通 GET。
+// 续传被降级(非 206)与 206 起始偏移不符共用此降级路径;调用方负责把 offset 归零。
+func (m *Manager) regetFromZero(ctx context.Context, e Entry, file string, resp *http.Response) (*http.Response, error) {
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	resp.Body.Close()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.fileURL(e, file), nil)
+	if err != nil {
+		return nil, err
+	}
+	r, err := downloadClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("网络错误: %w", err)
+	}
+	return r, nil
+}
+
 // fetchOne 单文件下载:全部写入 .part,完成后按声明校验字节数(+可选 sha256)再原子改名。
 // 最终文件已存在且大小吻合 → 跳过(跨重启续传);.part 大于远端(远端变更)→ 废弃重下;
-// Range 不可用/续传被降级(200)→ 从零重写。
+// Range 不可用/续传被降级(200)/206 起始偏移不符 → 从零重写。
 func (m *Manager) fetchOne(ctx context.Context, e Entry, file string, size int64, rangeOK bool, base int64) error {
 	final := filepath.Join(m.modelDir(e.ID), filepath.FromSlash(file))
 	if fi, err := os.Stat(final); err == nil && fi.Size() == size {
@@ -472,18 +510,21 @@ func (m *Manager) fetchOne(ctx context.Context, e Entry, file string, size int64
 		if err != nil {
 			return fmt.Errorf("网络错误: %w", err)
 		}
-		if offset > 0 && resp.StatusCode != http.StatusPartialContent {
-			// 续传被降级:从零重写
-			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-			resp.Body.Close()
+		degrade := false
+		if resp.StatusCode == http.StatusPartialContent {
+			// 206 必须核对起始偏移与总长:损坏代理可能回起点错误的 206,事后字节数校验
+			// (offset+=downloaded)挡不住「长度恰好、起点错位」的内容入库安装。
+			start, total, ok := contentRangeStart(resp.Header.Get("Content-Range"))
+			degrade = !ok || start != offset || total != size
+		} else {
+			degrade = offset > 0 // 续传被降级(200 等):从零重写
+		}
+		if degrade {
+			// 从零重写:drain 后重发普通 GET
+			resp, err = m.regetFromZero(ctx, e, file, resp)
 			offset = 0
-			req2, err := http.NewRequestWithContext(ctx, http.MethodGet, m.fileURL(e, file), nil)
 			if err != nil {
 				return err
-			}
-			resp, err = downloadClient.Do(req2)
-			if err != nil {
-				return fmt.Errorf("网络错误: %w", err)
 			}
 		}
 		switch {

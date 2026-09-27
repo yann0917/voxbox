@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// testEntries 三条目测试目录:小文件规模,与 catalog.json 无关(注入构造)。
+// testEntries 两条目测试目录:小文件规模,与 catalog.json 无关(注入构造)。
 func testEntries() []Entry {
 	e := func(id, kind string, files ...string) Entry {
 		return Entry{
@@ -168,6 +168,25 @@ func TestRestoreManifestIDMismatch(t *testing.T) {
 	}
 }
 
+func TestRestoreManifestRevisionMismatch(t *testing.T) {
+	// manifest 的 revision 与目录条目不一致(目录换版)→ 按未安装处理,不能静默当作已安装。
+	m, _ := newTestManager(t, testEntries(), func(base string) {
+		dir := filepath.Join(base, "asr-small")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mf := manifest{ID: "asr-small", Repo: "org/asr-small", Revision: "old-rev", CompletedAt: "2026-01-01T00:00:00Z"}
+		raw, _ := json.Marshal(mf)
+		if err := os.WriteFile(filepath.Join(dir, "manifest.json"), raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	v := viewOrFatal(t, m, "asr-small")
+	if v.Status != StatusIdle {
+		t.Fatalf("manifest revision 不匹配应按未安装处理,实际 %+v", v)
+	}
+}
+
 // ─── 下载管线测试:fakeScope 假魔搭 + 全链路用例 ─────────────────────────────
 
 // fileMap 可变参构造文件表(pairs 依次为 name, content;值可为 string 或 []byte)。
@@ -192,6 +211,7 @@ type fakeScope struct {
 	files    map[string][]byte
 	noRange  bool                     // 恒 200(模拟不支持 Range 的上游)
 	quirk200 bool                     // 模拟魔搭非 LFS 怪癖:bytes=0-0 回 200 + 真实大小 Content-Range + 1 字节 body
+	badStart bool                     // 模拟损坏代理:start>0 的 Range 回起点错误的 206(声称从 0 开始,body 恰为剩余长度)
 	blockMu  sync.Mutex               // 保护 block:handler goroutine 写入与测试轮询读并发
 	block    map[string]chan struct{} // 文件 → 关闭后才继续写剩余字节
 	blockN   map[string]int64         // 文件 → 先写多少字节后阻塞(仅无 Range 的 200 分支)
@@ -243,6 +263,14 @@ func newFakeScope(t *testing.T, files map[string][]byte) *fakeScope {
 			w.Header().Set("Content-Length", "1")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(data[:1])
+			return
+		}
+		if f.badStart && start > 0 {
+			// 损坏代理:回起点错误的 206(声称 bytes 0-…、总长不变),body 恰为剩余
+			// 长度——字节数校验(offset+=downloaded)挡不住错位内容,必须核对起始偏移。
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes 0-%d/%d", int64(len(data))-start-1, len(data)))
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(data[:int64(len(data))-start])
 			return
 		}
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, int64(len(data))-1, len(data)))
@@ -319,6 +347,31 @@ func TestDownloadHappyPath(t *testing.T) {
 	mf, err := readManifest(filepath.Join(base, "asr-small"))
 	if err != nil || mf.Revision != "master" || mf.ID != "asr-small" {
 		t.Fatalf("manifest 不符: %+v err=%v", mf, err)
+	}
+}
+
+func TestDownloadNestedPath(t *testing.T) {
+	// 目录条目允许子目录文件(tts-small: m/model.bin):落盘前 MkdirAll 补父目录,
+	// 文件必须落在 models/tts-small/m/model.bin 子目录且安装成功。
+	content := []byte("nested-model-bytes")
+	f := newFakeScope(t, fileMap("m/model.bin", content))
+	entries := testEntries()
+	m, base := newTestManager(t, entries)
+	m.baseURL = f.srv.URL
+	if err := m.Start("tts-small"); err != nil {
+		t.Fatalf("启动下载失败: %v", err)
+	}
+	v := waitFor(t, m, "tts-small", StatusInstalled)
+	if v.DownloadedBytes != int64(len(content)) || v.HasPartial {
+		t.Fatalf("installed 进度应为 %d,实际 %+v", len(content), v)
+	}
+	got, err := os.ReadFile(filepath.Join(base, "tts-small", "m", "model.bin"))
+	if err != nil || !bytes.Equal(got, content) {
+		t.Fatalf("子目录文件内容不符: %v", err)
+	}
+	mf, err := readManifest(filepath.Join(base, "tts-small"))
+	if err != nil || len(mf.Files) != 1 || mf.Files[0].Path != "m/model.bin" {
+		t.Fatalf("manifest 应记录子目录路径,实际: %+v err=%v", mf, err)
 	}
 }
 
@@ -406,6 +459,37 @@ func TestProbe200WithContentRange(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(base, "asr-small", "a.bin"))
 	if err != nil || !bytes.Equal(got, content) {
 		t.Fatalf("续传后内容不符: %v", err)
+	}
+}
+
+func TestResumeBadStart206(t *testing.T) {
+	// 损坏代理回「起点错误的 206」:声称 bytes 0-…(起始偏移与请求 offset 不符),
+	// body 恰为剩余长度——仅靠事后字节数校验会把错位内容装进库(目录 sha256 全空,
+	// 无第二道校验)。必须核对 Content-Range 起始偏移,不符则降级从零重下。
+	// 内容前半/后半必须可区分:旧实现会把前半再拼一遍,前后半同内容时检出无从谈起。
+	content := append(bytes.Repeat([]byte("A"), 256), bytes.Repeat([]byte("B"), 256)...)
+	f := newFakeScope(t, fileMap("a.bin", content, "b.bin", []byte("ok")))
+	f.badStart = true
+	entries := testEntries()
+	m, base := newTestManager(t, entries, func(base string) {
+		dir := filepath.Join(base, "asr-small")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// 半程盘面:a.bin 已收前 256 字节(.part),启动后走 Range 续传
+		if err := os.WriteFile(filepath.Join(dir, "a.bin.part"), content[:256], 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	m.baseURL = f.srv.URL
+
+	if err := m.Start("asr-small"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, m, "asr-small", StatusInstalled)
+	got, err := os.ReadFile(filepath.Join(base, "asr-small", "a.bin"))
+	if err != nil || !bytes.Equal(got, content) {
+		t.Fatalf("起点错误的 206 应降级从零重下,实际内容不符: %v", err)
 	}
 }
 
