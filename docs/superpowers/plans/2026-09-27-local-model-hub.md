@@ -794,6 +794,7 @@ func (f *fakeScope) releaseAfter(t *testing.T, file string) func() {
 	t.Fatalf("等待文件 %s 阻塞点超时", file)
 	return nil
 }
+```
 
 下载用例:
 
