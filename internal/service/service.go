@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yann0917/voxbox/internal/config"
+	"github.com/yann0917/voxbox/internal/localmodel"
 	"github.com/yann0917/voxbox/internal/objectstorage"
 	"github.com/yann0917/voxbox/internal/provider"
 	"github.com/yann0917/voxbox/internal/provider/audiotool"
@@ -35,6 +36,9 @@ type Service struct {
 	db     *store.DB
 	reg    *provider.Registry
 	engine *task.Engine
+
+	// models 本地语音模型管理器:构造期扫盘恢复,与 config 热更新无关(模型目录随 dataDir)。
+	models *localmodel.Manager
 
 	// storageMu 守护对象存储客户端的替换（Web 保存存储配置 / 配置文件监听热更新）。
 	// 任务提交经 Engine.SetStorageClient 的 getter 取当前客户端，进行中任务不受替换影响。
@@ -99,7 +103,7 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 	if err := audiotool.RegisterAll(reg, dataDir); err != nil {
 		return nil, err
 	}
-	s := &Service{db: db, reg: reg}
+	s := &Service{db: db, reg: reg, models: localmodel.NewManager(dataDir)}
 	s.cfg.Store(cfg)
 	s.rebuildStorageClient(cfg.Storage)
 	return s, nil
@@ -148,6 +152,9 @@ func (s *Service) Engine() *task.Engine {
 func (s *Service) DB() *store.DB                { return s.db }
 func (s *Service) Registry() *provider.Registry { return s.reg }
 func (s *Service) Config() *config.Config       { return s.cfg.Load() }
+
+// LocalModels 本地语音模型管理器(设置页模型区与 /api/models 消费)。
+func (s *Service) LocalModels() *localmodel.Manager { return s.models }
 
 // SaveProviderFields 保存一张凭证卡的字段并热应用：按卡声明校验（未知卡/未知字段拒绝），
 // secret 留空=不修改，text/select 按提交值落盘（select 空串=合法取值，如 MVSep 主站）。
