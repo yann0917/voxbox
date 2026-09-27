@@ -70,6 +70,12 @@ func (s *Server) Handler() http.Handler {
 		api.GET("/mvsep/status", s.mvsepStatus)
 		api.GET("/mvsep/history", s.mvsepHistory)
 		api.GET("/mvsep/separation", s.mvsepSeparationGet)
+		// 本地语音模型管理(无凭证,全部登录用户可读可操作)
+		api.GET("/models", s.listModels)
+		api.POST("/models/open-dir", s.openModelsDir)
+		api.POST("/models/:id/download", s.startModelDownload)
+		api.POST("/models/:id/stop", s.stopModelDownload)
+		api.DELETE("/models/:id", s.deleteModel)
 		// AI 助手（悬浮面板）：模型目录 + 流式对话（SSE）
 		api.GET("/assistant/models", s.assistantModels)
 		api.POST("/assistant/chat", s.assistantChat)
