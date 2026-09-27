@@ -31,14 +31,11 @@ func (s *Server) listVoiceLib(c *gin.Context) {
 }
 
 // addVoiceLib POST /api/voice-library（multipart: name + file）：原始文件落临时文件
-// → Library.Add 转码入库（defer 删临时文件）。20MB 上限双保险：
-// MaxBytesReader 在 multipart 解析前截断超大请求体 + FormFile 尺寸校验。
+// → Library.Add 转码入库（defer 删临时文件）。20MB 上限在解析期即截断：MaxBytesReader
+// 必须挂在 PostForm/FormFile（二者触发 ParseMultipartForm 无界解析，>32MB 部分落 /tmp）
+// 之前，超大请求体在解析期被掐断报错，不留永久临时文件；fh.Size 校验兜底
+// （正文未超读限但文件超过 20MB）。
 func (s *Server) addVoiceLib(c *gin.Context) {
-	name := strings.TrimSpace(c.PostForm("name"))
-	if name == "" {
-		fail(c, CodeBadRequest, "参数错误：name 必填")
-		return
-	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxVoiceUploadBytes+1<<20)
 	fh, err := c.FormFile("file")
 	if err != nil {
@@ -47,6 +44,11 @@ func (s *Server) addVoiceLib(c *gin.Context) {
 	}
 	if fh.Size > maxVoiceUploadBytes {
 		fail(c, CodeBadRequest, "文件超过大小上限（20MB）")
+		return
+	}
+	name := strings.TrimSpace(c.PostForm("name"))
+	if name == "" {
+		fail(c, CodeBadRequest, "参数错误：name 必填")
 		return
 	}
 	// 扩展名只保留安全形态（.字母数字 ≤8 位）作 ffmpeg 输入格式提示，其余丢弃

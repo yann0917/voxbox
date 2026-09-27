@@ -162,8 +162,20 @@ func TestVoiceLibraryFlow(t *testing.T) {
 	}
 }
 
+// tempDirSnapshot 记录系统临时目录当前文件名集合（泄漏断言用的快照）。
+func tempDirSnapshot() map[string]bool {
+	out := map[string]bool{}
+	if entries, err := os.ReadDir(os.TempDir()); err == nil {
+		for _, e := range entries {
+			out[e.Name()] = true
+		}
+	}
+	return out
+}
+
 // TestVoiceLibraryValidation 无需 ffmpeg 的参数校验（校验先于转码）：
-// name 缺失 → code 2；超 20MB → code 2。
+// name 缺失 → code 2；超 20MB → code 2 且临时目录不残留解析临时文件
+// （20MB+1 走 fh.Size 兜底路径，22MB 触发 MaxBytesReader 解析期截断路径）。
 func TestVoiceLibraryValidation(t *testing.T) {
 	ts, _, ac := newTestServer(t)
 
@@ -173,10 +185,23 @@ func TestVoiceLibraryValidation(t *testing.T) {
 		t.Errorf("空 name code = %d (%s), want %d 且提示 name", e.Code, e.Message, CodeBadRequest)
 	}
 
-	// 文件超 20MB：code 2
-	big := bytes.Repeat([]byte{0}, 20<<20+1)
-	e2 := voiceMultipart(t, ac, ts.URL+"/api/voice-library", "大文件", "big.wav", big)
-	if e2.Code != CodeBadRequest {
-		t.Errorf("超限文件 code = %d (%s), want %d", e2.Code, e2.Message, CodeBadRequest)
+	before := tempDirSnapshot()
+	// 20MB+1：正文 < 21MB 读限，multipart 解析成功，由 fh.Size 兜底拒收
+	e2 := voiceMultipart(t, ac, ts.URL+"/api/voice-library", "大文件", "big.wav", bytes.Repeat([]byte{0}, 20<<20+1))
+	if e2.Code != CodeBadRequest || !strings.Contains(e2.Message, "20MB") {
+		t.Errorf("超限文件 code = %d (%s), want %d 且提示 20MB", e2.Code, e2.Message, CodeBadRequest)
+	}
+	// 22MB：正文超 21MB 读限，multipart 解析期即被 MaxBytesReader 截断拒收
+	e3 := voiceMultipart(t, ac, ts.URL+"/api/voice-library", "大文件", "big.wav", bytes.Repeat([]byte{0}, 22<<20))
+	if e3.Code != CodeBadRequest {
+		t.Errorf("超读限文件 code = %d (%s), want %d", e3.Code, e3.Message, CodeBadRequest)
+	}
+	// 泄漏断言：两次超限请求不得在系统临时目录留下本 handler 相关的新文件
+	//（multipart 解析落盘临时文件名前缀 "multipart-"；本 handler 临时文件前缀
+	// "voxbox-voice-"。只比对这两类前缀，系统临时目录由多进程共享，全量比对会误伤他方文件）。
+	for name := range tempDirSnapshot() {
+		if !before[name] && (strings.HasPrefix(name, "multipart-") || strings.HasPrefix(name, "voxbox-voice-")) {
+			t.Errorf("超限请求在临时目录残留文件: %s", name)
+		}
 	}
 }
