@@ -197,9 +197,13 @@ func validateModel(e *Entry, engines map[string]bool) error {
 		return fmt.Errorf("条目 %s 的 requires_engine %q 不是本目录已声明的 engine 条目", e.ID, e.RequiresEngine)
 	}
 	if e.Archive != "" {
-		// 归档条目:整包下载 + 解包白名单,二者缺一不可
+		// 归档条目:整包下载 + 解包白名单,二者缺一不可;archive_size 必须为正
+		// (下载进度与磁盘预检的基准,缺失会让 installed 态进度失真)
 		if e.ArchiveURL == "" {
 			return fmt.Errorf("归档条目 %s 缺少 archive_url", e.ID)
+		}
+		if e.ArchiveSize <= 0 {
+			return fmt.Errorf("归档条目 %s 的 archive_size 必须为正", e.ID)
 		}
 		if len(e.ExtractFiles) == 0 {
 			return fmt.Errorf("归档条目 %s 缺少 extract_files(解包白名单)", e.ID)

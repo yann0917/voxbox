@@ -245,6 +245,42 @@ func TestParseCatalogRequiresEngineRuling(t *testing.T) {
 	}
 }
 
+// TestParseCatalogArchiveSizeRuling 落实控制器裁定 4:模型归档条目必须带正的
+// archive_size(下载进度与磁盘预检的基准)。
+func TestParseCatalogArchiveSizeRuling(t *testing.T) {
+	e := validEntry()
+	e.Archive = "tar.bz2"
+	e.ArchiveURL = "https://example.com/m.tar.bz2"
+	e.ArchiveSize = 163002883
+	e.ExtractFiles = []string{"model.int8.onnx", "tokens.txt"}
+	if _, err := parseCatalog(withEngine(t, e)); err != nil {
+		t.Fatalf("完整归档条目被拒: %v", err)
+	}
+	e.ArchiveSize = 0
+	if _, err := parseCatalog(withEngine(t, e)); err == nil {
+		t.Error("归档条目缺 archive_size 应被拒")
+	}
+}
+
+// TestEmbeddedCatalogSenseVoiceSHA 落实控制器裁定 4:sensevoice-int8 的整包 sha256
+// 必须落库(Task 1 实测留档),runArchive 据此校验下载完整性。
+func TestEmbeddedCatalogSenseVoiceSHA(t *testing.T) {
+	for _, e := range catalog {
+		if e.ID != "sensevoice-int8" {
+			continue
+		}
+		const want = "7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e"
+		if e.ArchiveSHA256 != want {
+			t.Fatalf("sensevoice-int8 archive_sha256 应为实测整包哈希,实际 %q", e.ArchiveSHA256)
+		}
+		if e.ArchiveSize != 163002883 {
+			t.Errorf("sensevoice-int8 archive_size 应为实测 163002883,实际 %d", e.ArchiveSize)
+		}
+		return
+	}
+	t.Fatal("内嵌目录缺少 sensevoice-int8 条目")
+}
+
 func TestArchiveForPlatform(t *testing.T) {
 	e := engineEntry()
 	a, ok := e.ArchiveFor("darwin", "arm64")
