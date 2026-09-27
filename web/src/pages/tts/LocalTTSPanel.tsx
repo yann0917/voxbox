@@ -19,6 +19,10 @@ import {
   useToast,
 } from "../../ui";
 
+// 与后端 convertRef 的 20MB 上限同源(internal/provider/local/tts.go: refMaxBytes = 20 << 20);
+// 选文件时前端先挡一道,避免 100MB 级文件完整上传后才被后端驳回
+const REF_MAX_BYTES = 20 * 1024 * 1024;
+
 const LANGS = [
   { value: "Chinese", label: "中文" },
   { value: "English", label: "英文" },
@@ -208,7 +212,16 @@ export default function LocalTTSPanel() {
                         type="file"
                         accept="audio/*,.wav,.mp3,.m4a,.flac"
                         className="hidden"
-                        onChange={(e) => setRefFile(e.target.files?.[0] ?? null)}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] ?? null;
+                          // 体积预检(与后端 convertRef 的 20MB 上限同源):超限不入选,canSubmit 随之保持 false
+                          if (f && f.size > REF_MAX_BYTES) {
+                            toast({ tone: "error", title: "参考音频过大", description: "请选择 20MB 以内的音频" });
+                            e.target.value = ""; // 允许再次选同一个超限文件时仍触发校验
+                            return;
+                          }
+                          setRefFile(f);
+                        }}
                         {...rest}
                       />
                     </div>

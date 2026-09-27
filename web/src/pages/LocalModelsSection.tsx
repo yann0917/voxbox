@@ -26,7 +26,7 @@ import {
 } from "../ui";
 
 // 表格「类别」列的短标签(整行宽度优先给模型名与简介)
-const KIND_LABELS: Record<string, string> = { asr: "识别", tts: "合成" };
+const KIND_LABELS: Record<string, string> = { asr: "识别", tts: "合成", engine: "引擎" };
 
 // Tailwind 静态类映射:状态点色调 → 文字色(动态拼接类名不会进产物)
 const TONE_TEXT: Record<string, string> = {
