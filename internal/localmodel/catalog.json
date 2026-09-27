@@ -1,0 +1,44 @@
+[
+  {
+    "id": "paraformer-large-vad-punc",
+    "repo": "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    "revision": "master",
+    "name": "Paraformer 大模型 ASR(VAD+标点)",
+    "kind": "asr",
+    "summary": "中文语音识别,标点与时间戳输出,CPU 可跑的轻量选择",
+    "size_bytes": 909098953,
+    "files": ["model.pt", "configuration.json", "config.yaml", "am.mvn", "seg_dict", "tokens.json"],
+    "requirements": { "device": "cpu" },
+    "license": "Apache-2.0",
+    "license_url": "https://modelscope.cn/models/iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    "sha256": {}
+  },
+  {
+    "id": "confucius4-r2t2",
+    "repo": "netease-youdao/Confucius4-R2T2",
+    "revision": "master",
+    "name": "Confucius4 R2T2 流式 ASR",
+    "kind": "asr",
+    "summary": "真流式语音识别,增量文本不回改,适合实时字幕场景",
+    "size_bytes": 4092092418,
+    "files": ["model.safetensors", "config.json", "configuration.json", "generation_config.json", "chat_template.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "added_tokens.json", "vocab.json", "merges.txt"],
+    "requirements": { "device": "cuda", "vram_gb": 12 },
+    "license": "NetEase Model Use License",
+    "license_url": "https://modelscope.cn/models/netease-youdao/Confucius4-R2T2",
+    "sha256": {}
+  },
+  {
+    "id": "qwen3-tts-1.7b-base",
+    "repo": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+    "revision": "master",
+    "name": "Qwen3-TTS 1.7B Base",
+    "kind": "tts",
+    "summary": "音色克隆语音合成,3 秒参考音频即可复刻音色",
+    "size_bytes": 4544170411,
+    "files": ["model.safetensors", "speech_tokenizer/model.safetensors", "config.json", "configuration.json", "generation_config.json", "preprocessor_config.json", "speech_tokenizer/config.json", "speech_tokenizer/configuration.json", "speech_tokenizer/preprocessor_config.json", "tokenizer_config.json", "vocab.json", "merges.txt"],
+    "requirements": { "device": "cuda", "vram_gb": 8 },
+    "license": "Apache-2.0",
+    "license_url": "https://modelscope.cn/models/Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+    "sha256": {}
+  }
+]
