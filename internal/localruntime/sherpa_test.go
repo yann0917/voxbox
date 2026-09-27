@@ -50,9 +50,10 @@ func TestTranscribeFailsOnMissingModelFiles(t *testing.T) {
 func TestTranscribeRejectsBadJSON(t *testing.T) {
 	dir := t.TempDir()
 	bin := writeFakeSherpa(t, dir, "not-json at all")
-	// mock 缺模型文件也会先报错——补两个空模型文件再测解析失败
+	// mock 缺输入文件会先报错(启动前校验)——补齐模型文件与 wav 再测解析失败
 	_ = os.WriteFile(filepath.Join(dir, "model.int8.onnx"), []byte("x"), 0o644)
 	_ = os.WriteFile(filepath.Join(dir, "tokens.txt"), []byte("x"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "in.wav"), []byte("x"), 0o644)
 	if _, err := Transcribe(context.Background(), bin, dir, filepath.Join(dir, "in.wav"), "auto", true); err == nil {
 		t.Fatal("非 JSON stdout 应报错")
 	}
