@@ -126,11 +126,14 @@ export default function LocalTTSPanel() {
 
   const uploadMut = useMutation({
     mutationFn: ({ name, file }: { name: string; file: File }) => uploadVoiceApi(name, file),
-    onSuccess: (v) => {
-      invalidateVoices();
-      setVoiceId(v.id); // 入库即选中,衔接预览与提交
+    onSuccess: async (v) => {
       setNameModal(null);
       toast({ tone: "ok", title: "音色已入库", description: v.name });
+      // 「入库即选中」必须等重取完成后再设:invalidateQueries 的 Promise 在活动查询
+      // 重取结束后才 resolve;若先行 setVoiceId,守卫 effect 会拿旧列表判「不存在」
+      // 把刚设的选中竞态清掉,预览不出现、canSubmit 恒 false
+      await qc.invalidateQueries({ queryKey: ["voice-library"] });
+      setVoiceId(v.id);
     },
     onError: (e: Error) => toast({ tone: "error", title: "音色入库失败", description: e.message }),
   });
