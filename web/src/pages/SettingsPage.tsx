@@ -32,6 +32,7 @@ import {
   useToast,
   type TabItem,
 } from "../ui";
+import LocalModelsSection from "./LocalModelsSection";
 
 /** test-connection 响应：results 逐卡回 name/ok/message，storage 独立段。 */
 interface ConnResult {
@@ -454,6 +455,8 @@ export default function SettingsPage() {
         </div>
       ) : (
         <div className="space-y-4">
+          <LocalModelsSection />
+
           {local.map((p) => (
             <Card key={p.name}>
               <CardHeader
