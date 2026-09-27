@@ -1,14 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
-  <!-- voxbox 品牌标：电光青信号方块 + 声波纹。与登录页 AudioLines 同一图形，
-       色值取 design-system/voxbox/MASTER.md §1.1（accent / accent-ink）；
-       描边 2.25 比界面图标略粗，保证 16px 标签页尺寸下的可读性 -->
-  <rect x="2" y="2" width="44" height="44" rx="10" fill="#22D3EE"/>
-  <g transform="translate(12 12)" fill="none" stroke="#05242B" stroke-width="2.25" stroke-linecap="round">
-    <path d="M2 10v3"/>
-    <path d="M6 6v11"/>
-    <path d="M10 3v18"/>
-    <path d="M14 8v7"/>
-    <path d="M18 5v13"/>
-    <path d="M22 10v3"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2C2014"/>
+      <stop offset="1" stop-color="#110B05"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="512" cy="512" r="385" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F2C184" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#F2C184" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="224" fill="url(#halo)"/>
+  <line x1="512.0" y1="297.0" x2="512.0" y2="92.0" stroke="#E9B87E" stroke-opacity="0.94" stroke-width="44" stroke-linecap="round"/>
+  <line x1="594.3" y1="313.4" x2="649.8" y2="179.4" stroke="#E8B67B" stroke-opacity="0.76" stroke-width="44" stroke-linecap="round"/>
+  <line x1="664.0" y1="360.0" x2="724.1" y2="299.9" stroke="#E4B074" stroke-opacity="0.58" stroke-width="44" stroke-linecap="round"/>
+  <line x1="710.6" y1="429.7" x2="826.1" y2="381.9" stroke="#DFA86A" stroke-opacity="0.70" stroke-width="44" stroke-linecap="round"/>
+  <line x1="727.0" y1="512.0" x2="912.0" y2="512.0" stroke="#D99E5D" stroke-opacity="0.88" stroke-width="44" stroke-linecap="round"/>
+  <line x1="710.6" y1="594.3" x2="918.5" y2="680.4" stroke="#D39450" stroke-opacity="1.00" stroke-width="44" stroke-linecap="round"/>
+  <line x1="664.0" y1="664.0" x2="773.6" y2="773.6" stroke="#CE8C46" stroke-opacity="0.79" stroke-width="44" stroke-linecap="round"/>
+  <line x1="594.3" y1="710.6" x2="630.6" y2="798.4" stroke="#CA863F" stroke-opacity="0.61" stroke-width="44" stroke-linecap="round"/>
+  <line x1="512.0" y1="727.0" x2="512.0" y2="822.0" stroke="#C9843C" stroke-opacity="0.61" stroke-width="44" stroke-linecap="round"/>
+  <line x1="429.7" y1="710.6" x2="370.4" y2="853.8" stroke="#CA863F" stroke-opacity="0.79" stroke-width="44" stroke-linecap="round"/>
+  <line x1="360.0" y1="664.0" x2="200.9" y2="823.1" stroke="#CE8C46" stroke-opacity="1.00" stroke-width="44" stroke-linecap="round"/>
+  <line x1="313.4" y1="594.3" x2="142.4" y2="665.1" stroke="#D39450" stroke-opacity="0.88" stroke-width="44" stroke-linecap="round"/>
+  <line x1="297.0" y1="512.0" x2="172.0" y2="512.0" stroke="#D99E5D" stroke-opacity="0.70" stroke-width="44" stroke-linecap="round"/>
+  <line x1="313.4" y1="429.7" x2="234.8" y2="397.2" stroke="#DFA86A" stroke-opacity="0.58" stroke-width="44" stroke-linecap="round"/>
+  <line x1="360.0" y1="360.0" x2="257.4" y2="257.4" stroke="#E4B074" stroke-opacity="0.76" stroke-width="44" stroke-linecap="round"/>
+  <line x1="429.7" y1="313.4" x2="351.3" y2="124.0" stroke="#E8B67B" stroke-opacity="0.94" stroke-width="44" stroke-linecap="round"/>
 </svg>

@@ -123,7 +123,9 @@ fn open_main_window(app: &tauri::AppHandle, port: u16) {
     let _ = win.set_focus();
 }
 
-/// 托盘：关窗驻留后从这里唤回或退出。图标用 bundler 生成的默认窗口图标。
+/// 托盘：关窗驻留后从这里唤回或退出。
+/// 菜单栏图标用单色模板图（icons/tray-icon-mono.png + template=true）：
+/// macOS 按 alpha 通道自动适配深浅菜单栏（深底白标/浅底黑标），彩色 app 图标放菜单栏会与系统不协调。
 fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     use tauri::menu::{Menu, MenuItem};
     use tauri::tray::TrayIconBuilder;
@@ -131,8 +133,8 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
     TrayIconBuilder::with_id("main-tray")
-        .icon(app.default_window_icon().expect("bundler icon").clone())
-        .icon_as_template(false)
+        .icon(tauri::include_image!("icons/tray-icon-mono.png"))
+        .icon_as_template(true)
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {

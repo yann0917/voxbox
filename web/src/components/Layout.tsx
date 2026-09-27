@@ -34,6 +34,7 @@ import { useWSStatus } from "../lib/ws";
 import PlayerBar from "./PlayerBar";
 import TaskToasts from "./TaskToasts";
 import AssistantWidget from "./AssistantWidget";
+import BrandMark from "./BrandMark";
 import { IconButton, Skeleton, useToast, ConfirmDialog } from "../ui";
 
 const nav = [
@@ -237,7 +238,8 @@ export default function Layout() {
       >
         <div className="flex h-14 items-center gap-2.5 border-b border-line px-3 lg:px-4">
           <div className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-accent text-accent-ink">
-            <AudioLines size={16} strokeWidth={2} />
+            {/* 品牌标记（环形声纹）：小尺寸下按视觉权重加粗笔画（44→72/1024），与 lucide 线宽观感对齐 */}
+            <BrandMark size={18} strokeWidth={72} />
           </div>
           <span
             className={`text-sm font-semibold tracking-tight ${navCollapsed ? "hidden" : "hidden lg:inline"}`}
