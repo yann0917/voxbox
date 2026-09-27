@@ -79,6 +79,12 @@ func (s *Server) Handler() http.Handler {
 		api.POST("/models/:id/download", s.startModelDownload)
 		api.POST("/models/:id/stop", s.stopModelDownload)
 		api.DELETE("/models/:id", s.deleteModel)
+		// 音色库(参考音频:入库/列表/预览/改名/删除,磁盘即真相不落 DB)
+		api.GET("/voice-library", s.listVoiceLib)
+		api.POST("/voice-library", s.addVoiceLib)
+		api.GET("/voice-library/:id/stream", s.streamVoiceLib)
+		api.PATCH("/voice-library/:id", s.patchVoiceLib)
+		api.DELETE("/voice-library/:id", s.deleteVoiceLib)
 		// AI 助手（悬浮面板）：模型目录 + 流式对话（SSE）
 		api.GET("/assistant/models", s.assistantModels)
 		api.POST("/assistant/chat", s.assistantChat)

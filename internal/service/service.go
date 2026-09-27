@@ -29,6 +29,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider/zhipu"
 	"github.com/yann0917/voxbox/internal/store"
 	"github.com/yann0917/voxbox/internal/task"
+	"github.com/yann0917/voxbox/internal/voicelib"
 )
 
 type Service struct {
@@ -41,6 +42,9 @@ type Service struct {
 
 	// models 本地语音模型管理器:构造期扫盘恢复,与 config 热更新无关(模型目录随 dataDir)。
 	models *localmodel.Manager
+
+	// voices 音色库(参考音频,磁盘即真相不落 DB):目录随 dataDir,启动期一次构造。
+	voices *voicelib.Library
 
 	// ttsRuntime 本地合成引擎(audiocpp_server)生命周期管理:Close 时回收子进程。
 	ttsRuntime *localruntime.TTSRuntime
@@ -109,7 +113,7 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 		return nil, err
 	}
 	models := localmodel.NewManager(dataDir)
-	s := &Service{db: db, reg: reg, models: models}
+	s := &Service{db: db, reg: reg, models: models, voices: voicelib.New(dataDir)}
 	// 本地推理工具注册:与 audiotool 同为无凭证本地能力,注册一次不参与热更新重注册。
 	ttsRuntime := localruntime.NewTTSRuntime(dataDir, models)
 	if err := local.RegisterAll(reg, dataDir, models, ttsRuntime); err != nil {
@@ -167,6 +171,9 @@ func (s *Service) Config() *config.Config       { return s.cfg.Load() }
 
 // LocalModels 本地语音模型管理器(设置页模型区与 /api/models 消费)。
 func (s *Service) LocalModels() *localmodel.Manager { return s.models }
+
+// VoiceLibrary 音色库(参考音频管理,音色库端点与克隆配音类工具消费)。
+func (s *Service) VoiceLibrary() *voicelib.Library { return s.voices }
 
 // SaveProviderFields 保存一张凭证卡的字段并热应用：按卡声明校验（未知卡/未知字段拒绝），
 // secret 留空=不修改，text/select 按提交值落盘（select 空串=合法取值，如 MVSep 主站）。
