@@ -56,6 +56,8 @@ export interface Task {
     speakers_count?: number;
     todos?: { content: string; executor: string[]; start_time: number }[];
     chapters?: { title: string; summary: string; start_time: number; end_time: number }[];
+    /** 本地识别（local asr）：sherpa-onnx 只回整段文本，无分句时间戳 */
+    text?: string;
   };
 }
 

@@ -1061,6 +1061,11 @@ export default function ASRPage() {
                     activeIdx={activeIdx}
                     onSeek={(ms) => seekTo(ms, seekTrack)}
                   />
+                ) : detail?.task.summary?.text ? (
+                  // 本地识别（sherpa-onnx）只回整段文本，无分句时间戳：直接展示文稿
+                  <p className="whitespace-pre-wrap py-2 text-sm leading-relaxed text-fg">
+                    {detail.task.summary.text}
+                  </p>
                 ) : (
                   <p className="py-2 text-xs text-muted">未识别到分句内容，可直接下载转写文本查看。</p>
                 )}
