@@ -65,12 +65,14 @@ const LINK_CLASS =
 function ModelRow({
   m,
   busy,
+  engineInstalled,
   onStart,
   onStop,
   onAskDelete,
 }: {
   m: ModelItem;
   busy: boolean;
+  engineInstalled: (id?: string) => boolean;
   onStart: (id: string) => void;
   onStop: (id: string) => void;
   onAskDelete: (m: ModelItem) => void;
@@ -88,6 +90,11 @@ function ModelRow({
         <td className="py-2 pr-3 align-top">
           <div className="text-fg">{m.name}</div>
           <div className="mt-0.5 text-[11px] leading-snug text-muted">{m.summary}</div>
+          {!engineInstalled(m.requires_engine) && m.status !== "installed" && (
+            <p className="mt-1 text-[11px] text-warn">
+              需先下载引擎才能本地运行(模型可先行下载)
+            </p>
+          )}
         </td>
         <td className="py-2 pr-3 align-top text-fg-2">{KIND_LABELS[m.kind] ?? m.kind}</td>
         <td className="py-2 pr-3 align-top font-mono tabular-nums text-fg-2">
@@ -184,6 +191,11 @@ export default function LocalModelsSection() {
   const { data, isLoading } = useModels();
   const items = data?.items ?? [];
   const busy = items.some((m) => m.status === "downloading" || m.status === "verifying");
+  // 引擎依赖判定:同表条目按 id 查状态;无依赖条目视作满足
+  const engineInstalled = (id?: string) => {
+    if (!id) return true; // 无依赖条目视作满足
+    return items.some((m) => m.id === id && m.status === "installed");
+  };
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["models"] });
   const start = useMutation({
@@ -259,6 +271,7 @@ export default function LocalModelsSection() {
                     key={m.id}
                     m={m}
                     busy={busy}
+                    engineInstalled={engineInstalled}
                     onStart={(id) => start.mutate(id)}
                     onStop={(id) => stop.mutate(id)}
                     onAskDelete={setDelTarget}
