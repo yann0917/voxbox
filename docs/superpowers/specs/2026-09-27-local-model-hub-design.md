@@ -129,16 +129,14 @@
 
 Tab 内布局顺序:**模型 → 本地能力卡(audiotool / gsgc,现状不动)→ 存储位置 → 通知 → API Token**。
 
-模型区按 `kind` 分组(组头刻印微标签"语音识别 / 语音合成"),每模型一张 `Card`:
+模型区为一张紧凑表格(单表,样式对齐 PricingPage 的语义 table:细线表头、`border-line/60` 行分隔、mono 数值),列:**模型**(名称 + 一句简介作 muted 小字第二行,简介取目录 `summary` 不编造)、**类别**(识别/合成 短标签)、**大小(约)**(mono)、**设备**(mono;`requirements.device=cuda` → "需 NVIDIA GPU · ≥{vram_gb}GB 显存";`cpu` → "CPU 可用")、**许可证**(内嵌链接指向 `license_url` 的魔搭模型页)、**状态**(SignalDot+文字,遵守"不得只靠颜色":未下载 muted / 下载中 accent+pulse / 校验中 accent / 已安装 meter / 失败 danger)、**操作**。
 
-- **头部**:名称 + 纯色状态点(SignalDot+文字,遵守"不得只靠颜色"):未下载 muted / 下载中 accent+pulse / 校验中 accent / 已安装 meter / 失败 danger。右侧操作:未下载→`下载`(primary sm;有 .part→`继续下载`);下载中→`暂停`;已安装→`删除`(IconButton,danger 语义);失败→`重试`。全局有下载进行中时,其他卡的下载/继续按钮禁用。
-- **正文**:一句简介(取目录 `summary`,不编造文案);meta 行(mono 小字):总大小 + 设备要求(`requirements.device=cuda` → "需 NVIDIA GPU · ≥{vram_gb}GB 显存";`cpu` → "CPU 可用")+ 许可证名(内嵌链接指向 `license_url` 的魔搭模型页,遵守域名内嵌链接偏好)。
-- **下载中**:`ProgressBar(active)` + mono"已收 / 总字节(百分比)";`verifying` 显示校验中文案。
+- **操作列**:未下载→`下载`(primary sm;有 .part→`继续下载`);下载中→`暂停`;已安装→`删除`(IconButton danger hover);失败→`重试`。全局有下载进行中时,其他行的下载/重试禁用。
+- **副行**:下载中在该行下方展开一条整行副行(colSpan,主行与副行间不画分隔线),内容 `ProgressBar(active)` + mono"已收 / 总字节(百分比)";失败副行显示直述错误文本(磁盘不足/网络中断/模型不存在或已下架,后者附魔搭页链接)。
 - **删除**:`ConfirmDialog` 二次确认,标题含模型名,说明释放空间大小,危险按钮在右。
-- **失败**:行内错误文本 + Toast;错误文案直述原因(磁盘不足/网络中断/模型不存在或已下架,后者附魔搭页链接)。
 - **完成 Toast**:"{name} 已就绪"。
 
-模型区组头右侧(桌面形态 `me.desktop` 时)显示「打开模型目录」IconButton,调 `POST /api/models/open-dir`;web 形态隐藏该按钮(与 API Token 卡的显隐逻辑相反方向,均以形态判断)。
+表格卡片(Card「本地模型」)头部右侧在桌面形态 `me.desktop` 时显示「打开模型目录」IconButton,调 `POST /api/models/open-dir`;web 形态隐藏该按钮(与 API Token 卡的显隐逻辑相反方向,均以形态判断)。
 
 ## 7. 桌面「打开模型目录」:Go 端点而非 Tauri 插件
 
