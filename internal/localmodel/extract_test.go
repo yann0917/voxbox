@@ -185,3 +185,75 @@ func TestFindBinariesMissing(t *testing.T) {
 		t.Fatalf("缺失二进制应报引擎包不完整: %v", err)
 	}
 }
+
+// TestExtractTarGzDotRootEntries 真机冒烟回归:GNU tar 打包的引擎归档(audio.cpp v0.8.2
+// 实测)以 ./ 为根前缀,首个 ./ 条目曾命中「非法归档条目路径」分支导致整包解包失败;
+// 根条目必然落在 destDir 内,正确语义是跳过而非报错。
+func TestExtractTarGzDotRootEntries(t *testing.T) {
+	var raw bytes.Buffer
+	tw := tar.NewWriter(&raw)
+	hdr := func(h *tar.Header) {
+		if err := tw.WriteHeader(h); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hdr(&tar.Header{Name: "./", Typeflag: tar.TypeDir, Mode: 0o755})
+	hdr(&tar.Header{Name: "./bin/", Typeflag: tar.TypeDir, Mode: 0o755})
+	for _, e := range []struct {
+		name string
+		data string
+	}{
+		{"./bin/audiocpp_server", "server-bin"},
+		{"./bin/audiocpp_cli", "cli-bin"},
+	} {
+		hdr(&tar.Header{Name: e.name, Mode: 0o755, Size: int64(len(e.data))})
+		if _, err := tw.Write([]byte(e.data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	src := writeTemp(t, t.TempDir(), "engine.tar.gz", gzBytes(t, raw.Bytes()))
+	dest := t.TempDir()
+	if err := extractArchive("tar.gz", src, dest, nil); err != nil {
+		t.Fatalf("./ 根前缀归档应正常解包: %v", err)
+	}
+	for name, want := range map[string]string{
+		"bin/audiocpp_server": "server-bin",
+		"bin/audiocpp_cli":    "cli-bin",
+	} {
+		got, err := os.ReadFile(filepath.Join(dest, filepath.FromSlash(name)))
+		if err != nil || string(got) != want {
+			t.Fatalf("%s 解包不符: %v %q", name, err, got)
+		}
+	}
+}
+
+// TestExtractZipDotRootEntries zip 分支与 tar 同语义:根目录 ./ 条目跳过,../ 仍拒绝。
+func TestExtractZipDotRootEntries(t *testing.T) {
+	var zbuf bytes.Buffer
+	zw := zip.NewWriter(&zbuf)
+	for _, name := range []string{"./", "./bin/", "./bin/audiocpp_server", "../evil.txt"} {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// zip 写入器对目录条目(名字以 / 结尾)拒绝写数据,只有文件条目有载荷。
+		if !strings.HasSuffix(name, "/") {
+			if _, err := w.Write([]byte("x")); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	zw.Close()
+	dir := t.TempDir()
+	dest := t.TempDir()
+	err := extractArchive("zip", writeTemp(t, dir, "a.zip", zbuf.Bytes()), dest, nil)
+	if err == nil || !strings.Contains(err.Error(), "非法归档条目路径") {
+		t.Fatalf("../ 仍必须被拒绝: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "bin", "audiocpp_server")); err != nil {
+		t.Fatalf("./ 前缀成员应已解出: %v", err)
+	}
+}

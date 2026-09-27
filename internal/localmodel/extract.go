@@ -80,7 +80,11 @@ func extractTar(format string, f *os.File, destDir string, keep map[string]bool,
 			return err
 		}
 		name := path.Clean(hdr.Name)
-		if name == "." || strings.HasPrefix(name, "../") || path.IsAbs(name) {
+		if name == "." {
+			// 归档根目录条目(GNU tar 打包常见 ./ 前缀):必然落在 destDir 内,跳过。
+			continue
+		}
+		if strings.HasPrefix(name, "../") || path.IsAbs(name) {
 			return fmt.Errorf("非法归档条目路径: %s", hdr.Name)
 		}
 		if hdr.Typeflag == tar.TypeDir {
@@ -118,7 +122,11 @@ func extractZip(src, destDir string, keep map[string]bool, whitelist []string) e
 	var written int64
 	for _, zf := range zr.File {
 		name := path.Clean(zf.Name)
-		if name == "." || strings.HasPrefix(name, "../") || path.IsAbs(name) {
+		if name == "." {
+			// zip 根目录条目:必然落在 destDir 内,跳过(与 tar 分支同语义)。
+			continue
+		}
+		if strings.HasPrefix(name, "../") || path.IsAbs(name) {
 			return fmt.Errorf("非法归档条目路径: %s", zf.Name)
 		}
 		if zf.FileInfo().IsDir() {
