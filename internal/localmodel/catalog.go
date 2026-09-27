@@ -54,6 +54,7 @@ type Entry struct {
 	Assets         map[string]Asset  `json:"assets,omitempty"`         // engine:键 "goos/goarch"
 	FileURLs       map[string]string `json:"file_urls,omitempty"`      // file → 直链;Repo 非空时可省
 	RequiresEngine string            `json:"requires_engine,omitempty"`
+	Family         string            `json:"family,omitempty"` // tts 模型族:qwen3_tts | index_tts2;asr/engine 必须为空
 }
 
 // ArchiveFor 按 GOOS/GOARCH 取引擎平台资产;未声明平台返回 false(该平台不展示此引擎)。
@@ -114,6 +115,18 @@ func parseCatalog(data []byte) ([]Entry, error) {
 		}
 		if e.Kind != "asr" && e.Kind != "tts" && e.Kind != "engine" {
 			return nil, fmt.Errorf("条目 %s 的 kind 必须是 asr|tts|engine", e.ID)
+		}
+		// family 规则:tts 必填且 ∈{qwen3_tts, index_tts2};asr/engine 必须为空。
+		// 下游按 family 区分合成引擎调用链(qwen3 走预置音色/克隆参数,index 走情感控制)。
+		switch e.Kind {
+		case "tts":
+			if e.Family != "qwen3_tts" && e.Family != "index_tts2" {
+				return nil, fmt.Errorf("条目 %s 的 family 必须是 qwen3_tts|index_tts2", e.ID)
+			}
+		default:
+			if e.Family != "" {
+				return nil, fmt.Errorf("条目 %s(kind=%s)不应声明 family", e.ID, e.Kind)
+			}
 		}
 		if seen[e.ID] {
 			return nil, fmt.Errorf("条目 id 重复: %s", e.ID)

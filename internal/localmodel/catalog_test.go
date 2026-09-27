@@ -25,6 +25,15 @@ func mustJSON(t *testing.T, v any) []byte {
 	return b
 }
 
+// ttsEntry family 校验用例的 tts 基线条目(validEntry 的 tts 变体):
+// family 规则只对 kind=tts 生效,基线自带合法族值 qwen3_tts。
+func ttsEntry() Entry {
+	e := validEntry()
+	e.Kind = "tts"
+	e.Family = "qwen3_tts"
+	return e
+}
+
 func TestParseCatalogAcceptsValid(t *testing.T) {
 	entries, err := parseCatalog(withEngine(t, validEntry()))
 	if err != nil {
@@ -57,6 +66,44 @@ func TestParseCatalogRejects(t *testing.T) {
 	}
 }
 
+// TestParseCatalogFamilyRuling 落实 family 校验规则:
+// kind=tts 必填且 ∈{qwen3_tts, index_tts2};kind∈{asr,engine} 必须为空。
+func TestParseCatalogFamilyRuling(t *testing.T) {
+	// tts:两个合法族值都通过
+	if _, err := parseCatalog(withEngine(t, ttsEntry())); err != nil {
+		t.Fatalf("qwen3_tts 族 tts 条目被拒: %v", err)
+	}
+	e := ttsEntry()
+	e.Family = "index_tts2"
+	if _, err := parseCatalog(withEngine(t, e)); err != nil {
+		t.Fatalf("index_tts2 族 tts 条目被拒: %v", err)
+	}
+	// tts:缺 family → 拒
+	e = ttsEntry()
+	e.Family = ""
+	if _, err := parseCatalog(withEngine(t, e)); err == nil {
+		t.Error("tts 条目缺 family 应被拒")
+	}
+	// tts:非法族值 → 拒
+	e = ttsEntry()
+	e.Family = "cosyvoice"
+	if _, err := parseCatalog(withEngine(t, e)); err == nil {
+		t.Error("tts 条目 family 非法值应被拒")
+	}
+	// asr:声明 family → 拒
+	e = validEntry()
+	e.Family = "qwen3_tts"
+	if _, err := parseCatalog(withEngine(t, e)); err == nil {
+		t.Error("asr 条目声明 family 应被拒")
+	}
+	// engine:声明 family → 拒
+	eng := engineEntry()
+	eng.Family = "qwen3_tts"
+	if _, err := parseCatalog(mustJSON(t, []Entry{eng})); err == nil {
+		t.Error("引擎条目声明 family 应被拒")
+	}
+}
+
 func TestParseCatalogBadJSON(t *testing.T) {
 	if _, err := parseCatalog([]byte("not json")); err == nil {
 		t.Fatal("非法 JSON 期望报错")
@@ -64,7 +111,7 @@ func TestParseCatalogBadJSON(t *testing.T) {
 }
 
 // 内嵌目录自检:随二进制发布的静态资产,损坏必须在首次加载时暴露。
-// 断言口径(裁定 2):二期目录为 2 引擎 + 4 模型;license_url 不再统一指向魔搭模型页——
+// 断言口径(裁定 2):二期目录为 2 引擎 + 5 模型;license_url 不再统一指向魔搭模型页——
 // 引擎条目指向其上游 GitHub 仓库(audiocpp / sherpa-onnx),模型条目指向魔搭模型页
 // 或上游 releases/tag 页(sensevoice 指向 sherpa-onnx 的 asr-models tag 页,
 // 同为 https://github.com/ 前缀),故按 kind 分支断言前缀,统一只要求非空 https。
@@ -72,9 +119,10 @@ func TestEmbeddedCatalog(t *testing.T) {
 	wantIDs := []string{
 		"sherpa-onnx", "audiocpp",
 		"sensevoice-int8", "qwen3-tts-base-q8", "qwen3-tts-customvoice-q8", "qwen3-tts-base-0.6b-q8",
+		"index-tts2_5-q8",
 	}
 	if len(catalog) != len(wantIDs) {
-		t.Fatalf("内嵌目录应为 %d 条(2 引擎 + 4 模型),实际 %d", len(wantIDs), len(catalog))
+		t.Fatalf("内嵌目录应为 %d 条(2 引擎 + 5 模型),实际 %d", len(wantIDs), len(catalog))
 	}
 	engineIDs := map[string]bool{}
 	for _, e := range catalog {
@@ -103,6 +151,9 @@ func TestEmbeddedCatalog(t *testing.T) {
 			if len(e.Assets) == 0 {
 				t.Errorf("引擎条目 %s 应声明平台 assets", e.ID)
 			}
+			if e.Family != "" {
+				t.Errorf("引擎条目 %s 不应声明 family: %q", e.ID, e.Family)
+			}
 		default:
 			if !strings.HasPrefix(e.LicenseURL, "https://modelscope.cn/models/") &&
 				!strings.HasPrefix(e.LicenseURL, "https://github.com/") {
@@ -111,6 +162,14 @@ func TestEmbeddedCatalog(t *testing.T) {
 			// 裁定 1:asr/tts 条目 requires_engine 必填且指向已声明的 engine 条目
 			if e.RequiresEngine == "" || !engineIDs[e.RequiresEngine] {
 				t.Errorf("模型条目 %s 的 requires_engine 必须指向已声明引擎: %q", e.ID, e.RequiresEngine)
+			}
+			// family 规则:tts 必填族值,asr 必须为空
+			if e.Kind == "tts" {
+				if e.Family != "qwen3_tts" && e.Family != "index_tts2" {
+					t.Errorf("tts 条目 %s 的 family 必须是 qwen3_tts|index_tts2: %q", e.ID, e.Family)
+				}
+			} else if e.Family != "" {
+				t.Errorf("asr 条目 %s 不应声明 family: %q", e.ID, e.Family)
 			}
 		}
 	}
@@ -279,6 +338,32 @@ func TestEmbeddedCatalogSenseVoiceSHA(t *testing.T) {
 		return
 	}
 	t.Fatal("内嵌目录缺少 sensevoice-int8 条目")
+}
+
+// TestEmbeddedCatalogIndexTTS2 落实 family 规则与 Task 2 spike 实测留档:
+// IndexTTS2.5 条目族值必须为 index_tts2,size_bytes 与逐文件 sha256 为本机对整文件实测,
+// runFile 据此校验下载完整性。
+func TestEmbeddedCatalogIndexTTS2(t *testing.T) {
+	for _, e := range catalog {
+		if e.ID != "index-tts2_5-q8" {
+			continue
+		}
+		if e.Family != "index_tts2" {
+			t.Fatalf("index-tts2_5-q8 的 family 应为 index_tts2,实际 %q", e.Family)
+		}
+		if e.SizeBytes != 3502955328 {
+			t.Errorf("index-tts2_5-q8 size_bytes 应为实测 3502955328,实际 %d", e.SizeBytes)
+		}
+		const want = "5e827b2072042e4a1b21ccf24a5cb4f71cb1011403067a0a9b039311d8b38628"
+		if e.SHA256["index-tts2_5-q8_0.gguf"] != want {
+			t.Errorf("index-tts2_5-q8 的文件 sha256 应为实测整文件哈希,实际 %q", e.SHA256["index-tts2_5-q8_0.gguf"])
+		}
+		if e.RequiresEngine != "audiocpp" {
+			t.Errorf("index-tts2_5-q8 的 requires_engine 应为 audiocpp,实际 %q", e.RequiresEngine)
+		}
+		return
+	}
+	t.Fatal("内嵌目录缺少 index-tts2_5-q8 条目")
 }
 
 func TestArchiveForPlatform(t *testing.T) {

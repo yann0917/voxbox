@@ -93,6 +93,7 @@
   {
     "id": "qwen3-tts-base-q8",
     "kind": "tts",
+    "family": "qwen3_tts",
     "name": "Qwen3-TTS 1.7B 克隆(q8)",
     "summary": "参考音频 3 秒复刻音色的本地语音合成(GGUF 量化)",
     "size_bytes": 2695175104,
@@ -108,6 +109,7 @@
   {
     "id": "qwen3-tts-customvoice-q8",
     "kind": "tts",
+    "family": "qwen3_tts",
     "name": "Qwen3-TTS 预置音色(q8)",
     "summary": "9 个预置音色 + 自然语言风格指令的本地语音合成(GGUF 量化)",
     "size_bytes": 2817044064,
@@ -123,6 +125,7 @@
   {
     "id": "qwen3-tts-base-0.6b-q8",
     "kind": "tts",
+    "family": "qwen3_tts",
     "name": "Qwen3-TTS 0.6B 克隆(q8)",
     "summary": "低配克隆变体,磁盘与内存占用更小(GGUF 量化)",
     "size_bytes": 1991211136,
@@ -134,5 +137,18 @@
     "file_urls": {
       "qwen3-tts-12hz-0.6b-base-q8_0.gguf": "https://modelscope.cn/models/HereIsMark/audio.cpp-gguf/resolve/master/Qwen3-TTS-12Hz-0.6B-Base-GGUF/qwen3-tts-12hz-0.6b-base-q8_0.gguf"
     }
+  },
+  {
+    "id": "index-tts2_5-q8", "kind": "tts", "family": "index_tts2",
+    "name": "IndexTTS 2.5 克隆(q8)",
+    "summary": "bilibili IndexTTS 2.5 音色克隆,支持情感文本控制与中英日西阿多语(GGUF 量化)",
+    "size_bytes": 3502955328,
+    "requirements": { "device": "metal" },
+    "license": "bilibili Model Use License",
+    "license_url": "https://modelscope.cn/models/HereIsMark/audio.cpp-gguf",
+    "requires_engine": "audiocpp",
+    "files": ["index-tts2_5-q8_0.gguf"],
+    "file_urls": { "index-tts2_5-q8_0.gguf": "https://modelscope.cn/api/v1/models/HereIsMark/audio.cpp-gguf/repo?Revision=master&FilePath=IndexTTS2.5-GGUF/index-tts2_5-q8_0.gguf" },
+    "sha256": { "index-tts2_5-q8_0.gguf": "5e827b2072042e4a1b21ccf24a5cb4f71cb1011403067a0a9b039311d8b38628" }
   }
 ]
