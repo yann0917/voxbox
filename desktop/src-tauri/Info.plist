@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 缺此声明时 macOS TCC 无法弹麦克风授权框，WebView 里 getUserMedia 直接被拒（NotAllowedError）。
+	     本文件与 tauri.conf.json 同目录即自动合并进产物 Info.plist，无需配置项。 -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>VoxBox 需要使用麦克风录音，用于语音识别与音色克隆。</string>
+</dict>
+</plist>

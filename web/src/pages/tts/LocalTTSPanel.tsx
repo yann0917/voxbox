@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, AudioLines, Mic, Pencil, Square, Trash2, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
 import { fetchJSON } from "../../lib/api";
+import { useMe } from "../../lib/auth";
 import { formatTime } from "../../lib/player";
 import { recordingSupported, startRecording, type RecordingSession } from "../../lib/recorder";
 import { useLocalReady, useLocalVoices, useModels } from "../../lib/models";
@@ -82,6 +83,8 @@ export default function LocalTTSPanel() {
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [submitError, setSubmitError] = useState("");
   const { toast } = useToast();
+  // 桌面形态标记：麦克风授权走系统设置而非浏览器地址栏，被拒后的指引文案据此分流
+  const { data: me } = useMe();
   const qc = useQueryClient();
   const ev = useTaskEvents();
 
@@ -184,7 +187,9 @@ export default function LocalTTSPanel() {
       const err = e as DOMException;
       setRecError(
         err?.name === "NotAllowedError"
-          ? "麦克风权限被拒绝：请在浏览器地址栏允许麦克风访问后重试"
+          ? me?.desktop === true
+            ? "麦克风权限被拒绝：请在系统设置的麦克风权限中允许 VoxBox 后重试"
+            : "麦克风权限被拒绝：请在浏览器地址栏允许麦克风访问后重试"
           : `无法启动录音：${err?.message ?? e}`,
       );
     }

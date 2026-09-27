@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { apiBase, fetchJSON } from "../lib/api";
+import { useMe } from "../lib/auth";
 import { formatTime } from "../lib/player";
 import type { Artifact, TaskDetail, TaskStatus } from "../lib/types";
 import { useLocalReady } from "../lib/models";
@@ -191,6 +192,8 @@ export default function ASRPage() {
   const artifactMode = artifactId !== "";
 
   const [engine, setEngine] = useState<Engine>("volcengine");
+  // 桌面形态标记：麦克风授权走系统设置而非浏览器地址栏，被拒后的指引文案据此分流
+  const { data: me } = useMe();
   const [mode, setMode] = useState<Mode>("upload");
   const [version, setVersion] = useState<ASRVersion>("sentence");
   const [file, setFile] = useState<File | null>(null);
@@ -468,7 +471,9 @@ export default function ASRPage() {
       const err = e as DOMException;
       setRecError(
         err?.name === "NotAllowedError"
-          ? "麦克风权限被拒绝：请在浏览器地址栏允许麦克风访问后重试"
+          ? me?.desktop === true
+            ? "麦克风权限被拒绝：请在系统设置的麦克风权限中允许 VoxBox 后重试"
+            : "麦克风权限被拒绝：请在浏览器地址栏允许麦克风访问后重试"
           : `无法启动录音：${err?.message ?? e}`,
       );
     }

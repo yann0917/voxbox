@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- hardened runtime 启用后（接入正式签名时）TCC 授权麦克风的硬性要求；
+	     当前 ad-hoc 分发未开 hardened runtime，此声明闲置但预留。路径相对 tauri CLI 的 CWD（desktop/）。 -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
+</plist>
