@@ -1,44 +1,137 @@
 [
   {
-    "id": "paraformer-large-vad-punc",
-    "repo": "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
-    "revision": "master",
-    "name": "Paraformer 大模型 ASR(VAD+标点)",
-    "kind": "asr",
-    "summary": "中文语音识别,标点与时间戳输出,CPU 可跑的轻量选择",
-    "size_bytes": 909098953,
-    "files": ["model.pt", "configuration.json", "config.yaml", "am.mvn", "seg_dict", "tokens.json"],
+    "id": "sherpa-onnx",
+    "kind": "engine",
+    "name": "sherpa-onnx 引擎",
+    "summary": "SenseVoice 本地语音识别运行时(ONNX,CPU)",
+    "size_bytes": 20314448,
     "requirements": { "device": "cpu" },
     "license": "Apache-2.0",
-    "license_url": "https://modelscope.cn/models/iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
-    "sha256": {}
+    "license_url": "https://github.com/k2-fsa/sherpa-onnx",
+    "archive": "tar.bz2",
+    "archive_sha256": "b10e5c7e2c30ea03de9c442655d14860d9edc475c6251d58a8f5f06e913a1d56",
+    "binaries": ["sherpa-onnx-offline"],
+    "assets": {
+      "darwin/arm64": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-osx-arm64-shared.tar.bz2",
+        "size_bytes": 20314448,
+        "sha256": "b10e5c7e2c30ea03de9c442655d14860d9edc475c6251d58a8f5f06e913a1d56"
+      },
+      "darwin/amd64": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-osx-x64-shared.tar.bz2",
+        "size_bytes": 22846038,
+        "sha256": "54aad64acee9d2d596535a6080d6f22602a720af5460e1d50461b1e1b06bee40"
+      },
+      "windows/amd64": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-win-x64-shared-MT-Release.tar.bz2",
+        "size_bytes": 24805859,
+        "sha256": "6dffdc715a4465b989446a6105265d2cb345e7101591a17d35534b6758f6e8df"
+      },
+      "linux/amd64": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared.tar.bz2",
+        "size_bytes": 28156791,
+        "sha256": "c0bdb7907d3a74bba1d55d22bf4d9fa75586cf1530614ebe88a27b9118e015c4"
+      },
+      "linux/arm64": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-aarch64-shared-cpu.tar.bz2",
+        "size_bytes": 28091778,
+        "sha256": "4e3734f82bc1379fd91f219f5869c7e9d03b7a4f7561907d8abca4849c51a789"
+      }
+    }
   },
   {
-    "id": "confucius4-r2t2",
-    "repo": "netease-youdao/Confucius4-R2T2",
-    "revision": "master",
-    "name": "Confucius4 R2T2 流式 ASR",
+    "id": "audiocpp",
+    "kind": "engine",
+    "name": "audio.cpp 引擎",
+    "summary": "Qwen3-TTS GGUF 本地合成运行时(macOS Metal / CPU)",
+    "size_bytes": 28446530,
+    "requirements": { "device": "metal" },
+    "license": "MIT",
+    "license_url": "https://github.com/0xShug0/audio.cpp",
+    "archive": "tar.gz",
+    "archive_sha256": "d33db13695fbf3ba73ea85a8b59575b98a66f7b6ff89bbb59599c75b4689f9a5",
+    "binaries": ["audiocpp_server", "audiocpp_cli"],
+    "assets": {
+      "darwin/arm64": {
+        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.8.2/audio-v0.8.2-bin-macos-arm64-metal.tar.gz",
+        "size_bytes": 28446530,
+        "sha256": "d33db13695fbf3ba73ea85a8b59575b98a66f7b6ff89bbb59599c75b4689f9a5"
+      },
+      "darwin/amd64": {
+        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.8.2/audio-v0.8.2-bin-macos-x64-metal.tar.gz",
+        "size_bytes": 30120475,
+        "sha256": "6edcf84ea530f782c465fb9b37c7f3c1e8ac1e8ded865a9a59ebacc5140d8b67"
+      },
+      "windows/amd64": {
+        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.8.2/audio-v0.8.2-bin-windows-x64-cpu-portable.zip",
+        "size_bytes": 25129726,
+        "sha256": "aa83a7992ddf9a520d16839bbd3c8999155e2cc46845860627ee689c5bcd40cd"
+      },
+      "linux/amd64": {
+        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.8.2/audio-v0.8.2-bin-ubuntu-x64-cpu.tar.gz",
+        "size_bytes": 48426161,
+        "sha256": "4df88cd0182d6bbff674ce413f1852b361d422e01e4743d1a19c24476e4dffdc"
+      }
+    }
+  },
+  {
+    "id": "sensevoice-int8",
     "kind": "asr",
-    "summary": "真流式语音识别,增量文本不回改,适合实时字幕场景",
-    "size_bytes": 4092092418,
-    "files": ["model.safetensors", "config.json", "configuration.json", "generation_config.json", "chat_template.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "added_tokens.json", "vocab.json", "merges.txt"],
-    "requirements": { "device": "cuda", "vram_gb": 12 },
-    "license": "NetEase Model Use License",
-    "license_url": "https://modelscope.cn/models/netease-youdao/Confucius4-R2T2",
-    "sha256": {}
+    "name": "SenseVoice 多语种识别(int8)",
+    "summary": "中英日韩粤本地语音识别,自动标点与 ITN,CPU 秒级",
+    "size_bytes": 163002883,
+    "requirements": { "device": "cpu" },
+    "license": "Apache-2.0",
+    "license_url": "https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models",
+    "requires_engine": "sherpa-onnx",
+    "archive": "tar.bz2",
+    "archive_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2",
+    "archive_size": 163002883,
+    "extract_files": ["model.int8.onnx", "tokens.txt"]
   },
   {
-    "id": "qwen3-tts-1.7b-base",
-    "repo": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
-    "revision": "master",
-    "name": "Qwen3-TTS 1.7B Base",
+    "id": "qwen3-tts-base-q8",
     "kind": "tts",
-    "summary": "音色克隆语音合成,3 秒参考音频即可复刻音色",
-    "size_bytes": 4544170411,
-    "files": ["model.safetensors", "speech_tokenizer/model.safetensors", "config.json", "configuration.json", "generation_config.json", "preprocessor_config.json", "speech_tokenizer/config.json", "speech_tokenizer/configuration.json", "speech_tokenizer/preprocessor_config.json", "tokenizer_config.json", "vocab.json", "merges.txt"],
-    "requirements": { "device": "cuda", "vram_gb": 8 },
+    "name": "Qwen3-TTS 1.7B 克隆(q8)",
+    "summary": "参考音频 3 秒复刻音色的本地语音合成(GGUF 量化)",
+    "size_bytes": 2695175104,
+    "requirements": { "device": "metal" },
     "license": "Apache-2.0",
-    "license_url": "https://modelscope.cn/models/Qwen/Qwen3-TTS-12Hz-1.7B-Base",
-    "sha256": {}
+    "license_url": "https://modelscope.cn/models/HereIsMark/audio.cpp-gguf",
+    "requires_engine": "audiocpp",
+    "files": ["qwen3-tts-12hz-1.7b-base-q8_0_v2.gguf"],
+    "file_urls": {
+      "qwen3-tts-12hz-1.7b-base-q8_0_v2.gguf": "https://modelscope.cn/models/HereIsMark/audio.cpp-gguf/resolve/master/Qwen3-TTS-12Hz-1.7B-Base-GGUF/qwen3-tts-12hz-1.7b-base-q8_0_v2.gguf"
+    }
+  },
+  {
+    "id": "qwen3-tts-customvoice-q8",
+    "kind": "tts",
+    "name": "Qwen3-TTS 预置音色(q8)",
+    "summary": "9 个预置音色 + 自然语言风格指令的本地语音合成(GGUF 量化)",
+    "size_bytes": 2817044064,
+    "requirements": { "device": "metal" },
+    "license": "Apache-2.0",
+    "license_url": "https://modelscope.cn/models/HereIsMark/audio.cpp-gguf",
+    "requires_engine": "audiocpp",
+    "files": ["qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf"],
+    "file_urls": {
+      "qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf": "https://modelscope.cn/models/HereIsMark/audio.cpp-gguf/resolve/master/Qwen3-TTS-12Hz-1.7B-CustomVoice-GGUF/qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf"
+    }
+  },
+  {
+    "id": "qwen3-tts-base-0.6b-q8",
+    "kind": "tts",
+    "name": "Qwen3-TTS 0.6B 克隆(q8)",
+    "summary": "低配克隆变体,磁盘与内存占用更小(GGUF 量化)",
+    "size_bytes": 1991211136,
+    "requirements": { "device": "metal" },
+    "license": "Apache-2.0",
+    "license_url": "https://modelscope.cn/models/HereIsMark/audio.cpp-gguf",
+    "requires_engine": "audiocpp",
+    "files": ["qwen3-tts-12hz-0.6b-base-q8_0.gguf"],
+    "file_urls": {
+      "qwen3-tts-12hz-0.6b-base-q8_0.gguf": "https://modelscope.cn/models/HereIsMark/audio.cpp-gguf/resolve/master/Qwen3-TTS-12Hz-0.6B-Base-GGUF/qwen3-tts-12hz-0.6b-base-q8_0.gguf"
+    }
   }
 ]

@@ -12,6 +12,7 @@ func validEntry() Entry {
 		SizeBytes: 100, Files: []string{"model.bin"},
 		Requirements: Requirements{Device: "cpu"},
 		License:      "Apache-2.0", LicenseURL: "https://modelscope.cn/models/org/m1",
+		RequiresEngine: "audiocpp", // 二期裁定:asr/tts 条目必须挂已声明的引擎
 	}
 }
 
@@ -25,11 +26,11 @@ func mustJSON(t *testing.T, v any) []byte {
 }
 
 func TestParseCatalogAcceptsValid(t *testing.T) {
-	entries, err := parseCatalog(mustJSON(t, []Entry{validEntry()}))
+	entries, err := parseCatalog(withEngine(t, validEntry()))
 	if err != nil {
 		t.Fatalf("合法条目被拒绝: %v", err)
 	}
-	if len(entries) != 1 || entries[0].ID != "m1" {
+	if len(entries) != 2 || entries[1].ID != "m1" {
 		t.Fatalf("解析结果不符: %+v", entries)
 	}
 }
@@ -48,7 +49,8 @@ func TestParseCatalogRejects(t *testing.T) {
 		"保留名manifest": {func() Entry { e := validEntry(); e.Files = []string{"manifest.json"}; return e }()},
 	}
 	for name, entries := range cases {
-		_, err := parseCatalog(mustJSON(t, entries))
+		// 引擎条目前置:模型条目的 requires_engine 引用需要可解析,失败才归因于被测用例本身
+		_, err := parseCatalog(withEngine(t, entries...))
 		if err == nil {
 			t.Errorf("%s: 期望被拒绝,实际通过", name)
 		}
@@ -62,18 +64,59 @@ func TestParseCatalogBadJSON(t *testing.T) {
 }
 
 // 内嵌目录自检:随二进制发布的静态资产,损坏必须在首次加载时暴露。
+// 断言口径(裁定 2):二期目录为 2 引擎 + 4 模型;license_url 不再统一指向魔搭模型页——
+// 引擎条目指向其上游 GitHub 仓库(audiocpp / sherpa-onnx),模型条目指向魔搭模型页
+// 或上游 releases/tag 页(sensevoice 指向 sherpa-onnx 的 asr-models tag 页,
+// 同为 https://github.com/ 前缀),故按 kind 分支断言前缀,统一只要求非空 https。
 func TestEmbeddedCatalog(t *testing.T) {
-	if len(catalog) < 3 {
-		t.Fatalf("内嵌目录至少 3 个条目,实际 %d", len(catalog))
+	wantIDs := []string{
+		"sherpa-onnx", "audiocpp",
+		"sensevoice-int8", "qwen3-tts-base-q8", "qwen3-tts-customvoice-q8", "qwen3-tts-base-0.6b-q8",
 	}
-	ids := map[string]bool{}
+	if len(catalog) != len(wantIDs) {
+		t.Fatalf("内嵌目录应为 %d 条(2 引擎 + 4 模型),实际 %d", len(wantIDs), len(catalog))
+	}
+	engineIDs := map[string]bool{}
 	for _, e := range catalog {
-		if ids[e.ID] {
-			t.Errorf("条目 id 重复: %s", e.ID)
+		if e.Kind == "engine" {
+			engineIDs[e.ID] = true
 		}
-		ids[e.ID] = true
-		if !strings.HasPrefix(e.LicenseURL, "https://modelscope.cn/models/") {
-			t.Errorf("条目 %s 的 license_url 应指向魔搭模型页: %s", e.ID, e.LicenseURL)
+	}
+	seen := map[string]bool{}
+	for _, e := range catalog {
+		if seen[e.ID] {
+			t.Errorf("条目 id 重复: %s", e.ID)
+			continue
+		}
+		seen[e.ID] = true
+		if e.LicenseURL == "" || !strings.HasPrefix(e.LicenseURL, "https://") {
+			t.Errorf("条目 %s 的 license_url 必须为非空 https 链接: %s", e.ID, e.LicenseURL)
+		}
+		switch e.Kind {
+		case "engine":
+			if !strings.HasPrefix(e.LicenseURL, "https://github.com/") {
+				t.Errorf("引擎条目 %s 的 license_url 应指向其 GitHub 仓库: %s", e.ID, e.LicenseURL)
+			}
+			if e.RequiresEngine != "" {
+				t.Errorf("引擎条目 %s 不应声明 requires_engine: %s", e.ID, e.RequiresEngine)
+			}
+			if len(e.Assets) == 0 {
+				t.Errorf("引擎条目 %s 应声明平台 assets", e.ID)
+			}
+		default:
+			if !strings.HasPrefix(e.LicenseURL, "https://modelscope.cn/models/") &&
+				!strings.HasPrefix(e.LicenseURL, "https://github.com/") {
+				t.Errorf("模型条目 %s 的 license_url 应指向魔搭模型页或 GitHub releases 页: %s", e.ID, e.LicenseURL)
+			}
+			// 裁定 1:asr/tts 条目 requires_engine 必填且指向已声明的 engine 条目
+			if e.RequiresEngine == "" || !engineIDs[e.RequiresEngine] {
+				t.Errorf("模型条目 %s 的 requires_engine 必须指向已声明引擎: %q", e.ID, e.RequiresEngine)
+			}
+		}
+	}
+	for _, id := range wantIDs {
+		if !seen[id] {
+			t.Errorf("内嵌目录缺少条目: %s", id)
 		}
 	}
 }
@@ -81,11 +124,134 @@ func TestEmbeddedCatalog(t *testing.T) {
 func TestParseCatalogDefaultsRevision(t *testing.T) {
 	e := validEntry()
 	e.Revision = ""
-	entries, err := parseCatalog(mustJSON(t, []Entry{e}))
+	entries, err := parseCatalog(withEngine(t, e))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if entries[0].Revision != "master" {
-		t.Fatalf("revision 缺省应回落 master,实际 %q", entries[0].Revision)
+	if entries[1].Revision != "master" {
+		t.Fatalf("revision 缺省应回落 master,实际 %q", entries[1].Revision)
+	}
+}
+
+// engineEntry 二期引擎条目基线。基线平台资产必须自带 sha256:
+// 引擎校验要求每个资产的 sha256 非空,负例用例会单独清空它。
+func engineEntry() Entry {
+	return Entry{
+		ID: "audiocpp", Kind: "engine", Name: "audio.cpp 引擎", Summary: "TTS 运行时",
+		SizeBytes: 27000000, License: "MIT", LicenseURL: "https://github.com/0xShug0/audio.cpp",
+		Requirements:  Requirements{Device: "metal"},
+		Archive:       "tar.gz",
+		ArchiveSHA256: strings.Repeat("a", 64),
+		Binaries:      []string{"audiocpp_server", "audiocpp_cli"},
+		Assets: map[string]Asset{
+			"darwin/arm64": {URL: "https://example.com/a.tar.gz", SizeBytes: 27000000, SHA256: strings.Repeat("b", 64)},
+		},
+	}
+}
+
+// withEngine 在模型条目前补一个合法引擎条目再序列化:
+// asr/tts 的 requires_engine 必须指向本目录已声明的 engine 条目,悬空引用会被拒。
+func withEngine(t *testing.T, models ...Entry) []byte {
+	t.Helper()
+	return mustJSON(t, append([]Entry{engineEntry()}, models...))
+}
+
+func TestParseCatalogEngineEntries(t *testing.T) {
+	// 引擎:合法
+	if _, err := parseCatalog(mustJSON(t, []Entry{engineEntry()})); err != nil {
+		t.Fatalf("合法引擎条目被拒: %v", err)
+	}
+	// 引擎:缺平台资产
+	e := engineEntry()
+	e.Assets = nil
+	if _, err := parseCatalog(mustJSON(t, []Entry{e})); err == nil {
+		t.Error("引擎缺 assets 应被拒")
+	}
+	// 引擎:sha256 缺失(引擎必填)
+	e = engineEntry()
+	e.ArchiveSHA256 = ""
+	if _, err := parseCatalog(mustJSON(t, []Entry{e})); err == nil {
+		t.Error("引擎缺 sha256 应被拒")
+	}
+	// 引擎:binaries 缺失
+	e = engineEntry()
+	e.Binaries = nil
+	if _, err := parseCatalog(mustJSON(t, []Entry{e})); err == nil {
+		t.Error("引擎缺 binaries 应被拒")
+	}
+	// 引擎:资产缺 sha256
+	e = engineEntry()
+	asset := e.Assets["darwin/arm64"]
+	asset.SHA256 = ""
+	e.Assets["darwin/arm64"] = asset
+	if _, err := parseCatalog(mustJSON(t, []Entry{e})); err == nil {
+		t.Error("平台资产缺 sha256 应被拒")
+	}
+}
+
+func TestParseCatalogModelEntriesV2(t *testing.T) {
+	// 模型:FileURLs 覆盖全部文件时 Repo 可空
+	e := validEntry()
+	e.Repo, e.LicenseURL = "", "https://example.com"
+	e.FileURLs = map[string]string{"model.bin": "https://example.com/model.bin"}
+	if _, err := parseCatalog(withEngine(t, e)); err != nil {
+		t.Fatalf("FileURLs 直链条目被拒: %v", err)
+	}
+	// 模型:既无 Repo 又缺 FileURLs 覆盖
+	e2 := validEntry()
+	e2.Repo, e2.FileURLs = "", nil
+	if _, err := parseCatalog(withEngine(t, e2)); err == nil {
+		t.Error("无 Repo 且无 FileURLs 应被拒")
+	}
+	// 模型:归档条目必填 ArchiveURL + ExtractFiles
+	e3 := validEntry()
+	e3.Archive = "tar.bz2"
+	if _, err := parseCatalog(withEngine(t, e3)); err == nil {
+		t.Error("归档条目缺 ArchiveURL 应被拒")
+	}
+	// device 允许 metal(engine)
+	e4 := engineEntry()
+	if _, err := parseCatalog(mustJSON(t, []Entry{e4})); err != nil {
+		t.Fatalf("metal 设备应允许: %v", err)
+	}
+	// requires_engine 必须指向存在的 engine 条目
+	e5 := validEntry()
+	e5.RequiresEngine = "nope"
+	if _, err := parseCatalog(withEngine(t, e5)); err == nil {
+		t.Error("requires_engine 指向不存在引擎应被拒")
+	}
+}
+
+// TestParseCatalogRequiresEngineRuling 落实控制器裁定:
+// asr/tts 条目 requires_engine 必填;引擎条目 requires_engine 必须为空。
+func TestParseCatalogRequiresEngineRuling(t *testing.T) {
+	// asr 条目缺 requires_engine → 拒
+	e := validEntry()
+	e.RequiresEngine = ""
+	if _, err := parseCatalog(mustJSON(t, []Entry{e})); err == nil {
+		t.Error("asr/tts 条目缺 requires_engine 应被拒")
+	}
+	// 引擎条目声明 requires_engine → 拒
+	eng := engineEntry()
+	eng.RequiresEngine = "audiocpp"
+	if _, err := parseCatalog(mustJSON(t, []Entry{eng})); err == nil {
+		t.Error("引擎条目声明 requires_engine 应被拒")
+	}
+	// 模型条目未经归档/直链路径却把 requires_engine 指向非引擎条目 → 拒
+	e2 := validEntry()
+	e2.RequiresEngine = "m1"
+	if _, err := parseCatalog(mustJSON(t, []Entry{e2})); err == nil {
+		t.Error("requires_engine 指向非 engine 条目应被拒")
+	}
+}
+
+func TestArchiveForPlatform(t *testing.T) {
+	e := engineEntry()
+	a, ok := e.ArchiveFor("darwin", "arm64")
+	if !ok || a.URL != "https://example.com/a.tar.gz" {
+		t.Fatalf("平台资产选择不符: %+v ok=%v", a, ok)
+	}
+	if _, ok := e.ArchiveFor("windows", "amd64"); ok {
+		t.Error("未声明平台应返回 false")
 	}
 }
