@@ -149,6 +149,74 @@ func (m *Manager) View(id string) (ModelView, bool) {
 	return ModelView{Entry: e, ModelState: *m.states[id]}, true
 }
 
+// installedManifest 盘面安装裁定(engine 与模型同口径):manifest 可解析且 id/revision
+// 与目录条目一致才返回,否则 ok=false——与 restore 的恢复判定完全一致。磁盘即真相:
+// 消费者(推理会话)不依赖异步收敛的内存状态,安装/播种完成后立即可见。
+func (m *Manager) installedManifest(e Entry) (*manifest, bool) {
+	mf, err := readManifest(m.modelDir(e.ID))
+	if err != nil || mf.ID != e.ID || mf.Revision != e.Revision {
+		return nil, false
+	}
+	return mf, true
+}
+
+// GetEntry 目录条目只读访问。
+func (m *Manager) GetEntry(id string) (Entry, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	e, ok := m.byID[id]
+	return e, ok
+}
+
+// Installed 该条目是否已安装(engine 与模型同语义:盘面 manifest 合法即已安装)。
+func (m *Manager) Installed(id string) bool {
+	m.mu.Lock()
+	e, ok := m.byID[id]
+	m.mu.Unlock()
+	if !ok {
+		return false
+	}
+	_, installed := m.installedManifest(e)
+	return installed
+}
+
+// EngineBinary 已安装引擎的 server 二进制绝对路径(manifest.Binary 记录,一期语义:Binaries[0])。
+// 未安装提示到设置页下载;manifest 在而 Binary 缺失按安装记录损坏提示删除重装。
+func (m *Manager) EngineBinary(id string) (string, error) {
+	m.mu.Lock()
+	e, ok := m.byID[id]
+	m.mu.Unlock()
+	if !ok || e.Kind != "engine" {
+		return "", fmt.Errorf("%w: %s", ErrUnknownModel, id)
+	}
+	mf, installed := m.installedManifest(e)
+	if !installed {
+		return "", fmt.Errorf("引擎未安装: %s,请到设置页下载", e.Name)
+	}
+	if mf.Binary == "" {
+		return "", fmt.Errorf("引擎安装记录损坏: %s,请到设置页删除后重装", e.Name)
+	}
+	return filepath.Join(m.modelDir(id), filepath.FromSlash(mf.Binary)), nil
+}
+
+// InstalledModelFile 已安装「裸单文件」条目(如 GGUF)的唯一文件绝对路径。
+// 引擎走 EngineBinary,多文件条目无「唯一文件」可言,均显式报错。
+func (m *Manager) InstalledModelFile(id string) (string, error) {
+	m.mu.Lock()
+	e, ok := m.byID[id]
+	m.mu.Unlock()
+	if !ok || e.Kind == "engine" {
+		return "", fmt.Errorf("%w: %s", ErrUnknownModel, id)
+	}
+	if _, installed := m.installedManifest(e); !installed {
+		return "", fmt.Errorf("模型未安装: %s,请到设置页下载", e.Name)
+	}
+	if len(e.Files) != 1 {
+		return "", fmt.Errorf("条目 %s 不是单文件模型", id)
+	}
+	return filepath.Join(m.modelDir(id), filepath.FromSlash(e.Files[0])), nil
+}
+
 func readManifest(dir string) (*manifest, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
 	if err != nil {

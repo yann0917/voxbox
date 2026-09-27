@@ -969,3 +969,73 @@ func TestRestoreEngineInstalled(t *testing.T) {
 		t.Fatalf("引擎安装态应从 enginesDir 恢复: %+v", v)
 	}
 }
+
+// ─── 消费者访问器:目录条目 / 安装态 / 引擎二进制 / 单文件路径 ─────────────
+
+func TestGetEntryAndInstalled(t *testing.T) {
+	m, _, _ := newTestManager(t, testEntries())
+	if e, ok := m.GetEntry("asr-small"); !ok || e.ID != "asr-small" {
+		t.Fatal("GetEntry 应返回目录条目")
+	}
+	if m.Installed("asr-small") {
+		t.Fatal("未下载不应报告已安装")
+	}
+}
+
+func TestEngineBinaryLifecycle(t *testing.T) {
+	entries := []Entry{engineEntry()} // Task 1 的 fixture;Assets 带 darwin/arm64
+	m, _, enginesDir := newTestManager(t, entries)
+	if _, err := m.EngineBinary("audiocpp"); err == nil {
+		t.Fatal("未安装应报错")
+	}
+	// 直接播种一个合法引擎 manifest + 假二进制(不走真下载)。
+	// 引擎安装根在 enginesDir(裁定:引擎 manifest 播种到 engines/audiocpp)。
+	dir := filepath.Join(enginesDir, "audiocpp", "pkg")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "audiocpp_server")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mf := manifest{ID: "audiocpp", Binary: filepath.Join("pkg", "audiocpp_server"), CompletedAt: "2026-01-01T00:00:00Z"}
+	raw, _ := json.Marshal(mf)
+	if err := os.WriteFile(filepath.Join(enginesDir, "audiocpp", "manifest.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !m.Installed("audiocpp") {
+		t.Fatal("播种 manifest 后应报告已安装")
+	}
+	got, err := m.EngineBinary("audiocpp")
+	if err != nil || got != bin {
+		t.Fatalf("EngineBinary 应返回 %s,实际 %s err=%v", bin, got, err)
+	}
+}
+
+func TestInstalledModelFile(t *testing.T) {
+	// 裸单文件条目:直链 fixture
+	e := validEntry()
+	e.ID, e.Kind = "gguf-model", "tts"
+	e.Repo = ""
+	e.FileURLs = map[string]string{"model.bin": "https://example.com/model.bin"}
+	m, base, _ := newTestManager(t, []Entry{e})
+	if _, err := m.InstalledModelFile("gguf-model"); err == nil {
+		t.Fatal("未安装应报错")
+	}
+	dir := filepath.Join(base, "gguf-model")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "model.bin"), []byte("gguf"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mf := manifest{ID: "gguf-model", Files: []manifestFile{{Path: "model.bin", Size: 4}}, CompletedAt: "2026-01-01T00:00:00Z"}
+	raw, _ := json.Marshal(mf)
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.InstalledModelFile("gguf-model")
+	if err != nil || got != filepath.Join(dir, "model.bin") {
+		t.Fatalf("应返回唯一文件绝对路径,实际 %s err=%v", got, err)
+	}
+}
