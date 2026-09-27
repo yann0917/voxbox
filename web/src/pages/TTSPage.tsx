@@ -10,10 +10,11 @@ import TTSLongPanel from "./tts/TTSLongPanel";
 import QianwenTTSPanel from "./tts/QianwenTTSPanel";
 import XiaomiTTSPanel from "./tts/XiaomiTTSPanel";
 import ZhipuTTSPanel from "./tts/ZhipuTTSPanel";
+import LocalTTSPanel from "./tts/LocalTTSPanel";
 
 type TabKey = "sync" | "stream" | "long";
-/** 合成引擎：火山三通道 / 千问非流式 / 小米 MiMo / 智谱（/tts?engine=…，默认火山） */
-type Engine = "volcengine" | "qianwen" | "xiaomi" | "zhipu";
+/** 合成引擎：火山三通道 / 千问非流式 / 小米 MiMo / 智谱 / 本地推理（/tts?engine=…，默认火山） */
+type Engine = "volcengine" | "qianwen" | "xiaomi" | "zhipu" | "local";
 
 const CHANNEL_ICONS: Record<TabKey, ReactNode> = {
   sync: <AudioLines size={13} strokeWidth={1.75} />,
@@ -32,6 +33,7 @@ const ENGINE_TABS: TabItem<Engine>[] = [
   { value: "qianwen", label: "千问平台" },
   { value: "xiaomi", label: "小米 MiMo" },
   { value: "zhipu", label: "智谱" },
+  { value: "local", label: "本地推理" },
 ];
 
 /** 语音合成聚合页：引擎 Tab 切换（火山三通道 / 千问非流式 / 小米 MiMo / 智谱）。
@@ -41,7 +43,7 @@ export default function TTSPage() {
   const [params, setParams] = useSearchParams();
   const engineParam = params.get("engine");
   const engine: Engine =
-    engineParam === "qianwen" || engineParam === "xiaomi" || engineParam === "zhipu"
+    engineParam === "qianwen" || engineParam === "xiaomi" || engineParam === "zhipu" || engineParam === "local"
       ? engineParam
       : "volcengine";
   // undefined = 设置未加载完成，与未配置同走引导卡（保守态）
@@ -125,6 +127,8 @@ export default function TTSPage() {
             </CardBody>
           </Card>
         )
+      ) : engine === "local" ? (
+        <LocalTTSPanel />
       ) : (
         <>
           <div className="mb-4 flex flex-wrap items-center gap-3">
