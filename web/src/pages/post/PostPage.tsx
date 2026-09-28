@@ -37,8 +37,8 @@ export default function PostPage() {
     <>
       <PageHeader
         title="音频后期"
-        description="混音台 / 切高潮 / 口播闪避：本地 ffmpeg 导出"
-        actions={<span className="micro">audio provider · 三个工具</span>}
+        description="混音台 / 切高潮 / 口播闪避：本地处理，离线可用"
+        actions={<span className="micro">三个面板 · 离线可用</span>}
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">

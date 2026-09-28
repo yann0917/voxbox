@@ -359,7 +359,7 @@ export default function MixerPanel() {
     <>
       <PanelIntro
         title="混音台"
-        description="分离产物再加工：垫音 / 半消音 / 低切 / 音量包络实时预览，导出服务端 audio/mix 任务"
+        description="分离产物再加工：垫音 / 半消音 / 低切 / 音量包络实时预览，导出成品音频"
       />
 
       {!sourceId && (
@@ -448,7 +448,7 @@ export default function MixerPanel() {
                 <div className="rounded-[var(--radius-sm)] border border-warn/40 bg-warn/10 px-3 py-2 text-xs">
                   <p className="text-fg-2">双轨预览解码失败：{loadError}</p>
                   <p className="mt-1 text-muted">
-                    仍可调参并导出——导出由服务端 ffmpeg 完成，不依赖浏览器预览。
+                    仍可调参并导出——导出在本机后台完成，不依赖浏览器预览。
                   </p>
                 </div>
               ) : !ready ? (
@@ -641,7 +641,7 @@ export default function MixerPanel() {
                   导出混音
                 </Button>
                 <p className="text-[11px] leading-relaxed text-muted">
-                  导出为服务端 audio/mix 任务：包络与推子按当前面板值提交，完成后在下方「混音结果」试听下载。
+                  导出即生成混音任务：包络与推子按当前面板值提交，完成后在下方「混音结果」试听下载。
                 </p>
               </div>
             </CardBody>

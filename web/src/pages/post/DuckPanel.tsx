@@ -220,7 +220,7 @@ export default function DuckPanel() {
     <>
       <PanelIntro
         title="口播闪避"
-        description="说话时 BGM 自动压低：人声侧链压缩 + 响度归一，导出服务端 audio/duck 任务"
+        description="说话时 BGM 自动压低：人声侧链压缩 + 响度归一，导出成品音频"
         actions={
           (vocal || bgm) && (
             <Button
