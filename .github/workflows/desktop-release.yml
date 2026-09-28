@@ -1,12 +1,74 @@
 name: desktop-release
 
-# tag desktop-v* 触发；三平台矩阵构建 + updater 签名 + GitHub Release（含 latest.json）
+# 双入口：①推 tag desktop-v* 直接触发；②Actions 页手动触发，填版本号由 resolve job 打 tag。
+# 桌面发布强依赖 tag 语义（updater 版本比较 / Release 名 / latest.json 全取自 tag）。
 on:
   push:
     tags: ["desktop-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号 x.y.z（可带 v 前缀）——将创建并推送 tag desktop-v<版本>"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+# 同一时间只允许一个桌面发布流程，避免并发打 tag
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
 
 jobs:
+  resolve:
+    name: 解析版本与打 tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
+      commit: ${{ steps.ver.outputs.commit }}
+    steps:
+      - name: 检出代码（含全部 tag）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 解析 tag（手动触发时在此创建并推送）
+        id: ver
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "push" ]; then
+            tag="$REF_NAME"
+            version="${tag#desktop-v}"
+            commit="$(git rev-parse "$tag^{commit}")"
+            echo "tag 推送触发：$tag（$commit）"
+          else
+            version="${INPUT_VERSION#v}"   # 允许填 v0.2.0
+            if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::版本号格式非法：'$version'，应为 x.y.z（例如 0.2.0）"
+              exit 1
+            fi
+            tag="desktop-v$version"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "::error::tag $tag 已存在——同一桌面版本不可重复发布（updater latest.json 指向它会混淆已装用户），请换版本号"
+              exit 1
+            fi
+            commit="$(git rev-parse HEAD)"
+            git tag "$tag" "$commit"
+            git push origin "$tag"
+            echo "已创建并推送 tag：$tag（$commit）"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: resolve
     strategy:
       fail-fast: false
       matrix:
@@ -33,13 +95,14 @@ jobs:
             rust_target: ""
             tauri_args: "--bundles nsis"
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - name: 检出代码（固定到 tag 对应提交）
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
 
       - uses: actions/setup-go@v5
         with:
@@ -64,9 +127,9 @@ jobs:
       - name: Build Go sidecar
         env:
           GOARCH: ${{ matrix.goarch }}
+          DESKTOP_VERSION: ${{ needs.resolve.outputs.version }}
         run: |
-          VERSION="${GITHUB_REF_NAME#desktop-v}"
-          go build -ldflags "-s -w -X main.version=$VERSION" \
+          go build -ldflags "-s -w -X main.version=$DESKTOP_VERSION" \
             -o "desktop/src-tauri/binaries/voxbox-${{ matrix.triple }}${{ matrix.ext }}" ./cmd/voxbox
           # 交叉出的 x86_64 slice 在 arm host 上一样可签（Mach-O 任意架构均支持 ad-hoc）
           if [ "${{ matrix.os }}" != "windows-latest" ]; then
@@ -85,8 +148,10 @@ jobs:
 
       # bundle 版本对齐 tag，updater 版本比较依赖它
       - name: Sync version
+        env:
+          DESKTOP_VERSION: ${{ needs.resolve.outputs.version }}
         run: |
-          node -e "const fs=require('fs');const p='desktop/src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')" "${GITHUB_REF_NAME#desktop-v}"
+          node -e "const fs=require('fs');const p='desktop/src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')" "$DESKTOP_VERSION"
 
       # tauri-action 的 args 经 stringArgv 按空白切分（输入恒为字符串），矩阵直接带完整串
       - uses: tauri-apps/tauri-action@v0
@@ -97,8 +162,8 @@ jobs:
         with:
           projectPath: desktop
           args: ${{ matrix.tauri_args }}
-          tagName: ${{ github.ref_name }}
-          releaseName: "VoxBox ${{ github.ref_name }}"
+          tagName: ${{ needs.resolve.outputs.tag }}
+          releaseName: "VoxBox ${{ needs.resolve.outputs.tag }}"
           releaseBody: "桌面版安装包与自动更新清单。macOS 首次打开：右键 → 打开；Windows：SmartScreen 点「仍要运行」。"
           releaseDraft: false
           prerelease: false
@@ -108,7 +173,8 @@ jobs:
       - name: Sync desktop-latest 更新指针
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DESKTOP_TAG: ${{ needs.resolve.outputs.tag }}
         run: |
-          gh release download "$GITHUB_REF_NAME" --pattern "latest.json" --output latest.json --clobber
+          gh release download "$DESKTOP_TAG" --pattern "latest.json" --output latest.json --clobber
           gh release view desktop-latest >/dev/null 2>&1 || gh release create desktop-latest --title "VoxBox desktop 更新通道" --notes "自动维护的 latest.json 指针，随 desktop-v* 发布刷新，勿手动编辑"
           gh release upload desktop-latest latest.json --clobber
