@@ -74,12 +74,14 @@ jobs:
       matrix:
         include:
           # Apple Silicon：runner 原生 arm64，Go/Rust 按宿主 triple 出包
+          # bundles 必须含 app：dmg 不是 updater-enabled 目标（app 才是），
+          # 只出 dmg 会导致无 .app.tar.gz/.sig、latest.json 缺失（0.2.1 首发踩过）
           - os: macos-latest
             triple: aarch64-apple-darwin
             ext: ""
             goarch: arm64
             rust_target: ""
-            tauri_args: "--bundles dmg"
+            tauri_args: "--bundles app,dmg"
           # Intel：macos-13 runner 已退役（2025-12 下线），改 arm runner 双交叉编译：
           # sidecar GOARCH=amd64 + Rust --target x86_64（先 rustup target add）
           - os: macos-latest
@@ -87,7 +89,7 @@ jobs:
             ext: ""
             goarch: amd64
             rust_target: x86_64-apple-darwin
-            tauri_args: "--bundles dmg --target x86_64-apple-darwin"
+            tauri_args: "--bundles app,dmg --target x86_64-apple-darwin"
           - os: windows-latest
             triple: x86_64-pc-windows-msvc
             ext: ".exe"
@@ -184,7 +186,7 @@ jobs:
         run: |
           node -e "const fs=require('fs');const p='desktop/src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')" "$DESKTOP_VERSION"
 
-      # tauri-action 的 args 经 stringArgv 按空白切分（输入恒为字符串），矩阵直接带完整串
+      # tauri-action 对同 release 的 latest.json 做 platforms 合并（多腿并发安全）
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -199,9 +201,16 @@ jobs:
           releaseDraft: false
           prerelease: false
 
-      # I2：latest.json 只在本次 tag release 上，updater endpoint 指向固定的 desktop-latest
-      # 指针 release——否则 latest 与 CLI 发布通道互踩（latest 被别的 release 抢走就 404/错版本）。
-      - name: Sync desktop-latest 更新指针
+  # I2：latest.json 只在本次 tag release 上，updater endpoint 指向固定的 desktop-latest
+  # 指针 release——否则 latest 与 CLI 发布通道互踩（latest 被别的 release 抢走就 404/错版本）。
+  # 独立 job（needs build 全绿）而非腿内步骤：指针只在三平台产物齐全后同步一次，
+  # 不随单腿跑（0.2.1 首发时腿内 sync 撞上 latest.json 未上传曾三腿两挂）。
+  sync-pointer:
+    name: 同步 desktop-latest 更新指针
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 同步 latest.json 到 desktop-latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DESKTOP_TAG: ${{ needs.resolve.outputs.tag }}
