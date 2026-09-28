@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/yann0917/voxbox/internal/pronunciation"
 	"github.com/yann0917/voxbox/internal/provider"
 )
 
@@ -62,6 +63,7 @@ func (t *TTSTool) ParamSpecs() []provider.ParamSpec {
 
 func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provider.ProgressReporter) (provider.TaskOutput, error) {
 	text := paramString(in.Params, "text")
+	text = pronunciation.Apply(text, "") // 发音词典：合成前文本预处理（无语言参数，仅全语言词条生效）
 	if utf8.RuneCountInString(text) == 0 {
 		return provider.TaskOutput{}, fmt.Errorf("缺少必填参数: text")
 	}

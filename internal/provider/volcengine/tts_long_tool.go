@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/yann0917/voxbox/internal/pronunciation"
 	"github.com/yann0917/voxbox/internal/provider"
 )
 
@@ -129,6 +130,7 @@ func (t *TTSLongTool) Run(ctx context.Context, in provider.TaskInput, report pro
 	// 参数校验先行（退出码 2），不被凭证校验（退出码 4）掩盖。
 	text, _ := in.Params["text"].(string)
 	text = strings.TrimRight(text, "\n") // 容忍结尾换行（--file 读入常见），不占字符配额
+	text = pronunciation.Apply(text, "") // 发音词典：分段前应用，长文各段一致生效
 	if utf8.RuneCountInString(text) == 0 {
 		return provider.TaskOutput{}, fmt.Errorf("缺少必填参数: text")
 	}

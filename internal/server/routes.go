@@ -76,6 +76,19 @@ func (s *Server) Handler() http.Handler {
 		settingsAdmin.POST("/test-connection", s.testConnection)
 	}
 
+	// 发音词典（TTS 合成前读音替换）：读/试听登录即可，增删改沿设置页口径仅 admin
+	pron := api.Group("/pronunciation")
+	{
+		pron.GET("", s.listPronunciation)
+		pron.POST("/test", s.testPronunciation)
+	}
+	pronAdmin := api.Group("/pronunciation", s.requireAdmin())
+	{
+		pronAdmin.POST("", s.addPronunciation)
+		pronAdmin.PUT("/:id", s.updatePronunciation)
+		pronAdmin.DELETE("/:id", s.deletePronunciation)
+	}
+
 	// 字幕工坊（本地能力：纯 Go 解析/分句/导出，零上游 API 成本）
 	subtitles := api.Group("/subtitles")
 	{

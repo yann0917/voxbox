@@ -12,6 +12,7 @@ import (
 
 	"github.com/yann0917/voxbox/internal/localmodel"
 	"github.com/yann0917/voxbox/internal/localruntime"
+	"github.com/yann0917/voxbox/internal/pronunciation"
 	"github.com/yann0917/voxbox/internal/provider"
 	"github.com/yann0917/voxbox/internal/voicelib"
 )
@@ -151,7 +152,8 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		// 文本不在 params:与云端 TTS 一致由工具页 params.text 传入
 		return provider.TaskOutput{}, fmt.Errorf("缺少必填参数: text")
 	} else {
-		req.Text = text
+		// 发音词典：合成前文本预处理（language 已是家族归一值，zh/Chinese/auto 等均能折叠匹配）
+		req.Text = pronunciation.Apply(text, language)
 	}
 	switch mode {
 	case "clone":

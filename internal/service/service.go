@@ -18,6 +18,7 @@ import (
 	"github.com/yann0917/voxbox/internal/localmodel"
 	"github.com/yann0917/voxbox/internal/localruntime"
 	"github.com/yann0917/voxbox/internal/objectstorage"
+	"github.com/yann0917/voxbox/internal/pronunciation"
 	"github.com/yann0917/voxbox/internal/provider"
 	"github.com/yann0917/voxbox/internal/provider/audiotool"
 	"github.com/yann0917/voxbox/internal/provider/gsgc"
@@ -85,6 +86,7 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建数据目录失败: %w", err)
 	}
+	pronunciation.Init(dataDir) // 发音词典进程单例：TTS 工具合成前文本预处理共用
 	db, err := store.Open(filepath.Join(dataDir, "voxbox.db"))
 	if err != nil {
 		return nil, fmt.Errorf("打开数据库失败: %w", err)

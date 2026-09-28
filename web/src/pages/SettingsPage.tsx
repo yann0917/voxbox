@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AudioLines,
   Bell,
+  BookA,
   CheckCircle2,
   CloudUpload,
   Eye,
@@ -33,6 +34,7 @@ import {
   type TabItem,
 } from "../ui";
 import LocalModelsSection from "./LocalModelsSection";
+import PronunciationSection from "./PronunciationSection";
 
 /** test-connection 响应：results 逐卡回 name/ok/message，storage 独立段。 */
 interface ConnResult {
@@ -206,7 +208,7 @@ function ProviderCardForm({ card, onSaved }: { card: ProviderShape; onSaved: () 
   );
 }
 
-type SettingsTab = "cloud" | "local";
+type SettingsTab = "cloud" | "local" | "pronunciation";
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<SettingsTab>("cloud");
@@ -217,6 +219,7 @@ export default function SettingsPage() {
   const TABS: TabItem<SettingsTab>[] = [
     { value: "cloud", label: "云端服务", icon: <CloudUpload size={13} strokeWidth={1.75} /> },
     { value: "local", label: "本地环境", icon: <Server size={13} strokeWidth={1.75} /> },
+    { value: "pronunciation", label: "发音词典", icon: <BookA size={13} strokeWidth={1.75} /> },
   ];
   const refresh = () => {
     void refetch();
@@ -453,6 +456,8 @@ export default function SettingsPage() {
             </CardBody>
           </Card>
         </div>
+      ) : tab === "pronunciation" ? (
+        <PronunciationSection />
       ) : (
         <div className="space-y-4">
           <LocalModelsSection />
