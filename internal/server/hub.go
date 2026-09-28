@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/yann0917/voxbox/internal/task"
 )
@@ -155,4 +156,15 @@ func (h *Hub) serveWS(w http.ResponseWriter, r *http.Request, snapshotJSON func(
 			}
 		}
 	}()
+}
+
+// wsProgress WebSocket 升级入口（GET /api/ws）：requireAuth 已注入身份，
+// 快照闭包按用户收窄。
+func (s *Server) wsProgress(c *gin.Context) {
+	p := principalFrom(c)
+	uid := p.ID
+	if p.IsAdmin() {
+		uid = "" // admin 快照收全量（含无主历史任务）
+	}
+	s.hub.serveWS(c.Writer, c.Request, func() []byte { return s.snapshotJSONFor(uid) })
 }
