@@ -29,19 +29,19 @@ func (t *TTSTool) Meta() provider.ToolMeta {
 		Provider:    "qianwen",
 		Name:        "tts",
 		Title:       "语音合成（千问）",
-		Description: "qwen3-tts 非流式合成，48 官方音色，instruct 模型支持自然语言风格指令",
+		Description: "qwen3-tts 非流式合成，48 官方音色，instruct 模型支持自然语言风格指令；长文本自动分段合成后拼接",
 		Group:       "语音",
 	}
 }
 
 // qwenTTSMaxChars qwen3-tts 系单次合成的字符上限（官方 api-reference：Qwen-TTS 512 tokens，
-// 其他模型 600 字符）。
+// 其他模型 600 字符）。超限文本由服务端按句分段逐段合成后拼接，对前端透明。
 const qwenTTSMaxChars = 600
 
 func (t *TTSTool) ParamSpecs() []provider.ParamSpec {
 	return []provider.ParamSpec{
 		{Key: "text", Label: "文本", Type: provider.ParamText, Required: true,
-			Placeholder: "输入要合成的文本（最多 600 字符）", Group: "内容"},
+			Placeholder: "输入要合成的文本（长文本自动分段）", Group: "内容"},
 		{Key: "model", Label: "模型", Type: provider.ParamEnum, Default: "qwen3-tts-flash", Group: "参数",
 			Options: []provider.ParamOption{
 				{Value: "qwen3-tts-flash", Label: "qwen3-tts-flash"},
@@ -60,9 +60,6 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	text := paramString(in.Params, "text")
 	if utf8.RuneCountInString(text) == 0 {
 		return provider.TaskOutput{}, fmt.Errorf("缺少必填参数: text")
-	}
-	if n := utf8.RuneCountInString(text); n > qwenTTSMaxChars {
-		return provider.TaskOutput{}, fmt.Errorf("千问单次合成最多 %d 字符（当前 %d）：长文本请使用火山引擎同步通道（自动分段），或缩短文本", qwenTTSMaxChars, n)
 	}
 	if t.apiKey == "" {
 		return provider.TaskOutput{}, fmt.Errorf("%w：请在设置页「云端服务」配置千问平台凭证，或 voxbox config set qianwen.api_key", ErrNoCred)
@@ -84,21 +81,36 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		instructions = paramString(in.Params, "instructions")
 	}
 
-	report(20, "正在合成", nil)
-	res, err := t.client.Synthesize(ctx, TTSReq{
-		Model: model, Text: text, Voice: voice,
-		LanguageType: paramString(in.Params, "language_type"),
-		Instructions: instructions,
-	})
-	if err != nil {
-		return provider.TaskOutput{}, err
+	// 官方单次合成 ≤600 字符：按句分段逐段合成后拼接，前端无感
+	segs := provider.SplitText(text, qwenTTSMaxChars)
+	var (
+		audio  []byte
+		format string
+	)
+	for i, seg := range segs {
+		report(90*i/len(segs), fmt.Sprintf("正在合成第 %d/%d 段", i+1, len(segs)), nil)
+		res, err := t.client.Synthesize(ctx, TTSReq{
+			Model: model, Text: seg, Voice: voice,
+			LanguageType: paramString(in.Params, "language_type"),
+			Instructions: instructions,
+		})
+		if err != nil {
+			return provider.TaskOutput{}, err
+		}
+		// 产物格式以上游实际容器为准（无 format 请求参数，由音频 URL 扩展名/Content-Type 推断），
+		// 同通道各段格式一致，以首段为准
+		if format == "" {
+			format = res.Format
+			if format == "" {
+				format = "wav"
+			}
+		}
+		audio = appendAudio(audio, format, res.Audio)
 	}
-	// 产物格式以上游实际容器为准（无 format 请求参数，由音频 URL 扩展名/Content-Type 推断）
-	format := res.Format
-	if format == "" {
-		format = "wav"
+	if len(segs) > 1 {
+		report(92, "拼接分段音频", nil)
 	}
-	report(80, "保存音频文件", nil)
+	report(95, "保存音频文件", nil)
 
 	reqID := uuid.NewString()
 	relPath := filepath.Join("tts", reqID+"."+format)
@@ -111,20 +123,38 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 		return provider.TaskOutput{}, fmt.Errorf("创建产物目录失败: %w", err)
 	}
-	if err := os.WriteFile(absPath, res.Audio, 0o644); err != nil {
+	if err := os.WriteFile(absPath, audio, 0o644); err != nil {
 		return provider.TaskOutput{}, fmt.Errorf("写入音频文件失败: %w", err)
 	}
 	return provider.TaskOutput{
 		Artifacts: []provider.Artifact{{
 			Kind: "audio", Path: relPath, Format: format,
-			Size: int64(len(res.Audio)),
+			Size: int64(len(audio)),
 		}},
 		Summary: map[string]any{
-			"char_count": utf8.RuneCountInString(text),
-			"model":      model,
-			"voice":      voice,
+			"char_count":  utf8.RuneCountInString(text),
+			"model":       model,
+			"voice":       voice,
+			"segment_num": len(segs),
 		},
 	}, nil
+}
+
+// appendAudio 追加一段合成音频：wav 走参数校验的真拼接（重写头部），
+// mp3 等帧流格式直接字节级追加（与 volcengine 同款语义）。
+func appendAudio(acc []byte, format string, chunk []byte) []byte {
+	if len(acc) == 0 {
+		return chunk
+	}
+	if format != "wav" {
+		return append(acc, chunk...)
+	}
+	merged, err := provider.ConcatWAV(acc, chunk)
+	if err != nil {
+		// 非标 WAV 头兜底：按原始字节拼接（上游格式异常时宁可产物可播也别整任务失败）
+		return append(acc, chunk...)
+	}
+	return merged
 }
 
 // paramString 与 volcengine 同款小工具（包内私有）。

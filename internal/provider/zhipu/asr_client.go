@@ -21,7 +21,8 @@ type asrResponse struct {
 }
 
 // Transcribe 转写本地音频文件：multipart 上传（file 字段），prompt 为长文本上下文、
-// hotwords 为热词表（≤100 个），均可空。限制：wav/mp3 ≤25MB ≤30 秒（官方口径，工具层校验）。
+// hotwords 为热词表（≤100 个），均可空。官方单次限制 wav/mp3 ≤25MB ≤30 秒，
+// 超限由工具层自动分段转写后拼接。
 func (c *ASRClient) Transcribe(ctx context.Context, audioPath, prompt string, hotwords []string) (string, error) {
 	fields := map[string]string{"model": "glm-asr-2512", "stream": "false"}
 	if strings.TrimSpace(prompt) != "" {

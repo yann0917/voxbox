@@ -2,7 +2,11 @@ package qianwen
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/binary"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -108,20 +112,13 @@ func TestTTSToolOutOutsideDataDir(t *testing.T) {
 	}
 }
 
-// 缺 text / 超 600 字符 / 未配置凭证：参数错误先行（与 volcengine 同序）。
+// 缺 text / 未配置凭证：参数错误先行（与 volcengine 同序）。
+// 超长文本不再报错，分段合成行为见 TestTTSToolSegmented。
 func TestTTSToolValidation(t *testing.T) {
 	tool := NewTTSTool("", t.TempDir())
 	if _, err := tool.Run(context.Background(), provider.TaskInput{Params: map[string]any{}},
 		func(int, string, map[string]any) {}); err == nil || !strings.Contains(err.Error(), "text") {
 		t.Errorf("缺 text 应报参数错误, got %v", err)
-	}
-	long := strings.Repeat("字", qwenTTSMaxChars+1)
-	if _, err := tool.Run(context.Background(), provider.TaskInput{Params: map[string]any{"text": long}},
-		func(int, string, map[string]any) {}); err == nil || !strings.Contains(err.Error(), "600") {
-		t.Errorf("超长文本应报 600 字符上限, got %v", err)
-	}
-	if n := utf8.RuneCountInString(strings.Repeat("字", qwenTTSMaxChars)); n != qwenTTSMaxChars {
-		t.Fatalf("边界自检失败: %d", n)
 	}
 	_, err := tool.Run(context.Background(), provider.TaskInput{Params: map[string]any{"text": "hi"}},
 		func(int, string, map[string]any) {})
@@ -131,6 +128,83 @@ func TestTTSToolValidation(t *testing.T) {
 	if !errors.Is(err, ErrNoCred) {
 		t.Errorf("缺凭证错误应包装 ErrNoCred 哨兵（CLI/服务端按其映射退出码 4）, got %v", err)
 	}
+}
+
+// 超长文本自动分段：按 600 字切段逐段请求，各段 input 均 ≤600，
+// 段间 WAV 拼接为单文件，summary 透出 segment_num。
+func TestTTSToolSegmented(t *testing.T) {
+	var inputs []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Input struct {
+				Text string `json:"text"`
+			} `json:"input"`
+		}
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &req)
+		inputs = append(inputs, req.Input.Text)
+		b64 := base64.StdEncoding.EncodeToString(testWAV(16000, 160))
+		_, _ = w.Write([]byte(ttsFixture(b64)))
+	}))
+	defer srv.Close()
+	outDir := t.TempDir()
+	tool := NewTTSTool("qw-key", outDir)
+	tool.client = NewTTSClient("qw-key", srv.URL)
+
+	text := strings.Repeat("字", 1500) // 硬切 3 段（600+600+300）
+	res, err := tool.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"text": text},
+	}, func(int, string, map[string]any) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inputs) != 3 {
+		t.Fatalf("上游请求数 = %d, want 3", len(inputs))
+	}
+	for i, in := range inputs {
+		if n := utf8.RuneCountInString(in); n > qwenTTSMaxChars {
+			t.Errorf("第 %d 段 input %d 字符超限", i+1, n)
+		}
+	}
+	if res.Summary["segment_num"] != 3 {
+		t.Errorf("segment_num = %v, want 3", res.Summary["segment_num"])
+	}
+	w, err := provider.ParseWAV(mustRead(t, filepath.Join(outDir, res.Artifacts[0].Path)))
+	if err != nil {
+		t.Fatalf("拼接产物不可解析: %v", err)
+	}
+	if w.DataLen() != 160*2*3 {
+		t.Errorf("拼接 data = %d 字节, want %d", w.DataLen(), 160*2*3)
+	}
+}
+
+// testWAV 构造 16bit 单声道 PCM WAV（sampleRate 采样率、frames 帧数）。
+func testWAV(sampleRate, frames int) []byte {
+	data := make([]byte, 2*frames)
+	out := make([]byte, 44+len(data))
+	copy(out[0:], "RIFF")
+	binary.LittleEndian.PutUint32(out[4:], uint32(36+len(data)))
+	copy(out[8:], "WAVEfmt ")
+	binary.LittleEndian.PutUint32(out[16:], 16)
+	binary.LittleEndian.PutUint16(out[20:], 1)
+	binary.LittleEndian.PutUint16(out[22:], 1)
+	binary.LittleEndian.PutUint32(out[24:], uint32(sampleRate))
+	binary.LittleEndian.PutUint32(out[28:], uint32(sampleRate*2))
+	binary.LittleEndian.PutUint16(out[32:], 2)
+	binary.LittleEndian.PutUint16(out[34:], 16)
+	copy(out[36:], "data")
+	binary.LittleEndian.PutUint32(out[40:], uint32(len(data)))
+	copy(out[44:], data)
+	return out
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 // ParamSpecs 约束：voice 枚举含 Cherry；无 format 参数（上游无该字段）；Meta 的 provider 为 qianwen。

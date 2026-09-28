@@ -2,6 +2,7 @@ package xiaomi
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -140,14 +141,29 @@ func TestASRToolValidation(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "仅支持 mp3 / wav") {
 		t.Errorf("flac 应报仅支持 mp3/wav, got %v", err)
 	}
-	// 载荷超限（>7.5MB）
+	// 载荷超限（>7.5MB）不再硬拦截，转自动分段；不可探测的垃圾内容报可定位错误
 	big := filepath.Join(t.TempDir(), "big.mp3")
 	if err := os.WriteFile(big, append(mp3Bytes, make([]byte, asrMaxRaw)...), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	err = run(map[string]any{}, map[string]string{"audio": big})
-	if err == nil || !strings.Contains(err.Error(), "载荷超限") {
-		t.Errorf("超限应报载荷超限, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "自动分段") {
+		t.Errorf("超限应转自动分段并报可定位错误, got %v", err)
+	}
+	// 整文件上限（200MB）：稀疏文件只截断不落盘
+	huge := filepath.Join(t.TempDir(), "huge.wav")
+	if f, ferr := os.Create(huge); ferr != nil {
+		t.Fatal(ferr)
+	} else if _, ferr := f.WriteString("RIFF"); ferr != nil {
+		t.Fatal(ferr)
+	} else if ferr := f.Truncate(asrInputCap + 1); ferr != nil {
+		t.Fatal(ferr)
+	} else {
+		f.Close()
+	}
+	err = run(map[string]any{}, map[string]string{"audio": huge})
+	if err == nil || !strings.Contains(err.Error(), "火山引擎") {
+		t.Errorf("超 200MB 应拦截并指引火山引擎, got %v", err)
 	}
 
 	// 缺凭证（输入就绪后才检查，包装 ErrNoCred 哨兵）
@@ -163,6 +179,72 @@ func TestASRToolValidation(t *testing.T) {
 	if !errors.Is(err, ErrNoCred) {
 		t.Errorf("缺凭证错误应包装 ErrNoCred 哨兵, got %v", err)
 	}
+}
+
+// 超大 wav 自动分段：缩小段预算后，4KB wav 应切成多段逐段转写拼接，
+// summary 透出 segment_num 与整体 duration_ms。
+func TestASRToolSegmentedWAV(t *testing.T) {
+	oldBudget := asrSegBytes
+	asrSegBytes = 1024
+	defer func() { asrSegBytes = oldBudget }()
+
+	var count int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count++
+		_, _ = w.Write([]byte(asrFixture("段", 1)))
+	}))
+	defer srv.Close()
+
+	out := t.TempDir()
+	src := filepath.Join(t.TempDir(), "long.wav")
+	if err := os.WriteFile(src, testWAV(8000, 8000), 0o644); err != nil { // 16KB data → 16 段
+		t.Fatal(err)
+	}
+	tool := NewASRTool("sk-test", out)
+	tool.client = NewASRClient("sk-test", srv.URL)
+	res, err := tool.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"_out": filepath.Join(out, "t.txt")},
+		Files:  map[string]string{"audio": src},
+	}, func(int, string, map[string]any) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count < 2 {
+		t.Fatalf("上游请求数 = %d, want >= 2（分段转写）", count)
+	}
+	if res.Summary["segment_num"] != count {
+		t.Errorf("segment_num = %v, want %d", res.Summary["segment_num"], count)
+	}
+	if res.Summary["duration_ms"] != int64(1000) {
+		t.Errorf("duration_ms = %v, want 1000（整段 1s）", res.Summary["duration_ms"])
+	}
+	raw, err := os.ReadFile(filepath.Join(out, "t.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := strings.Repeat("段", count); string(raw) != want {
+		t.Errorf("拼接文本 = %q, want %q", raw, want)
+	}
+}
+
+// testWAV 构造 16bit 单声道 PCM WAV（sampleRate 采样率、frames 帧数）。
+func testWAV(sampleRate, frames int) []byte {
+	data := make([]byte, 2*frames)
+	out := make([]byte, 44+len(data))
+	copy(out[0:], "RIFF")
+	binary.LittleEndian.PutUint32(out[4:], uint32(36+len(data)))
+	copy(out[8:], "WAVEfmt ")
+	binary.LittleEndian.PutUint32(out[16:], 16)
+	binary.LittleEndian.PutUint16(out[20:], 1)
+	binary.LittleEndian.PutUint16(out[22:], 1)
+	binary.LittleEndian.PutUint32(out[24:], uint32(sampleRate))
+	binary.LittleEndian.PutUint32(out[28:], uint32(sampleRate*2))
+	binary.LittleEndian.PutUint16(out[32:], 2)
+	binary.LittleEndian.PutUint16(out[34:], 16)
+	copy(out[36:], "data")
+	binary.LittleEndian.PutUint32(out[40:], uint32(len(data)))
+	copy(out[44:], data)
+	return out
 }
 
 // ParamSpecs 约束：无 model 枚举（上游单模型）、language 三档、Meta 归属 xiaomi.asr。
