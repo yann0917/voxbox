@@ -113,7 +113,7 @@ type clipTool struct{ baseTool }
 func (t *clipTool) Meta() provider.ToolMeta {
 	return provider.ToolMeta{
 		Provider: "audio", Name: "clip", Title: "选区切片",
-		Description: "截取音频选区并加淡入淡出与响度归一导出，支持 mp3/m4a/m4r（m4r 即 iPhone 铃声），本地 ffmpeg 精确定位",
+		Description: "截取音频选区并加淡入淡出与响度归一导出，支持 mp3/m4a/m4r（m4r 即 iPhone 铃声），本地处理、精确定位",
 		Group:       "音频",
 	}
 }

@@ -56,7 +56,7 @@ func (t *TranslateTool) Meta() provider.ToolMeta {
 		Provider:    "volcengine",
 		Name:        "translate",
 		Title:       "机器翻译",
-		Description: "大模型机器翻译：32 语种互译、自动检测源语言、术语定制（需开通 volc.speech.mt）",
+		Description: "大模型机器翻译：32 语种互译、自动检测源语言、术语定制（需在火山控制台开通机器翻译）",
 		Group:       "翻译",
 	}
 }

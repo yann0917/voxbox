@@ -225,7 +225,7 @@ export default function AudioEditorPage() {
       <PageHeader
         icon={<AudioLines size={18} strokeWidth={1.75} />}
         title="音频剪辑"
-        description="本地 ffmpeg 剪辑八件套：切割 / 合并 / 变调变速 / 调与 BPM 查询 / 均衡器 / 音量响度 / 淡入淡出 / 倒放。"
+        description="本地剪辑八件套：切割 / 合并 / 变调变速 / 乐调与 BPM 查询 / 均衡器 / 音量响度 / 淡入淡出 / 倒放。"
       />
 
       <Card>

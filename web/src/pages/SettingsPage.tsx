@@ -317,9 +317,9 @@ export default function SettingsPage() {
               />
               <CardBody className="space-y-4">
                 <p className="text-xs text-muted">
-                  语音识别（闲时/极速版）、人声分离、语音妙记的上游只收公网 URL；配置对象存储后，本地上传的文件会在任务执行时
+                  语音识别（闲时/极速版）、人声分离、语音妙记的云端服务只接受公网 URL；配置对象存储后，本地上传的文件会在任务执行时
                   <strong className="text-fg">自动转存并换取签名 URL</strong>
-                  ，上游用完即弃。已支持火山引擎 TOS 与阿里云 OSS；腾讯 COS 等其他 S3 兼容通道规划中。
+                  ，云端用完即弃。已支持火山引擎 TOS 与阿里云 OSS；腾讯 COS 等其他 S3 兼容通道规划中。
                 </p>
                 <form
                   onSubmit={(e) => {
@@ -448,7 +448,7 @@ export default function SettingsPage() {
                 />
               </div>
               <p className="text-[11px] text-muted">
-                语音 / 千问测试会各发起一次极短的合成请求（消耗少量额度）；MediaKit 测试只做鉴权探测；MVSep 测试验证 token 并回显今日免费额度；对象存储测试为桶探活（HeadBucket，不计费）。
+                语音 / 千问测试会各发起一次极短的合成请求（消耗少量额度）；MediaKit 测试只做鉴权探测；MVSep 测试验证 token 并回显今日免费额度；对象存储测试仅验证桶连通性（不计费）。
               </p>
             </CardBody>
           </Card>

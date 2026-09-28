@@ -50,7 +50,7 @@ func newTTSTool(dataDir string, models *localmodel.Manager, tts *localruntime.TT
 
 func (t *ttsTool) Meta() provider.ToolMeta {
 	return provider.ToolMeta{Provider: "local", Name: "tts", Title: "本地语音合成",
-		Description: "audio.cpp 引擎驱动已安装的本地 TTS(Qwen3-TTS / IndexTTS):参考音频、音色库克隆或预置音色,离线合成;IndexTTS 支持情感文本控制。", Group: "合成"}
+		Description: "本地合成（Qwen3-TTS / IndexTTS）：参考音频、音色库克隆或预置音色，离线可用；IndexTTS 支持情感文本控制。", Group: "合成"}
 }
 
 func (t *ttsTool) ParamSpecs() []provider.ParamSpec {

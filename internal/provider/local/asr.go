@@ -34,7 +34,7 @@ func newASRTool(dataDir string, models *localmodel.Manager) *asrTool {
 
 func (a *asrTool) Meta() provider.ToolMeta {
 	return provider.ToolMeta{Provider: "local", Name: "asr", Title: "本地语音识别",
-		Description: "sherpa-onnx 引擎驱动 SenseVoice:中英日韩粤本地识别,自动标点与 ITN。", Group: "识别"}
+		Description: "本地识别（SenseVoice）：中英日韩粤，自动标点与数字规整。", Group: "识别"}
 }
 
 func (a *asrTool) ParamSpecs() []provider.ParamSpec {

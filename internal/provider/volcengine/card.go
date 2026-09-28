@@ -7,7 +7,7 @@ func ProviderCard() provider.ProviderInfo {
 	return provider.ProviderInfo{
 		Name:  "volcengine",
 		Title: "火山引擎 · 语音合成 / 识别 / 播客",
-		Description: "播客生成必须 APP ID + Access Token（播客协议只认这对凭证）；TTS / 语音识别两者皆可——" +
+		Description: "播客生成必须 APP ID + Access Token（播客仅支持这对凭证）；TTS / 语音识别两者皆可——" +
 			"APP ID + Access Token，或新版 API Key 单键。凭证在语音技术控制台（console.volcengine.com/speech）创建。",
 		Kind:  provider.KindCloud,
 		Order: 10,

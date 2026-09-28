@@ -89,18 +89,18 @@ var siteFuncs = []siteFunc{
 	{
 		Kind: "separate", TaskType: "audio_separate",
 		Title: "人声伴奏分离", Group: "音频",
-		Desc:     "人声/伴奏分离（站点云端执行），产物标准 MP3",
+		Desc:     "人声/伴奏分离，产物标准 MP3",
 		Defaults: map[string]any{"model": DefaultModel},
 		Specs: []provider.ParamSpec{
 			withDefault(enumSpec("stems", "提取轨道", "both", "vocals", "instrumental"), "both"),
-			strSpec("model", "模型编号", "站点私有编号，默认 103"),
+			strSpec("model", "模型编号", "留空使用默认"),
 		},
 		Transform: separateStemsTransform,
 	},
 	{
 		Kind: "video-format-convert", TaskType: "video_converter",
 		Title: "视频格式转换", Group: "视频",
-		Desc: "视频容器/编码转换（站点云端执行），可选分辨率/帧率/码率",
+		Desc: "视频容器/编码转换，可选分辨率/帧率/码率",
 		Specs: []provider.ParamSpec{
 			enumSpec("output_format", "目标格式", siteVideoContainers...),
 			strSpec("video_codec", "视频编码", "如 libx264；copy=直接复制"),
@@ -113,16 +113,16 @@ var siteFuncs = []siteFunc{
 	{
 		Kind: "video-compression", TaskType: "video_compress",
 		Title: "视频压缩", Group: "视频",
-		Desc: "站点云端视频压缩，按压缩率（1-99）控制体积",
+		Desc: "视频压缩，按压缩率（1-99）控制体积",
 		Specs: []provider.ParamSpec{
 			intSpec("compress_rate", "压缩率（1-99）"),
-			strSpec("video_compress_mode", "压缩模式", "站点私有取值，留空走默认"),
+			strSpec("video_compress_mode", "压缩模式", "留空使用默认"),
 		},
 	},
 	{
 		Kind: "video-extract-audio", TaskType: "audio_converter",
 		Title: "视频转音频", Group: "视频",
-		Desc: "提取视频音轨为音频文件（站点云端执行）",
+		Desc: "提取视频音轨为音频文件",
 		Specs: []provider.ParamSpec{
 			enumSpec("output_format", "音频格式", "mp3", "m4a", "aac", "wav", "flac", "ogg"),
 			strSpec("audio_bitrate", "音频码率", "如 192k"),
@@ -133,7 +133,7 @@ var siteFuncs = []siteFunc{
 	{
 		Kind: "video-volume-adjust", TaskType: "video_process",
 		Title: "视频音量调节", Group: "视频",
-		Desc: "调整视频音量倍数（站点云端执行）",
+		Desc: "调整视频音量倍数",
 		Specs: []provider.ParamSpec{
 			floatSpec("volume", "音量倍数（如 2=放大一倍）"),
 			enumSpec("output_format", "输出格式", "mp4", "mov", "mkv", "webm"),
@@ -142,7 +142,7 @@ var siteFuncs = []siteFunc{
 	{
 		Kind: "video-speed", TaskType: "video_process",
 		Title: "视频变速", Group: "视频",
-		Desc: "视频 0.1-10 倍速（站点云端执行）",
+		Desc: "视频 0.1-10 倍速",
 		Specs: []provider.ParamSpec{
 			floatSpec("speed", "速度倍数（0.1-10）"),
 			enumSpec("output_format", "输出格式", "mp4", "mov", "mkv", "webm"),
@@ -151,7 +151,7 @@ var siteFuncs = []siteFunc{
 	{
 		Kind: "audio-format-convert", TaskType: "audio_converter",
 		Title: "音频格式转换", Group: "音频",
-		Desc: "音频格式互转（站点云端执行），可选码率/采样率/声道",
+		Desc: "音频格式互转，可选码率/采样率/声道",
 		Specs: []provider.ParamSpec{
 			enumSpec("output_format", "目标格式", siteAudioFormats...),
 			strSpec("audio_bitrate", "音频码率", "如 192k"),
@@ -162,7 +162,7 @@ var siteFuncs = []siteFunc{
 	{
 		Kind: "audio-compression", TaskType: "audio_compress",
 		Title: "音频压缩", Group: "音频",
-		Desc: "站点云端音频压缩，按压缩率（1-99）控制体积",
+		Desc: "音频压缩，按压缩率（1-99）控制体积",
 		Specs: []provider.ParamSpec{
 			intSpec("compress_rate", "压缩率（1-99）"),
 		},
@@ -170,28 +170,28 @@ var siteFuncs = []siteFunc{
 	{
 		Kind: "audio-denoise", TaskType: "audio_denoise",
 		Title: "音频降噪", Group: "音频",
-		Desc: "站点云端 RNNoise 降噪；model 留空走站点默认",
+		Desc: "智能降噪（RNNoise）",
 		Specs: []provider.ParamSpec{
-			strSpec("model", "降噪模型", "站点私有取值，留空走默认"),
+			strSpec("model", "降噪模型", "留空使用默认"),
 		},
 	},
 	{
 		Kind: "image-format-convert", TaskType: "image_converter",
 		Title: "图片格式转换", Group: "图片",
-		Desc: "图片格式互转（站点云端执行），可选限长边",
+		Desc: "图片格式互转，可选限长边",
 		Specs: []provider.ParamSpec{
 			enumSpec("output_format", "目标格式", siteImageFormats...),
 			strSpec("image_resolution", "长边限制", "如 1920"),
-			strSpec("image_resolution_mode", "分辨率模式", "站点私有取值，留空走默认"),
+			strSpec("image_resolution_mode", "分辨率模式", "留空使用默认"),
 		},
 	},
 	{
 		Kind: "image-compression", TaskType: "image_compress",
 		Title: "图片压缩", Group: "图片",
-		Desc: "站点云端图片压缩，按压缩率（1-99）控制体积",
+		Desc: "图片压缩，按压缩率（1-99）控制体积",
 		Specs: []provider.ParamSpec{
 			intSpec("compress_rate", "压缩率（1-99）"),
-			strSpec("image_compress_mode", "压缩模式", "站点私有取值，留空走默认"),
+			strSpec("image_compress_mode", "压缩模式", "留空使用默认"),
 		},
 	},
 }
@@ -220,7 +220,7 @@ func separateStemsTransform(payload map[string]any) {
 var zhmSeparateFunc = siteFunc{
 	Kind: "separate", TaskType: "audio_separate",
 	Title: "人声伴奏分离", Group: "音频",
-	Desc: "人声/伴奏分离（转换猫线路，站点云端执行），产物标准 MP3",
+	Desc: "人声/伴奏分离（转换猫线路），产物标准 MP3",
 	Specs: []provider.ParamSpec{
 		withDefault(enumSpec("stems", "提取轨道", "both", "vocals", "instrumental"), "both"),
 	},

@@ -302,7 +302,7 @@ type trimTool struct{ baseTool }
 func (t *trimTool) Meta() provider.ToolMeta {
 	return provider.ToolMeta{
 		Provider: "audio", Name: "trim", Title: "音频切割",
-		Description: "按时间区间切割音频：保留选区或挖除选区（去广告/去口误），本地 ffmpeg 精确定位",
+		Description: "按时间区间切割音频：保留选区或挖除选区（去广告/去口误），本地处理、精确定位",
 		Group:       "音频",
 	}
 }
@@ -575,7 +575,7 @@ type pitchTool struct{ baseTool }
 func (t *pitchTool) Meta() provider.ToolMeta {
 	return provider.ToolMeta{
 		Provider: "audio", Name: "pitch", Title: "变调变速",
-		Description: "乐调滑条改变音高（半音），BPM 滑条改变节奏（速度倍率）；两轴独立互不影响，asetrate+atempo 实现",
+		Description: "乐调滑条改变音高（半音），BPM 滑条改变节奏（速度倍率）；两轴独立互不影响",
 		Group:       "音频",
 	}
 }

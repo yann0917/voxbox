@@ -485,7 +485,7 @@ export default function TTSLongPanel() {
             <ProgressBar value={run.progress} active={run.status === "running" || run.status === "pending"} />
             <p className="text-xs text-muted">{run.note || "处理中"}</p>
             {upstreamTaskId && (
-              <p className="font-mono text-[11px] tabular-nums text-muted" title="上游合成任务 ID">
+              <p className="font-mono text-[11px] tabular-nums text-muted" title="合成任务 ID">
                 任务 {upstreamTaskId}
               </p>
             )}

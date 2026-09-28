@@ -71,13 +71,12 @@ export default function AboutPage() {
             它把四家语音平台的 AI 能力装进同一个任务引擎——火山引擎豆包语音的八项能力为主干，
             另接千问平台（qwen3-tts 合成 / qwen3-asr 文件转写）、小米 MiMo（MiMo-V2.5-TTS 合成 / mimo-v2.5-asr 同步转写）
             与智谱（glm-tts 合成 / glm-asr 短音频转写）作为备用引擎；
-            不配云端凭证也能离线跑：内置模型中心可下载 Qwen3-TTS、IndexTTS 2.5 与 SenseVoice 本地推理引擎。
+            不配云端凭证也能离线跑：设置页「本地环境」可下载 Qwen3-TTS、IndexTTS 2.5 与 SenseVoice 本地推理引擎。
             提交任务、实时进度、产物落盘、历史可溯，面向配音、转写、播客、会议纪要、翻译等日常内容生产场景。
           </p>
           <p className="text-sm leading-relaxed text-fg-2">
-            命令行面向脚本与 agent（<code className="rounded bg-inset px-1.5 py-0.5 font-mono text-xs">--json</code> 输出机器可读结果，
-            退出码区分成功 / 参数 / 失败 / 凭证）；Web 控制台按「暖调工作室」的调性设计，
-            提供波形试听、音色库、悬浮 AI 助手、计费测算与任务历史。两者共享同一份数据目录与任务记录。
+            命令行面向脚本与自动化（<code className="rounded bg-inset px-1.5 py-0.5 font-mono text-xs">--json</code> 输出机器可读结果）；
+            Web 控制台提供波形试听、音色库、悬浮 AI 助手、计费测算与任务历史。两者共享同一份数据目录与任务记录。
           </p>
         </CardBody>
       </Card>
@@ -211,7 +210,7 @@ export default function AboutPage() {
             （wav/mp3 ≤25MB/30 秒、热词与上下文，输出纯文本）；REST 协议。
           </p>
           <p className="text-sm leading-relaxed text-fg-2">
-            <span className="font-medium text-fg">本地推理（离线可用）</span>——设置页「模型中心」下载引擎与模型后即离线运行：
+            <span className="font-medium text-fg">本地推理（离线可用）</span>——设置页「本地环境」下载引擎与模型后即离线运行：
             Qwen3-TTS（audio.cpp，1.7B / 0.6B 音色克隆 + 9 预置音色）、IndexTTS 2.5（克隆合成 + 情感文本/强度控制）
             与 SenseVoice int8 多语种识别（sherpa-onnx，中英日韩粤）；纯子进程实现，无 Python 依赖，
             克隆参考音频由音色库统一管理。

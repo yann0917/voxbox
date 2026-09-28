@@ -7,7 +7,7 @@ func ProviderCard() provider.ProviderInfo {
 	return provider.ProviderInfo{
 		Name:        "audiotool",
 		Title:       "本地音频剪辑",
-		Description: "ffmpeg 本地处理：裁剪/合并/变调/均衡/闪避等 12 个工具，无凭证、离线可用。",
+		Description: "本地音频处理：裁剪/合并/变调/均衡/闪避等 12 个工具，离线可用。",
 		Kind:        provider.KindLocal,
 		Order:       90,
 	}

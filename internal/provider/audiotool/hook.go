@@ -143,7 +143,7 @@ type hookTool struct{ baseTool }
 func (t *hookTool) Meta() provider.ToolMeta {
 	return provider.ToolMeta{
 		Provider: "audio", Name: "hook", Title: "副歌候选检测",
-		Description: "按能量与起伏定位最像副歌的 top-N 选区（本地 DSP 零额度），零产物：候选区间直接进结果 Summary 供前端展示",
+		Description: "按能量与起伏自动定位最像副歌的候选片段（本地处理，不消耗额度）",
 		Group:       "音频",
 	}
 }

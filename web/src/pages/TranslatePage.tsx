@@ -198,7 +198,7 @@ export default function TranslatePage() {
     <>
       <PageHeader
         title="机器翻译"
-        description="大模型机器翻译：32 语种互译、自动检测源语言、术语定制（需开通 volc.speech.mt）"
+        description="大模型机器翻译：32 语种互译、自动检测源语言、术语定制（需在火山控制台开通机器翻译）"
         icon={<Languages size={16} strokeWidth={1.75} />}
         actions={
           <Link
@@ -229,7 +229,7 @@ export default function TranslatePage() {
             <div ref={textWrapRef}>
               <Field
                 label="待翻译文本"
-                hint="单条文本不超过 1024 Tokens；超出会被上游拒绝（错误码 45000130），请分段提交。"
+                hint="单条文本不超过 1024 Tokens；超长会被拒绝，请分段提交。"
                 error={textError}
               >
                 {({ id, ...rest }) => (

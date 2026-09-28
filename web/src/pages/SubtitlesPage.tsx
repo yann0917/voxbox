@@ -225,7 +225,7 @@ export default function SubtitlesPage() {
     <>
       <PageHeader
         title="字幕工坊"
-        description="分句时间戳转样式化字幕：SRT/ASS 导出、卡拉 OK 逐字渲染（本地转换，零 API 成本）"
+        description="分句时间戳转样式化字幕：SRT/ASS 导出、卡拉 OK 逐字渲染（本地转换，不消耗额度）"
       />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">

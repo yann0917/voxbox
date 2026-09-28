@@ -20,7 +20,7 @@ type analyzeTool struct{ baseTool }
 func (t *analyzeTool) Meta() provider.ToolMeta {
 	return provider.ToolMeta{
 		Provider: "audio", Name: "analyze", Title: "调与 BPM 查询",
-		Description: "分析音乐查找调（key）、音阶（大/小调）、Camelot 编码与 BPM 节奏，内置 DSP 无需外部服务",
+		Description: "分析音乐查找调（key）、音阶（大/小调）、Camelot 编码与 BPM 节奏，本地分析、无需外部服务",
 		Group:       "音频",
 	}
 }

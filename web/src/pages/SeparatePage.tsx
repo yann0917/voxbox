@@ -176,7 +176,7 @@ export default function SeparatePage() {
         toast({
           tone: "ok",
           title: "公网直链已复制",
-          description: "上游链接有时效（转换猫/格式工厂约 1 小时、火山 24 小时），请尽快使用",
+          description: "产物链接有时效（转换猫/格式工厂约 1 小时、火山 24 小时），请尽快使用",
         }),
       )
       .catch((e: Error) => toast({ tone: "error", title: "复制失败", description: e.message }));
@@ -237,7 +237,7 @@ export default function SeparatePage() {
     <>
       <PageHeader
         title="人声分离"
-        description="音频源分离四引擎：格式工厂 / 转换猫（免费直连，同后端双线路）、MVSep（120+ 算法，每日 50 次免费）、火山 MediaKit（人声/背景，计费）"
+        description="音频源分离四引擎：格式工厂 / 转换猫（免费，双线路互为备用）、MVSep（120+ 算法，每日 50 次免费）、火山 MediaKit（人声/背景，计费）"
       />
 
       <Card>
@@ -374,7 +374,7 @@ export default function SeparatePage() {
                   {a.meta?.url && (
                     <button
                       className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
-                      title="复制上游公网直链（有时效，可直接分享/外部下载）"
+                      title="复制产物直链（有时效，可直接分享/外部下载）"
                       onClick={() => copyURL(a.meta!.url!)}
                     >
                       <Copy size={13} strokeWidth={1.75} />
@@ -1009,8 +1009,8 @@ function CloudSepForm({
       </div>
 
       <p className="text-[11px] text-muted">
-        {line.name}线路（{line.host}，免费直连，{line.mirror}为同后端镜像线路、可切换互为备用），无需凭证与对象存储；
-        产物自动转码为标准 MP3（128k）。通道为站点私有接口，作为免费备用通道，上游限流或改版时请切换 MVSep。
+        {line.name}线路（{line.host}）免费、无需凭证与对象存储；与 {line.mirror} 互为镜像线路，可随时切换。
+        产物自动转码为标准 MP3（128k）。免费接口限流或不可用时，可切换线路或改用 MVSep。
       </p>
     </>
   );

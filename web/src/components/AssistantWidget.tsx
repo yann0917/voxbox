@@ -142,7 +142,7 @@ export default function AssistantWidget() {
           if (payload.done) break stream;
         }
       }
-      if (!acc.trim()) patchLast("（上游没有返回内容）");
+      if (!acc.trim()) patchLast("（没有返回内容）");
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         if (!acc.trim()) setMsgs((cur) => cur.slice(0, -1)); // 未产出内容的中止不留空气泡

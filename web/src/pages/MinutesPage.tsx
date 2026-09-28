@@ -112,7 +112,7 @@ export default function MinutesPage() {
       return;
     }
     if (f.size >= 1024 * 1024 * 1024) {
-      setFileError("文件需小于 1GB（妙记上游限制）");
+      setFileError("文件需小于 1GB（妙记服务限制）");
       return;
     }
     setFileError("");
@@ -355,7 +355,7 @@ export default function MinutesPage() {
                 </label>
               ))}
               {features.length === 0 && (
-                <p className="text-[11px] text-danger">至少选择一项附加功能，否则上游提交失败。</p>
+                <p className="text-[11px] text-danger">至少选择一项附加功能，否则任务无法提交。</p>
               )}
             </div>
 
@@ -498,7 +498,7 @@ export default function MinutesPage() {
             <ProgressBar value={run.progress} active={run.status === "running" || run.status === "pending"} />
             <p className="text-xs text-muted">{run.note || "处理中"}</p>
             {upstreamTaskId && (
-              <p className="font-mono text-[11px] tabular-nums text-muted" title="上游妙记任务 ID">
+              <p className="font-mono text-[11px] tabular-nums text-muted" title="妙记任务 ID">
                 任务 {upstreamTaskId}
               </p>
             )}

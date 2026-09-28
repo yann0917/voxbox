@@ -7,7 +7,7 @@ func ProviderCard() provider.ProviderInfo {
 	return provider.ProviderInfo{
 		Name:        "local",
 		Title:       "本地推理",
-		Description: "本地引擎(audio.cpp / sherpa-onnx)驱动已下载模型的合成与识别,离线可用;引擎与模型在设置页「本地环境」下载。",
+		Description: "本地推理（audio.cpp / sherpa-onnx）：语音合成与识别，离线可用；引擎与模型在设置页「本地环境」下载。",
 		Kind:        provider.KindLocal,
 		Order:       85,
 	}

@@ -383,7 +383,7 @@ export default function LocalTTSPanel() {
                         <EmptyState
                           icon={<AudioLines size={18} strokeWidth={1.75} />}
                           title="音色库还是空的"
-                          description="先在下方录制或上传一个音色,再回来选择"
+                          description="先在下方录制或上传一个音色，再回来选择"
                         />
                       ) : (
                         <div className="flex items-center gap-1.5">
