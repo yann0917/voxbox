@@ -205,7 +205,7 @@ fn about_metadata(app: &tauri::AppHandle) -> AboutMetadata<'static> {
         authors: Some(vec!["yann0917".into()]),
         license: Some("MIT".into()),
         copyright: Some("© 2026 yann0917".into()),
-        credits: Some(format!("作者 yann0917\n项目地址 {REPO_URL}")),
+        credits: Some(format!("项目地址 {REPO_URL}")),
         website: Some(REPO_URL.to_string()),
         ..Default::default()
     }
