@@ -1,6 +1,10 @@
-# voxbox
+<p align="center">
+  <img src="desktop/src-tauri/icons/icon.png" width="120" alt="VoxBox" />
+</p>
 
-个人自用的语音 AI 工具箱：一套 Go 二进制，既是 CLI 也是 Web 控制台，围绕语音合成/识别与音频处理接入八个能力。
+<h1 align="center">VoxBox</h1>
+
+<p align="center">个人自用的语音 AI 工具箱：云端接入四家语音平台、本地可跑 TTS/ASR 推理引擎——一套 Go 二进制既是 CLI 也是 Web 控制台，另有双击即用的桌面应用。</p>
 
 | 能力 | 说明 | 接口形态 |
 |---|---|---|
@@ -15,12 +19,15 @@
 | 千问平台语音 | qwen3-tts 非流式合成（48 官方音色、instruct 模型风格指令）+ qwen3-asr 录音文件转写（长音频 ≤12h、说话人分离、SRT 字幕） | DashScope 兼容 HTTP（固定入口，Bearer API Key） |
 | 小米 MiMo 语音 | MiMo-V2.5-TTS 系列合成（9 官方预置音色、自然语言风格指令、文本描述定制音色 voicedesign）+ mimo-v2.5-asr 同步转写（mp3/wav ≤7.5MB，中英自动识别，输出纯文本） | OpenAI 兼容 chat/completions（固定入口，Bearer API Key） |
 | 智谱平台语音 | glm-tts 合成（官方 7 音色 + 复刻音色、语速/音量调节、wav）+ glm-asr-2512 短音频转写（wav/mp3 ≤25MB/30 秒、热词与上下文、输出纯文本）+ 音色复刻/删除（接口对接，前端暂未展示） | REST（固定入口 open.bigmodel.cn，Bearer API Key） |
+| 本地语音合成 TTS | 离线合成：audio.cpp 跑 GGUF——Qwen3-TTS（1.7B / 0.6B 音色克隆、9 预置音色）与 IndexTTS 2.5（克隆合成、情感文本/强度控制）；参考音频从音色库取用（面板内录音/上传入库，自动转码 24kHz 单声道 ≤60s） | HTTP 异步任务 + WebSocket 进度 |
+| 本地语音识别 ASR | 离线识别：sherpa-onnx 跑 SenseVoice int8（155MB，CPU 即可），中/英/日/韩/粤 + 自动检测，含 itn 文本正规化 | HTTP 同步 |
 
 ## 特性
 
 - **双形态**：`voxbox tts/asr/podcast/separate/translate/minutes` 命令行直用（`tts`/`asr` 均支持 `--engine volcengine|qianwen|xiaomi|zhipu` 四引擎，`separate --engine mvsep|gsgc|zhuanhuanmao|mediakit` 四引擎切换；脚本/agent 友好，`--json` 机器可读输出）；`voxbox serve` 启动 Web 控制台。
 - **单二进制**：前端产物 go:embed 内嵌，goroutine 任务池 + SQLite 状态，零外部依赖部署；纯 Go sqlite 驱动，可交叉编译（`make dist`）。
 - **可扩展**：Provider 抽象层，新平台/新工具以「实现接口 + 注册」接入，前端表单与 CLI 由参数 schema 驱动。
+- **本地推理**：设置页「模型中心」一键下载引擎与模型（内置目录 2 引擎 + 5 模型，魔搭直链、断点续传、sha256 双校验），离线合成/识别，无云端凭证也可用；audio.cpp（TTS）+ sherpa-onnx（ASR）纯子进程，零 Python 依赖。
 - **Agent 可调用**：`voxbox skill install` 把 skill 装到本机 agent 目录（WorkBuddy / Claude Code / CodeBuddy），agent 即可按 CLI 调用全部能力——**skill 已 go:embed 进二进制，只分发可执行文件也自带**；`voxbox mcp` 提供 stdio MCP server（15 个工具，见 [docs/mcp.md](docs/mcp.md)），Claude Code 等 MCP 客户端可直连。
 
 ## Web 控制台
@@ -32,6 +39,9 @@
 - **工作台**：真实运行统计（任务数/成功率/累计耗时）+ 最近任务
 - **试听**：自研波形播放器 + 全局播放条，历史页与各工具页的产物可直接播放、下载
 - **工具联动**：人声分离页的人声轨可「送 ASR 识别」——产物直接作为识别输入，无需公网 URL
+- **本地推理页签**：TTS/ASR 页内切换云端/本地引擎，未就绪时引导直达设置页模型区
+- **音色库**：克隆参考音频录音/上传入库、波形预览与改名删除，本地 TTS 克隆面板直接选用
+- **悬浮 AI 助手**：全站可唤起的流式对话窗，复用已配置的千问/智谱/小米 API Key（LLM 与语音同 Key）
 - **设置页云端/本地两 Tab**：云端凭证按厂商卡片独立保存与连通性测试（火山语音 / 千问平台 / MediaKit / MVSep），本地能力与存储位置归入本地 Tab
 
 ## 快速开始
@@ -146,6 +156,7 @@ make all
 - **macOS 首次打开**：未做 Apple 公证，右键应用 → 「打开」→ 再点「打开」即可（仅首次）；`xattr -cr /Applications/VoxBox.app` 等效。
 - **Windows 首次运行**：SmartScreen 弹窗点「更多信息」→「仍要运行」。
 - **更新**：应用启动时静默检查新版本，弹窗确认后自动下载安装并重启。
+- **面板内录音**：音色库录入与 ASR 快捷录音在桌面版同样可用，首次点录音弹系统麦克风授权。
 - **本地构建**：`TAURI_SIGNING_PRIVATE_KEY=~/.tauri/voxbox.key make desktop`（依赖 Rust 工具链与 tauri-cli，sidecar 契约见 `docs/superpowers/specs/2026-09-26-tauri-desktop-design.md`）。
 - 桌面版不含 CLI/MCP/skill install——这些继续用 `make dist` 的单二进制发行包。
 

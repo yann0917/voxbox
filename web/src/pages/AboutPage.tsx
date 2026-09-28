@@ -67,16 +67,17 @@ export default function AboutPage() {
       <Card className="mb-4">
         <CardBody className="space-y-3">
           <p className="text-sm leading-relaxed text-fg">
-            voxbox 是一套个人自用的多媒体 AI 工具箱：单个 Go 二进制，既是命令行工具也是 Web 控制台。
-            它把三家语音平台的 AI 能力装进同一个任务引擎——火山引擎豆包语音的八项能力为主干，
-            另接千问平台（qwen3-tts 合成 / qwen3-asr 文件转写）与小米 MiMo（MiMo-V2.5-TTS 合成 / mimo-v2.5-asr 同步转写）
-            作为合成与识别的备用引擎，提交任务、实时进度、产物落盘、历史可溯，
-            面向配音、转写、播客、会议纪要、翻译等日常内容生产场景。
+            voxbox 是一套个人自用的多媒体 AI 工具箱：单个 Go 二进制，既是命令行工具也是 Web 控制台（另有双击即用的桌面应用）。
+            它把四家语音平台的 AI 能力装进同一个任务引擎——火山引擎豆包语音的八项能力为主干，
+            另接千问平台（qwen3-tts 合成 / qwen3-asr 文件转写）、小米 MiMo（MiMo-V2.5-TTS 合成 / mimo-v2.5-asr 同步转写）
+            与智谱（glm-tts 合成 / glm-asr 短音频转写）作为备用引擎；
+            不配云端凭证也能离线跑：内置模型中心可下载 Qwen3-TTS、IndexTTS 2.5 与 SenseVoice 本地推理引擎。
+            提交任务、实时进度、产物落盘、历史可溯，面向配音、转写、播客、会议纪要、翻译等日常内容生产场景。
           </p>
           <p className="text-sm leading-relaxed text-fg-2">
             命令行面向脚本与 agent（<code className="rounded bg-inset px-1.5 py-0.5 font-mono text-xs">--json</code> 输出机器可读结果，
             退出码区分成功 / 参数 / 失败 / 凭证）；Web 控制台按「暖调工作室」的调性设计，
-            提供波形试听、计费测算与任务历史。两者共享同一份数据目录与任务记录。
+            提供波形试听、音色库、悬浮 AI 助手、计费测算与任务历史。两者共享同一份数据目录与任务记录。
           </p>
         </CardBody>
       </Card>
@@ -90,11 +91,11 @@ export default function AboutPage() {
               在 <Link to="/settings" className="text-accent transition-colors duration-150 hover:opacity-80">设置页</Link> 填写凭证，
               或执行（配置文件位于 <code className="rounded bg-inset px-1.5 py-0.5 font-mono text-xs">~/.voxbox/config.yaml</code>）：
             </p>
-            <Cmd>voxbox config set volc.speech.app_id &lt;APP ID&gt;&#10;voxbox config set volc.speech.access_token &lt;Token&gt;&#10;voxbox config set qianwen.api_key &lt;API Key&gt;&#10;voxbox config set xiaomi.api_key &lt;API Key&gt;</Cmd>
+            <Cmd>voxbox config set volc.speech.app_id &lt;APP ID&gt;&#10;voxbox config set volc.speech.access_token &lt;Token&gt;&#10;voxbox config set qianwen.api_key &lt;API Key&gt;&#10;voxbox config set xiaomi.api_key &lt;API Key&gt;&#10;voxbox config set zhipu.api_key &lt;API Key&gt;</Cmd>
             <p className="text-xs text-muted">
               <KeyRound size={12} strokeWidth={1.75} className="mr-1 inline" />
               火山：仅播客必须 APP ID + Access Token，其余能力支持新版 API Key 单键；人声分离用独立的 MediaKit API Key。
-              千问（TTS/ASR）与小米（TTS/ASR）各一个 API Key，合成与识别共用；引擎在 CLI --engine 或页面页签里切换。
+              千问（TTS/ASR）、小米（TTS/ASR）与智谱（TTS/ASR）各一个 API Key，合成与识别共用；引擎在 CLI --engine 或页面页签里切换。
             </p>
           </Step>
           <Step n="2" title="命令行调用">
@@ -134,7 +135,7 @@ export default function AboutPage() {
         <CardHeader
           title="MCP 接入"
           icon={<PlugZap size={15} strokeWidth={1.75} />}
-          aside={<span className="micro">12 个工具 · 串行排队</span>}
+          aside={<span className="micro">15 个工具 · 串行排队</span>}
         />
         <CardBody className="space-y-5">
           <p className="text-sm leading-relaxed text-fg-2">
@@ -185,7 +186,7 @@ export default function AboutPage() {
         <CardHeader
           title="底层能力：多引擎语音平台"
           icon={<Cpu size={15} strokeWidth={1.75} />}
-          aside={<span className="micro">火山 / 千问 / 小米</span>}
+          aside={<span className="micro">火山 / 千问 / 小米 / 智谱 / 本地推理</span>}
         />
         <CardBody className="space-y-3">
           <p className="text-sm leading-relaxed text-fg-2">
@@ -203,6 +204,17 @@ export default function AboutPage() {
             <span className="font-medium text-fg">小米 MiMo（合成 / 转写备选）</span>——MiMo-V2.5-TTS 系列合成
             （9 官方预置音色、自然语言风格指令、文本描述定制音色 voicedesign）与 mimo-v2.5-asr 同步转写
             （mp3/wav 直传，中英识别，输出纯文本）；OpenAI 兼容协议。
+          </p>
+          <p className="text-sm leading-relaxed text-fg-2">
+            <span className="font-medium text-fg">智谱开放平台（合成 / 转写备选）</span>——glm-tts 合成
+            （官方 7 音色 + 复刻音色、语速/音量调节、wav）与 glm-asr-2512 短音频转写
+            （wav/mp3 ≤25MB/30 秒、热词与上下文，输出纯文本）；REST 协议。
+          </p>
+          <p className="text-sm leading-relaxed text-fg-2">
+            <span className="font-medium text-fg">本地推理（离线可用）</span>——设置页「模型中心」下载引擎与模型后即离线运行：
+            Qwen3-TTS（audio.cpp，1.7B / 0.6B 音色克隆 + 9 预置音色）、IndexTTS 2.5（克隆合成 + 情感文本/强度控制）
+            与 SenseVoice int8 多语种识别（sherpa-onnx，中英日韩粤）；纯子进程实现，无 Python 依赖，
+            克隆参考音频由音色库统一管理。
           </p>
           <p className="text-xs text-muted">音色列表、能力边界与计费口径均以各家官方文档为准。</p>
           <div className="space-y-1.5">
