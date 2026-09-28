@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowUp, Sparkles, Square, X } from "lucide-react";
 import { fetchJSON } from "../lib/api";
 import { usePlayer } from "../lib/player";
-import { IconButton, Select, Textarea, useToast, WaveLoader } from "../ui";
+import { IconButton, Markdown, Select, Textarea, useToast, WaveLoader } from "../ui";
 
 interface AssistantPlatform {
   provider: string;
@@ -224,16 +224,21 @@ export default function AssistantWidget() {
               >
                 {m.content}
               </p>
-            ) : (
+            ) : m.role === "user" ? (
+              // 用户气泡保持纯文本：字面输入不该被 markdown 语法解释
               <div
                 key={i}
-                className={
-                  m.role === "user"
-                    ? "self-end max-w-[85%] rounded-[var(--radius-md)] rounded-br-[4px] bg-raise-2 px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap break-words text-fg"
-                    : "self-start max-w-[92%] rounded-[var(--radius-md)] rounded-bl-[4px] bg-raise px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap break-words text-fg"
-                }
+                className="self-end max-w-[85%] rounded-[var(--radius-md)] rounded-br-[4px] bg-raise-2 px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap break-words text-fg"
               >
                 {m.content}
+              </div>
+            ) : (
+              // 助手气泡走 markdown 渲染（流式期间每帧重解析，增量渲染由 React 处理）
+              <div
+                key={i}
+                className="self-start max-w-[92%] rounded-[var(--radius-md)] rounded-bl-[4px] bg-raise px-3 py-2 text-[13px] leading-relaxed text-fg"
+              >
+                <Markdown>{m.content}</Markdown>
               </div>
             ),
           )
