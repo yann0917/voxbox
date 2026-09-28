@@ -227,10 +227,6 @@ jobs:
           {
             cat changelog.md
             printf '\n---\n\n'
-            printf '%s\n' \
-              '> **macOS 安装提示**：二进制为 ad-hoc 签名（未公证）。若提示「Apple could not verify …」，' \
-              '> 执行 `xattr -d com.apple.quarantine ./voxbox` 后重试；如仍被拦，在' \
-              '> 「系统设置 → 隐私与安全性」中点「仍要打开」。'
             if [ -n "$PREV_TAG" ]; then
               printf '\n**Full Changelog**：https://github.com/%s/compare/%s...%s\n' \
                 "$GITHUB_REPOSITORY" "$PREV_TAG" "$TAG"
@@ -248,7 +244,7 @@ jobs:
           files: dist/*.zip
           draft: ${{ inputs.draft }}
           # 注意：body 与 generate_release_notes 同时给会由 body 覆盖生成内容
-          #（GitHub 语义），所以更新日志与 macOS 提示统一走 body_path。
+          #（GitHub 语义），所以更新日志统一走 body_path。
           body_path: release-notes.md
           fail_on_unmatched_files: true
 
