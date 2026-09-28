@@ -3,6 +3,7 @@
 use std::sync::Mutex;
 
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::menu::{AboutMetadata, PredefinedMenuItem};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
@@ -14,8 +15,8 @@ struct SidecarChild(Mutex<Option<CommandChild>>);
 const READY_PREFIX: &str = "VOXBOX_READY addr=";
 
 fn main() {
-    tauri::Builder::default()
-        // 单实例必须最先注册（官方要求）：二启进程立即退出，回调里唤起已有主窗口。
+    // 单实例必须最先注册（官方要求）：二启进程立即退出，回调里唤起已有主窗口。
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
@@ -26,7 +27,76 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(SidecarChild(Mutex::new(None)))
+        .manage(SidecarChild(Mutex::new(None)));
+
+    // macOS：覆盖默认应用菜单。结构复制自 tauri 的 Menu::default，仅「关于」换自定义元数据——
+    // 默认 about 只带 name/version/copyright（bundle 的 publisher/copyright 均未配置），
+    // 而作者/项目地址要可见得靠 authors/website（Windows 对话框渲染）与 credits（macOS 面板渲染）。
+    // Windows 不设菜单（避免空菜单条），关于入口在托盘。
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::menu::{Menu, Submenu};
+        builder = builder.menu(|app| {
+            let app_menu = Submenu::with_items(
+                app,
+                app.package_info().name.clone(),
+                true,
+                &[
+                    &PredefinedMenuItem::about(app, None, Some(about_metadata(app)))?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::services(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::hide(app, None)?,
+                    &PredefinedMenuItem::hide_others(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::quit(app, None)?,
+                ],
+            )?;
+            let file_menu = Submenu::with_items(
+                app,
+                "File",
+                true,
+                &[&PredefinedMenuItem::close_window(app, None)?],
+            )?;
+            let edit_menu = Submenu::with_items(
+                app,
+                "Edit",
+                true,
+                &[
+                    &PredefinedMenuItem::undo(app, None)?,
+                    &PredefinedMenuItem::redo(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::cut(app, None)?,
+                    &PredefinedMenuItem::copy(app, None)?,
+                    &PredefinedMenuItem::paste(app, None)?,
+                    &PredefinedMenuItem::select_all(app, None)?,
+                ],
+            )?;
+            let view_menu = Submenu::with_items(
+                app,
+                "View",
+                true,
+                &[&PredefinedMenuItem::fullscreen(app, None)?],
+            )?;
+            let window_menu = Submenu::with_items(
+                app,
+                "Window",
+                true,
+                &[
+                    &PredefinedMenuItem::minimize(app, None)?,
+                    &PredefinedMenuItem::maximize(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::close_window(app, None)?,
+                ],
+            )?;
+            Ok(Menu::with_items(
+                app,
+                &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu],
+            )?)
+        });
+    }
+
+    builder
         .on_window_event(|window, event| {
             // 关窗 = 隐藏到托盘：长文本合成/播客等后台任务继续跑。
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -123,6 +193,24 @@ fn open_main_window(app: &tauri::AppHandle, port: u16) {
     let _ = win.set_focus();
 }
 
+/// 「关于」元数据：作者与项目地址按平台分字段冗余填充——macOS 关于面板只渲染
+/// name/version/copyright/credits，Windows 原生对话框只渲染 authors/license/website，
+/// 两边都填同一份信息才在两平台都完整可见。
+fn about_metadata(app: &tauri::AppHandle) -> AboutMetadata<'static> {
+    const REPO_URL: &str = "https://github.com/yann0917/voxbox";
+    let info = app.package_info();
+    AboutMetadata {
+        name: Some(info.name.clone()),
+        version: Some(info.version.to_string()),
+        authors: Some(vec!["yann0917".into()]),
+        license: Some("MIT".into()),
+        copyright: Some("© 2026 yann0917".into()),
+        credits: Some(format!("作者 yann0917\n项目地址 {REPO_URL}")),
+        website: Some(REPO_URL.to_string()),
+        ..Default::default()
+    }
+}
+
 /// 托盘：关窗驻留后从这里唤回或退出。
 /// 菜单栏图标用单色模板图（icons/tray-icon-mono.png + template=true）：
 /// macOS 按 alpha 通道自动适配深浅菜单栏（深底白标/浅底黑标），彩色 app 图标放菜单栏会与系统不协调。
@@ -131,7 +219,13 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     use tauri::tray::TrayIconBuilder;
     let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
+    // 关于项用预定义 about：macOS 弹关于面板、Windows 弹原生关于对话框（元数据见 about_metadata）
+    let menu = Menu::with_items(app, &[
+        &PredefinedMenuItem::about(app, Some("关于 VoxBox"), Some(about_metadata(app)))?,
+        &PredefinedMenuItem::separator(app)?,
+        &show,
+        &quit,
+    ])?;
     TrayIconBuilder::with_id("main-tray")
         .icon(tauri::include_image!("icons/tray-icon-mono.png"))
         .icon_as_template(true)
