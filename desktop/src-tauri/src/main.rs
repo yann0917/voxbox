@@ -142,12 +142,24 @@ fn main() {
 
 /// 拉起内嵌的 voxbox serve，等就绪行，返回端口。就绪前退出/报错都视为失败。
 async fn spawn_sidecar(app: &tauri::AppHandle) -> Result<u16, String> {
+    // 内嵌的 ffmpeg/ffprobe 与 voxbox 同目录落位（externalBin）：把该目录前置进子进程
+    // PATH，Go 侧全部 exec.LookPath("ffmpeg") 直接命中——剪辑/音色库/克隆转换/云端
+    // ASR 分段的 ffmpeg 依赖点零改动；开发模式该目录无 ffmpeg 时自然回落系统 PATH。
+    let exe_dir = std::env::current_exe()
+        .map_err(|e| format!("定位可执行目录失败：{e}"))?
+        .parent()
+        .ok_or_else(|| "可执行目录路径异常".to_string())?
+        .to_path_buf();
+    let mut paths = vec![exe_dir];
+    paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()));
+    let path_env = std::env::join_paths(&paths).map_err(|e| format!("构造 PATH 失败：{e}"))?;
     let cmd = app
         .shell()
         .sidecar("voxbox")
         .map_err(|e| e.to_string())?
         .args(["serve", "--port", "0"])
-        .env("VOXBOX_DESKTOP", "1");
+        .env("VOXBOX_DESKTOP", "1")
+        .env("PATH", path_env);
     let (mut rx, child) = cmd.spawn().map_err(|e| format!("sidecar 启动失败：{e}"))?;
     *app.state::<SidecarChild>().0.lock().unwrap() = Some(child);
 
@@ -205,7 +217,9 @@ fn about_metadata(app: &tauri::AppHandle) -> AboutMetadata<'static> {
         authors: Some(vec!["yann0917".into()]),
         license: Some("MIT".into()),
         copyright: Some("© 2026 yann0917".into()),
-        credits: Some(format!("项目地址 {REPO_URL}")),
+        credits: Some(format!(
+            "项目地址 {REPO_URL}\n内嵌 FFmpeg 静态构建（GPL v3，源码：ffmpeg.org）"
+        )),
         website: Some(REPO_URL.to_string()),
         ..Default::default()
     }

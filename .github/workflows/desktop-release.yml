@@ -142,6 +142,37 @@ jobs:
         if: matrix.rust_target != ''
         run: rustup target add ${{ matrix.rust_target }}
 
+      # 内嵌 FFmpeg：mac 腿走抓取脚本（osxexperts 静态构建，哈希钉死在脚本内，
+      # 含 ad-hoc 签名）；Windows 腿的 BtbN zip 由下方 PowerShell 步骤处理。
+      - name: Fetch embedded FFmpeg（macOS）
+        if: runner.os != 'Windows'
+        run: bash desktop/fetch-ffmpeg.sh ${{ matrix.triple }}
+
+      - name: Fetch embedded FFmpeg（Windows：BtbN zip 哈希校验 + 提取）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          # BtbN/FFmpeg-Builds 固定 release autobuild-2026-09-27-13-04 的官方 checksums.sha256
+          FF_ZIP_URL: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-27-13-04/ffmpeg-n8.1.3-2-g45e8e0a3ff-win64-gpl-8.1.zip"
+          FF_ZIP_SHA256: "16c5956a513ec236ed8b5786920662ab5a4a94e4ec553a8aebcf161439ef5416"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $bin = "desktop/src-tauri/binaries"
+          New-Item -ItemType Directory -Force $bin | Out-Null
+          $zip = Join-Path $env:RUNNER_TEMP "ffmpeg-win64.zip"
+          Invoke-WebRequest -Uri $env:FF_ZIP_URL -OutFile $zip
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() -ne $env:FF_ZIP_SHA256) {
+            throw "FFmpeg zip 哈希不符：BtbN 资产可能已变更，需重钉 desktop-release.yml 的 URL/SHA256"
+          }
+          $tmp = Join-Path $env:RUNNER_TEMP "ffmpeg-extract"
+          Expand-Archive -Path $zip -DestinationPath $tmp -Force
+          foreach ($name in @("ffmpeg", "ffprobe")) {
+            $src = Get-ChildItem $tmp -Recurse -Filter "$name.exe" | Select-Object -First 1
+            if (-not $src) { throw "zip 内未找到 $name.exe" }
+            Copy-Item $src.FullName "$bin/$name-${{ matrix.triple }}.exe" -Force
+            Write-Host "已放置 $name-${{ matrix.triple }}.exe"
+          }
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri

@@ -1,4 +1,4 @@
-.PHONY: build test web skills all clean dist vet fmt desktop desktop-dev
+.PHONY: build test web skills all clean dist vet fmt desktop desktop-dev fetch-ffmpeg
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -61,11 +61,15 @@ HOST_TRIPLE := $(shell rustc -vV | awk '/host:/{print $$2}')
 DESKTOP_BIN := desktop/src-tauri/binaries/voxbox-$(HOST_TRIPLE)
 
 # updater 签名需要私钥：TAURI_SIGNING_PRIVATE_KEY=~/.tauri/voxbox.key make desktop
-desktop: web skills
+# ffmpeg/ffprobe 内嵌（externalBin）：抓取脚本幂等（已就位且哈希吻合即跳过），dev/build 都需要
+fetch-ffmpeg:
+	bash desktop/fetch-ffmpeg.sh "$(HOST_TRIPLE)"
+
+desktop: web skills fetch-ffmpeg
 	go build -ldflags "$(LDFLAGS)" -o "$(DESKTOP_BIN)" ./cmd/voxbox
 # CI=true 让 bundler 自动 --skip-jenkins 跳过 Finder 装配 DMG——本机未授权 Finder 自动化（AppleEvent -1712）必败
 	cd desktop && CI=true cargo tauri build
 
-desktop-dev: web skills
+desktop-dev: web skills fetch-ffmpeg
 	go build -ldflags "$(LDFLAGS)" -o "$(DESKTOP_BIN)" ./cmd/voxbox
 	cd desktop && cargo tauri dev
