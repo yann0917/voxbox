@@ -9,6 +9,7 @@
 <p align="center">
   <a href="https://github.com/yann0917/voxbox/releases"><img alt="Release" src="https://img.shields.io/github/v/release/yann0917/voxbox?include_prereleases"></a>
   <a href="https://github.com/yann0917/voxbox/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/yann0917/voxbox"></a>
+  <a href="https://deepwiki.com/yann0917/voxbox"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
 
 ---
