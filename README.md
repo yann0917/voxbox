@@ -143,6 +143,16 @@ make dist    # 交叉编译五个平台打包到 dist/
 - [JSON 输出契约](docs/json-contract.md)：`--json` / MCP 输出的字段与稳定性承诺
 - 桌面版发布走 GitHub Actions（`.github/workflows/desktop-release.yml`），本地构建 `make desktop`
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=yann0917%2Fvoxbox&type=date&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=yann0917/voxbox&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=yann0917/voxbox&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=yann0917/voxbox&type=date&legend=top-left" />
+ </picture>
+</a>
+
 ## License
 
 [MIT](LICENSE).
