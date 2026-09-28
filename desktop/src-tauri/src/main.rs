@@ -218,7 +218,9 @@ fn about_metadata(app: &tauri::AppHandle) -> AboutMetadata<'static> {
         license: Some("MIT".into()),
         copyright: Some("© 2026 yann0917".into()),
         credits: Some(format!(
-            "项目地址 {REPO_URL}\n内嵌 FFmpeg 静态构建（GPL v3，源码：ffmpeg.org）"
+            // macOS 关于面板宽度固定且不可调，credits 每行须压在单行内（长了硬折，排版破碎）：
+            // 链接去 scheme 缩短（面板内纯文本不可点击，完整 URL 由 website 字段在 Windows 呈现）
+            "源码 github.com/yann0917/voxbox\n内嵌 FFmpeg（GPL v3，ffmpeg.org）"
         )),
         website: Some(REPO_URL.to_string()),
         ..Default::default()
