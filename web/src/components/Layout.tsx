@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -162,33 +162,55 @@ function UserMenu({ username, role, onAskLogout }: { username: string; role: str
   );
 }
 
-function NavItems({ onNavigate, collapsed }: { onNavigate?: () => void; collapsed: boolean }) {
+function NavItems({
+  onNavigate,
+  collapsed,
+  activeIdx,
+}: {
+  onNavigate?: () => void;
+  collapsed: boolean;
+  activeIdx: number;
+}) {
+  // 选中胶囊：单个共享元素承载选中底色与左侧强调条，切换时 translateY 滑到新项。
+  // 首次挂载直接插入到位（新插入元素不跑过渡），只有后续切换才产生滑动；
+  // 位移量取自 NavLink 实测 offsetTop，项高固定（text-sm 行高 20px + py-2）无漂移。
+  const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const [pill, setPill] = useState<{ top: number; height: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = itemRefs.current[activeIdx];
+    if (el) setPill({ top: el.offsetTop, height: el.offsetHeight });
+  }, [activeIdx, collapsed]);
+
   return (
-    <>
-      {nav.map(({ to, label, icon: Icon }) => (
+    <div className="relative flex flex-col gap-0.5">
+      {pill && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 rounded-[var(--radius-sm)] bg-raise transition-transform duration-[320ms] ease-out-quint"
+          style={{ transform: `translateY(${pill.top}px)`, height: pill.height }}
+        >
+          <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-accent" />
+        </div>
+      )}
+      {nav.map(({ to, label, icon: Icon }, i) => (
         <NavLink
           key={to}
+          ref={(el) => {
+            itemRefs.current[i] = el;
+          }}
           to={to}
           onClick={onNavigate}
           title={collapsed ? label : undefined}
-          className={({ isActive }) =>
-            `group relative flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm transition-colors duration-150 ${
-              isActive ? "bg-raise text-fg" : "text-fg-2 hover:bg-raise-2 hover:text-fg"
-            }`
-          }
+          className={`relative flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm transition-colors duration-150 ${
+            i === activeIdx ? "text-fg" : "text-fg-2 hover:bg-raise-2 hover:text-fg"
+          }`}
         >
-          {({ isActive }) => (
-            <>
-              <span
-                className={`absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full ${isActive ? "bg-accent" : "bg-transparent"}`}
-              />
-              <Icon size={18} strokeWidth={1.75} className={isActive ? "text-accent shrink-0" : "shrink-0"} />
-              <span className={collapsed ? "hidden" : "hidden truncate lg:inline"}>{label}</span>
-            </>
-          )}
+          <Icon size={18} strokeWidth={1.75} className={i === activeIdx ? "text-accent shrink-0" : "shrink-0"} />
+          <span className={collapsed ? "hidden" : "hidden truncate lg:inline"}>{label}</span>
         </NavLink>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -205,6 +227,7 @@ export default function Layout() {
   const { data: me } = useMe();
   // 子页面按前缀归属父导航项，面包屑不落到「工作台」
   const current = nav.find((n) => pathname === n.to || pathname.startsWith(n.to + "/")) ?? nav[0];
+  const activeIdx = nav.indexOf(current);
   const ThemeIcon = themeMeta[pref].icon;
 
   const cycleTheme = () => setPref(themeOrder[(themeOrder.indexOf(pref) + 1) % themeOrder.length]);
@@ -245,8 +268,8 @@ export default function Layout() {
             voxbox
           </span>
         </div>
-        <nav className="flex flex-col gap-0.5 p-2">
-          <NavItems collapsed={navCollapsed} />
+        <nav className="p-2">
+          <NavItems collapsed={navCollapsed} activeIdx={activeIdx} />
         </nav>
         <div className={`mt-auto p-4 ${navCollapsed ? "hidden" : "hidden lg:block"}`}>
           <p className="micro leading-relaxed opacity-70">
@@ -268,8 +291,8 @@ export default function Layout() {
                 <X size={16} strokeWidth={1.75} />
               </IconButton>
             </div>
-            <nav className="flex flex-col gap-0.5 p-2">
-              <NavItems onNavigate={() => setNavOpen(false)} collapsed={false} />
+            <nav className="p-2">
+              <NavItems onNavigate={() => setNavOpen(false)} collapsed={false} activeIdx={activeIdx} />
             </nav>
           </aside>
         </div>
