@@ -3,10 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AudioLines,
-  ChevronDown,
   Copy,
   Download,
-  ExternalLink,
   RefreshCw,
   SlidersHorizontal,
   SplitSquareHorizontal,
@@ -123,23 +121,6 @@ interface MVSepStatus {
   user?: { name: string; email: string };
   queue?: { plan: string; free_left: number; free_max: number; in_process: number } | null;
 }
-interface MVSepHistoryItem {
-  id: number;
-  hash: string;
-  created_at: string;
-  job_exists: boolean;
-  algorithm: string;
-}
-interface MVSepRemoteResult {
-  status: string;
-  error?: string;
-  result?: {
-    algorithm: string;
-    output_format: string;
-    files: { name: string; link: string; size: number }[];
-  };
-}
-
 const MVSEP_FORMATS = [
   { value: "0", label: "MP3（小体积）" },
   { value: "1", label: "WAV 16bit" },
@@ -404,8 +385,6 @@ export default function SeparatePage() {
           </CardBody>
         </Card>
       )}
-
-      {!task && engine === "mvsep" && <MVSepHistory className="mt-4" />}
 
       {!task && (engine === "mediakit" || engine === "gsgc" || engine === "zhuanhuanmao") && (
         <Card className="mt-4">
@@ -1010,107 +989,5 @@ function CloudSepForm({
         产物自动转码为标准 MP3（128k）。免费接口限流或不可用时，可切换线路或改用 MVSep。
       </p>
     </>
-  );
-}
-
-// ---- MVSep 云端历史：任务超时/清理后按 hash 补拉产物直链 ----
-
-function MVSepHistory({ className }: { className?: string }) {
-  const { toast } = useToast();
-  const [openHash, setOpenHash] = useState<string | null>(null);
-  const history = useQuery({
-    queryKey: ["mvsep-history"],
-    queryFn: () => fetchJSON<{ items: MVSepHistoryItem[] }>("/api/mvsep/history?start=0&limit=5"),
-    retry: 0,
-    staleTime: 30_000,
-  });
-  const probe = useMutation({
-    mutationFn: (hash: string) =>
-      fetchJSON<MVSepRemoteResult>(`/api/mvsep/separation?hash=${encodeURIComponent(hash)}`),
-    onSuccess: (d) => {
-      if (d.error) toast({ tone: "error", title: `任务 ${d.status}`, description: d.error });
-    },
-  });
-
-  if (history.isLoading || history.isError || !history.data?.items?.length) return null;
-  const items = history.data.items;
-
-  return (
-    <Card className={className}>
-      <CardHeader
-        title="MVSep 云端最近任务"
-        icon={<ExternalLink size={15} strokeWidth={1.75} />}
-        aside={<span className="micro">{items.length} 条</span>}
-      />
-      <CardBody className="space-y-2">
-        <p className="text-[11px] text-muted">
-          云端任务在 MVSep 侧独立保留；本服务任务超时或记录清理后，可在此按 hash 补拉结果直链。
-        </p>
-        {items.map((it) => {
-          const open = openHash === it.hash;
-          const probed = open && probe.data && probe.variables === it.hash ? probe.data : null;
-          return (
-            <div key={it.id} className="rounded-[var(--radius-sm)] border border-line bg-raise-2">
-              <button
-                className="flex w-full cursor-pointer items-center gap-3 p-2.5 text-left"
-                onClick={() => {
-                  const next = open ? null : it.hash;
-                  setOpenHash(next);
-                  if (next) probe.mutate(next);
-                }}
-              >
-                <ChevronDown
-                  size={14}
-                  strokeWidth={1.75}
-                  className={`shrink-0 text-muted transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-                />
-                <span className="min-w-0 flex-1 truncate text-xs text-fg-2">
-                  {it.algorithm || "未知算法"}
-                  <span className="ml-2 font-mono text-[11px] text-muted">{it.created_at}</span>
-                </span>
-                <span className="hidden shrink-0 font-mono text-[11px] text-muted sm:inline">
-                  {it.hash.slice(0, 20)}…
-                </span>
-              </button>
-              {open && (
-                <div className="border-t border-line px-3 py-2">
-                  {probe.isPending && probe.variables === it.hash ? (
-                    <Skeleton className="h-6 w-48" />
-                  ) : probed ? (
-                    probed.result ? (
-                      <div className="space-y-1.5">
-                        {probed.result.files.map((f) => (
-                          <div key={f.link} className="flex items-center gap-3 text-xs">
-                            <span className="min-w-0 flex-1 truncate text-fg-2">{f.name}</span>
-                            <span className="shrink-0 font-mono text-[11px] text-muted">
-                              {formatSize(f.size)}
-                            </span>
-                            <a
-                              href={f.link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex shrink-0 items-center gap-1 text-fg-2 transition-colors duration-150 hover:text-accent"
-                            >
-                              <Download size={13} strokeWidth={1.75} />
-                              下载
-                            </a>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className={`text-xs ${probed.error ? "text-danger" : "text-muted"}`}>
-                        {probed.error ?? `状态：${probed.status}`}
-                      </p>
-                    )
-                  ) : (
-                    <p className="text-xs text-muted">点击行展开拉取状态…</p>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </CardBody>
-    </Card>
   );
 }
