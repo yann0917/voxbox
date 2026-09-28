@@ -42,15 +42,12 @@ export function ToolkitPage({
   title,
   description,
   hint,
-  envBanner,
 }: {
   provider: string;
   title: string;
   description: string;
   /** 提交按钮旁说明 */
   hint: string;
-  /** 顶部依赖/服务提示（返回 null 表示不显示） */
-  envBanner: () => React.ReactNode;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -116,7 +113,6 @@ export function ToolkitPage({
   return (
     <>
       <PageHeader title={title} description={description} />
-      {envBanner()}
       {GROUPS.map((g) => {
         const items = localTools.filter((t) => t.meta.group === g);
         if (items.length === 0) return null;

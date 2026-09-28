@@ -876,12 +876,9 @@ const CLOUDSEP_STEMS = [
   { value: "instrumental", label: "只提取伴奏" },
 ];
 
-const CLOUDSEP_LINES: Record<
-  "gsgc" | "zhuanhuanmao",
-  { name: string; host: string; mirror: string }
-> = {
-  gsgc: { name: "格式工厂", host: "z.pcgeshi.com", mirror: "转换猫" },
-  zhuanhuanmao: { name: "转换猫", host: "www.zhuanhuanmao.com", mirror: "格式工厂" },
+const CLOUDSEP_LINES: Record<"gsgc" | "zhuanhuanmao", { name: string; mirror: string }> = {
+  gsgc: { name: "格式工厂", mirror: "转换猫" },
+  zhuanhuanmao: { name: "转换猫", mirror: "格式工厂" },
 };
 
 function CloudSepForm({
@@ -1009,7 +1006,7 @@ function CloudSepForm({
       </div>
 
       <p className="text-[11px] text-muted">
-        {line.name}线路（{line.host}）免费、无需凭证与对象存储；与 {line.mirror} 互为镜像线路，可随时切换。
+        {line.name}线路免费、无需凭证与对象存储；与 {line.mirror} 互为镜像线路，可随时切换。
         产物自动转码为标准 MP3（128k）。免费接口限流或不可用时，可切换线路或改用 MVSep。
       </p>
     </>
