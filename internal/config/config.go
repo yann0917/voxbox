@@ -332,8 +332,10 @@ func Watch(onChange func(*Config)) (stop func(), err error) {
 	}
 
 	v := newFileViper()
-	v.WatchConfig()
+	// 先注册回调再启动监听：WatchConfig 一启动 fsnotify goroutine，事件到达即读回调字段，
+	// 若此刻 OnConfigChange 尚未写完就是数据竞争（CI -race 偶发炸 TestWatchHotReload 的根因）
 	v.OnConfigChange(func(fsnotify.Event) { schedule() })
+	v.WatchConfig()
 
 	last, serr := os.Stat(Path())
 	var lastMod time.Time
