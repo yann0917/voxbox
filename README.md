@@ -197,4 +197,4 @@ Go（gin / gorm / cobra / resty / viper / gorilla/websocket）· React 19 + Type
 
 ## License
 
-Private.
+[MIT](LICENSE).
