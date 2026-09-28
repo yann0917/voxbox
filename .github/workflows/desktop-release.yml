@@ -215,6 +215,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DESKTOP_TAG: ${{ needs.resolve.outputs.tag }}
         run: |
-          gh release download "$DESKTOP_TAG" --pattern "latest.json" --output latest.json --clobber
-          gh release view desktop-latest >/dev/null 2>&1 || gh release create desktop-latest --title "VoxBox desktop 更新通道" --notes "自动维护的 latest.json 指针，随 desktop-v* 发布刷新，勿手动编辑"
-          gh release upload desktop-latest latest.json --clobber
+          # 本 job 不 checkout（无 git 仓库上下文），gh 必须显式 -R 指定仓库
+          gh release download -R "$GITHUB_REPOSITORY" "$DESKTOP_TAG" --pattern "latest.json" --output latest.json --clobber
+          gh release view -R "$GITHUB_REPOSITORY" desktop-latest >/dev/null 2>&1 || gh release create -R "$GITHUB_REPOSITORY" desktop-latest --title "VoxBox desktop 更新通道" --notes "自动维护的 latest.json 指针，随 desktop-v* 发布刷新，勿手动编辑"
+          gh release upload -R "$GITHUB_REPOSITORY" desktop-latest latest.json --clobber
