@@ -398,14 +398,19 @@ func TestDownloadStopAndResume(t *testing.T) {
 	if err := m.Stop("asr-small"); err != nil {
 		t.Fatalf("暂停失败: %v", err)
 	}
-	release() // 放行服务端(客户端已取消,写不写都行)
+	// 放行必须等断言完：cancel 只触发传输层异步拆除，socket 真正关闭前的窗口里，
+	// 服务端补发的剩余字节仍会被阻塞中的 Read 收下并追加进 .part（慢 CI 实证）。
+	// 服务端此刻仍阻塞在 1024，断言期 .part 恒为 1024。
 	v := waitFor(t, m, "asr-small", StatusIdle)
 	if !v.HasPartial {
 		t.Fatalf("暂停后应可续传: %+v", v)
 	}
-	if fi, err := os.Stat(part); err != nil || fi.Size() != 1024 {
-		t.Fatalf(".part 应保留 1024 字节,实际 %v", err)
+	if fi, err := os.Stat(part); err != nil {
+		t.Fatalf(".part 应保留 1024 字节,stat 失败: %v", err)
+	} else if fi.Size() != 1024 {
+		t.Fatalf(".part 应保留 1024 字节,实际 %d 字节", fi.Size())
 	}
+	release() // 放行服务端旧连接:剩余字节写进已取消的连接,写不写都行
 
 	// 续传:必须从 offset=1024 开始(Range 请求)
 	if err := m.Start("asr-small"); err != nil {
