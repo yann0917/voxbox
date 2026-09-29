@@ -38,6 +38,7 @@ import {
   Select,
   Skeleton,
   StatusBadge,
+  Switch,
   Tabs,
   WavePlayer,
   useToast,
@@ -406,15 +407,9 @@ export default function MinutesPage() {
                 )}
               </Field>
               <Field label="打包计费" hint="开 = 附加功能全选，按打包价计费">
-                {({ id }) => (
-                  <label htmlFor={id} className="flex h-9 cursor-pointer items-center gap-2 text-sm text-fg-2">
-                    <input
-                      id={id}
-                      type="checkbox"
-                      checked={allActivate}
-                      onChange={(e) => setAllActivate(e.target.checked)}
-                      className="size-4 cursor-pointer accent-accent"
-                    />
+                {() => (
+                  <label className="flex h-9 cursor-pointer items-center gap-2 text-sm text-fg-2">
+                    <Switch checked={allActivate} onChange={setAllActivate} />
                     {allActivate ? "按打包价" : "按功能汇总"}
                   </label>
                 )}

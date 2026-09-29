@@ -32,7 +32,7 @@ import {
   SYNC_SEGMENT_CHARS,
   type PriceItem,
 } from "../lib/pricing";
-import { Card, CardBody, CardHeader, Field, Input, MicroLabel, PageHeader, Select } from "../ui";
+import { Card, CardBody, CardHeader, Field, Input, MicroLabel, PageHeader, Select, Switch } from "../ui";
 
 /** 金额格式化：<1 元保留 3 位有效小数，否则 2 位。 */
 function fmtYuan(v: number): string {
@@ -390,12 +390,7 @@ function MinutesEstimator() {
           </Field>
         </div>
         <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
-          <input
-            type="checkbox"
-            checked={allActivate}
-            onChange={(e) => setAllActivate(e.target.checked)}
-            className="size-4 cursor-pointer accent-accent"
-          />
+          <Switch checked={allActivate} onChange={setAllActivate} />
           打包计费（结构按集合价）
         </label>
         <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">

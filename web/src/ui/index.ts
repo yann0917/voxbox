@@ -7,5 +7,6 @@ export { ProgressBar, SignalDot, StatusBadge, WaveLoader, type WaveLoaderProps }
 export { ToastProvider, useToast, type ToastTone } from "./Toast";
 export { ConfirmDialog, Modal } from "./Modal";
 export { Tabs, type TabItem } from "./Tabs";
+export { Switch, type SwitchProps } from "./Switch";
 export { WavePlayer, type WavePlayerProps } from "./WavePlayer";
 export { Markdown } from "./Markdown";
