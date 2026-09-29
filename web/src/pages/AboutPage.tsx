@@ -219,7 +219,7 @@ export default function AboutPage() {
           <p className="text-sm leading-relaxed text-fg-2">
             <span className="font-medium text-fg">本地推理（离线可用）</span>——设置页「本地环境」下载引擎与模型后即离线运行：
             Qwen3-TTS（audio.cpp，1.7B / 0.6B 音色克隆 + 9 预置音色）、IndexTTS 2.5（克隆合成 + 情感文本/强度控制）、
-            Kokoro 82M（sherpa-onnx，103 个内置音色含 100 中文，不支持克隆）、Chatterbox 0.5B（audio.cpp，
+            Kokoro 82M（sherpa-onnx，53 个内置音色含 8 个经典中文音色，不支持克隆）、Chatterbox 0.5B（audio.cpp，
             英文等 19 语零样本克隆，不支持中文）与 SenseVoice int8 多语种识别（sherpa-onnx，中英日韩粤）；
             纯子进程实现，无 Python 依赖，克隆参考音频由音色库统一管理。
           </p>

@@ -391,7 +391,7 @@ func TestTTSQwen3IgnoresEmotion(t *testing.T) {
 func seedKokoroTTS(t *testing.T, dataDir string, m *localmodel.Manager) {
 	t.Helper()
 	seedEngine(t, dataDir, m, "sherpa-onnx", "sherpa-onnx-offline")
-	seedModelFile(t, dataDir, m, "kokoro-v1.1-zh", "model.onnx")
+	seedModelFile(t, dataDir, m, "kokoro-v1.0", "model.onnx")
 }
 
 // TestTTSKokoroRejectsClone kokoro 为纯预置模型:clone 模式直述不支持。
@@ -401,7 +401,7 @@ func TestTTSKokoroRejectsClone(t *testing.T) {
 	tts := newTTSTool(dataDir, m, nil, nil)
 	tts.synthesizeFn = noSynthStub(t)
 	_, err := tts.Run(context.Background(), provider.TaskInput{
-		Params: map[string]any{"model": "kokoro-v1.1-zh", "mode": "clone", "text": "你好"},
+		Params: map[string]any{"model": "kokoro-v1.0", "mode": "clone", "text": "你好"},
 		Files:  map[string]string{},
 	}, func(p int, note string, d map[string]any) {})
 	if err == nil || !strings.Contains(err.Error(), "Kokoro 为预置音色模型") {
@@ -416,7 +416,7 @@ func TestTTSKokoroUnknownVoice(t *testing.T) {
 	tts := newTTSTool(dataDir, m, nil, nil)
 	tts.synthesizeFn = noSynthStub(t)
 	_, err := tts.Run(context.Background(), provider.TaskInput{
-		Params: map[string]any{"model": "kokoro-v1.1-zh", "mode": "preset", "speaker": "zf_999", "text": "你好"},
+		Params: map[string]any{"model": "kokoro-v1.0", "mode": "preset", "speaker": "zf_999", "text": "你好"},
 	}, func(p int, note string, d map[string]any) {})
 	if err == nil || !strings.Contains(err.Error(), "未知 Kokoro 音色") {
 		t.Fatalf("未知 kokoro 音色应直述: %v", err)
@@ -438,15 +438,15 @@ func TestTTSKokoroHappyPath(t *testing.T) {
 		return outWav, nil
 	}
 	out, err := tts.Run(context.Background(), provider.TaskInput{
-		Params: map[string]any{"model": "kokoro-v1.1-zh", "mode": "preset", "speaker": "zf_001", "text": "你好"},
+		Params: map[string]any{"model": "kokoro-v1.0", "mode": "preset", "speaker": "zf_xiaobei", "text": "你好"},
 	}, func(p int, note string, d map[string]any) {})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ModelID != "kokoro-v1.1-zh" || got.SpeakerSID != 3 || got.Text != "你好" || got.Language != "auto" {
+	if got.ModelID != "kokoro-v1.0" || got.SpeakerSID != 45 || got.Text != "你好" || got.Language != "auto" {
 		t.Fatalf("kokoro 请求不符: %+v", got)
 	}
-	if got.Speaker != "zf_001" || got.Instruct != "" {
+	if got.Speaker != "zf_xiaobei" || got.Instruct != "" {
 		t.Fatalf("kokoro 不应透传 instruct: %+v", got)
 	}
 	if len(out.Artifacts) != 1 {
@@ -464,35 +464,36 @@ func TestTTSKokoroLanguageRuling(t *testing.T) {
 	tts := newTTSTool(dataDir, m, nil, nil)
 	tts.synthesizeFn = noSynthStub(t)
 	_, err := tts.Run(context.Background(), provider.TaskInput{
-		Params: map[string]any{"model": "kokoro-v1.1-zh", "mode": "preset", "speaker": "zf_001", "language": "Korean", "text": "你好"},
+		Params: map[string]any{"model": "kokoro-v1.0", "mode": "preset", "speaker": "zf_xiaobei", "language": "Korean", "text": "你好"},
 	}, func(p int, note string, d map[string]any) {})
 	if err == nil || !strings.Contains(err.Error(), "语言") {
 		t.Fatalf("kokoro 应拒绝 Korean: %v", err)
 	}
 }
 
-// TestKokoroVoicesTable 内置音色表:sid 连续 0..102,首尾与 PR #1942 实测一致。
+// TestKokoroVoicesTable 内置音色表:sid 连续 0..52,经典中文音色段与
+// generate_voices_bin.py 实测一致(zf_xiaobei=45,zm_yunyang=52)。
 func TestKokoroVoicesTable(t *testing.T) {
 	voices := KokoroVoices()
-	if len(voices) != 103 {
-		t.Fatalf("kokoro 内置音色应 103 个,实际 %d", len(voices))
+	if len(voices) != 53 {
+		t.Fatalf("kokoro 内置音色应 53 个,实际 %d", len(voices))
 	}
 	for i, v := range voices {
 		if v.Sid != i {
 			t.Fatalf("sid 应连续无空洞: voices[%d].Sid=%d", i, v.Sid)
 		}
 	}
-	if voices[0].ID != "af_maple" || voices[1].ID != "af_sol" || voices[2].ID != "bf_vale" {
+	if voices[0].ID != "af_alloy" || voices[2].ID != "af_bella" {
 		t.Fatalf("英文音色段不符: %v", voices[:3])
 	}
-	if voices[3].ID != "zf_001" {
-		t.Fatalf("sid 3 应为 zf_001,实际 %q", voices[3].ID)
+	if voices[45].ID != "zf_xiaobei" {
+		t.Fatalf("sid 45 应为 zf_xiaobei,实际 %q", voices[45].ID)
 	}
-	if last := voices[102].ID; last != "zm_100" {
-		t.Fatalf("sid 102 应为 zm_100,实际 %q", last)
+	if last := voices[52].ID; last != "zm_yunyang" {
+		t.Fatalf("sid 52 应为 zm_yunyang,实际 %q", last)
 	}
-	if sid, ok := KokoroVoiceSID("zf_001"); !ok || sid != 3 {
-		t.Fatalf("KokoroVoiceSID(zf_001) 应为 3: %d %v", sid, ok)
+	if sid, ok := KokoroVoiceSID("zf_xiaobei"); !ok || sid != 45 {
+		t.Fatalf("KokoroVoiceSID(zf_xiaobei) 应为 45: %d %v", sid, ok)
 	}
 	if _, ok := KokoroVoiceSID("nope"); ok {
 		t.Fatal("未知音色应返回 false")

@@ -152,20 +152,20 @@
     "sha256": { "index-tts2_5-q8_0.gguf": "5e827b2072042e4a1b21ccf24a5cb4f71cb1011403067a0a9b039311d8b38628" }
   },
   {
-    "id": "kokoro-v1.1-zh",
+    "id": "kokoro-v1.0",
     "kind": "tts",
     "family": "kokoro",
     "name": "Kokoro 82M 预置音色",
-    "summary": "82M 轻量本地合成,103 个内置音色(100 中文+3 英文),中英混读 CPU 秒级,不支持克隆",
-    "size_bytes": 364816464,
+    "summary": "82M 轻量本地合成,53 个内置音色(8 个经典中文音色+多语),中英混读 CPU 秒级,不支持克隆",
+    "size_bytes": 349906910,
     "requirements": { "device": "cpu" },
     "license": "Apache-2.0",
-    "license_url": "https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh",
+    "license_url": "https://huggingface.co/hexgrad/Kokoro-82M",
     "requires_engine": "sherpa-onnx",
     "archive": "tar.bz2",
-    "archive_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_1.tar.bz2",
-    "archive_size": 364816464,
-    "archive_sha256": "a3f4c73d043860e3fd2e5b06f36795eb81de0fc8e8de6df703245edddd87dbad",
+    "archive_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
+    "archive_size": 349906910,
+    "archive_sha256": "c5f7e2d2caf082bc1d20fb70334a61d99d20b484500aad32e7cf84c128ea3298",
     "extract_files": ["model.onnx", "voices.bin", "tokens.txt", "lexicon-us-en.txt", "lexicon-zh.txt", "date-zh.fst", "phone-zh.fst", "number-zh.fst", "espeak-ng-data/"]
   },
   {

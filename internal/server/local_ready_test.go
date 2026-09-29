@@ -55,7 +55,7 @@ func TestVoicesLocal(t *testing.T) {
 	}
 }
 
-// TestVoicesLocalKokoro family=kokoro 返回内置音色库:103 个,首项 af_maple(sid 0)。
+// TestVoicesLocalKokoro family=kokoro 返回内置音色库:53 个,首项 af_alloy(sid 0)。
 func TestVoicesLocalKokoro(t *testing.T) {
 	ts, _, ac := newTestServer(t)
 	resp, err := ac.Get(ts.URL + "/api/voices?provider=local&family=kokoro")
@@ -68,12 +68,12 @@ func TestVoicesLocalKokoro(t *testing.T) {
 		t.Fatalf("业务码 %d", e.Code)
 	}
 	voices := e.Data.(map[string]any)["voices"].([]any)
-	if len(voices) != 103 {
-		t.Fatalf("kokoro 内置音色应 103 个: %d", len(voices))
+	if len(voices) != 53 {
+		t.Fatalf("kokoro 内置音色应 53 个: %d", len(voices))
 	}
 	first := voices[0].(map[string]any)
-	if first["id"] != "af_maple" {
-		t.Fatalf("首音色应为 af_maple: %#v", first)
+	if first["id"] != "af_alloy" {
+		t.Fatalf("首音色应为 af_alloy: %#v", first)
 	}
 	// sid=0 被 omitempty 省略是合法形态:存在则必须为 0
 	if sid, ok := first["sid"]; ok && sid.(float64) != 0 {
@@ -88,7 +88,7 @@ func TestLocalReadyKokoroPair(t *testing.T) {
 	modelsRoot := s.svc.LocalModels().Dir()
 	dataDir := filepath.Dir(modelsRoot)
 	seedInstalledEngine(t, dataDir, "sherpa-onnx")
-	seedInstalledModel(t, modelsRoot, "kokoro-v1.1-zh")
+	seedInstalledModel(t, modelsRoot, "kokoro-v1.0")
 	resp, err := ac.Get(ts.URL + "/api/local/ready?tool=tts")
 	if err != nil {
 		t.Fatal(err)

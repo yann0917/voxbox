@@ -22,37 +22,37 @@ func CustomVoices() []LocalVoice {
 	}
 }
 
-// kokoroZhIDs kokoro v1.1-zh 内置中文音色编号:voices/ 目录实际存在的 .pt 文件,
-// 升序即 voices.bin 打包顺序。3 个英文音色在头部(sid 0-2),女声紧随其后。
-var kokoroZhIDs = []string{
-	"001", "002", "003", "004", "005", "006", "007", "008",
-	"017", "018", "019", "021", "022", "023", "024", "026", "027", "028",
-	"032", "036", "038", "039", "040", "042", "043", "044", "046", "047", "048", "049", "051",
-	"059", "060", "067", "070", "071", "072", "073", "074", "075", "076", "077", "078", "079",
-	"083", "084", "085", "086", "087", "088", "090", "092", "093", "094", "099",
-	"m009", "m010", "m011", "m012", "m013", "m014", "m015", "m016", "m020",
-	"m025", "m029", "m030", "m031", "m033", "m034", "m035", "m037", "m041", "m045", "m050",
-	"m052", "m053", "m054", "m055", "m056", "m057", "m058", "m061", "m062", "m063", "m064", "m065", "m066",
-	"m068", "m069", "m080", "m081", "m082", "m089", "m091", "m095", "m096", "m097", "m098", "m100",
+// kokoroSpeakers kokoro-multi-lang-v1_0(原版 Kokoro-82M,hexgrad/Kokoro-82M)的
+// 53 个内置音色,顺序即 voices.bin 的 sid(scripts/kokoro/v1.0/generate_voices_bin.py):
+// 45-52 为 8 个经典中文音色(xiaobei/xiaoni/xiaoxiao/xiaoyi/yunjian/yunxi/yunxia/yunyang)。
+var kokoroSpeakers = []string{
+	"af_alloy", "af_aoede", "af_bella", "af_heart", "af_jessica", "af_kore", "af_nicole",
+	"af_nova", "af_river", "af_sarah", "af_sky", "am_adam", "am_echo", "am_eric", "am_fenrir",
+	"am_liam", "am_michael", "am_onyx", "am_puck", "am_santa", "bf_alice", "bf_emma",
+	"bf_isabella", "bf_lily", "bm_daniel", "bm_fable", "bm_george", "bm_lewis", "ef_dora",
+	"em_alex", "ff_siwis", "hf_alpha", "hf_beta", "hm_omega", "hm_psi", "if_sara", "im_nicola",
+	"jf_alpha", "jf_gongitsune", "jf_nezumi", "jf_tebukuro", "jm_kumo", "pf_dora", "pm_alex",
+	"pm_santa", "zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi", "zm_yunjian",
+	"zm_yunxi", "zm_yunxia", "zm_yunyang",
 }
 
-// KokoroVoices kokoro-multi-lang-v1_1(hexgrad/Kokoro-82M-v1.1-zh 的 sherpa-onnx
-// 导出)的 103 个内置音色,返回顺序即 voices.bin 的 sid 顺序:0-2 英文女声,
-// 3-57 中文女声(zf_),58-102 中文男声(zm_)。
+// kokoroLangPrefix 音色名首字母 → 语言标注(第二位 f/m 为女/男声)。
+var kokoroLangPrefix = map[string]string{
+	"a": "美式英文", "b": "英式英文", "e": "西语", "f": "法语",
+	"h": "印地语", "i": "意语", "j": "日语", "p": "葡语", "z": "中文",
+}
+
+// KokoroVoices kokoro-multi-lang-v1_0 的 53 个内置音色,返回顺序即 voices.bin 的
+// sid 顺序(45-52 为经典中文音色)。
 func KokoroVoices() []LocalVoice {
-	en := []string{"af_maple", "af_sol", "bf_vale"}
-	out := make([]LocalVoice, 0, len(en)+len(kokoroZhIDs))
-	for _, id := range en {
-		out = append(out, LocalVoice{ID: id, Name: id + " · 英文女声", Sid: len(out)})
-	}
-	for _, num := range kokoroZhIDs {
-		if num[0] == 'm' { // m 前缀为男声段,展开为 zm_ 编号
-			id := "zm_" + num[1:]
-			out = append(out, LocalVoice{ID: id, Name: id + " · 中文男声", Sid: len(out)})
-			continue
+	out := make([]LocalVoice, 0, len(kokoroSpeakers))
+	for _, id := range kokoroSpeakers {
+		lang := kokoroLangPrefix[id[:1]]
+		gender := "男声"
+		if id[1] == 'f' {
+			gender = "女声"
 		}
-		id := "zf_" + num
-		out = append(out, LocalVoice{ID: id, Name: id + " · 中文女声", Sid: len(out)})
+		out = append(out, LocalVoice{ID: id, Name: id + " · " + lang + gender, Sid: len(out)})
 	}
 	return out
 }
