@@ -24,6 +24,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider/gsgc"
 	"github.com/yann0917/voxbox/internal/provider/local"
 	"github.com/yann0917/voxbox/internal/provider/mvsep"
+	"github.com/yann0917/voxbox/internal/provider/openrouter"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
 	"github.com/yann0917/voxbox/internal/provider/xiaomi"
@@ -105,6 +106,9 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 		return nil, err
 	}
 	if err := zhipu.RegisterAll(reg, *cfg, dataDir); err != nil {
+		return nil, err
+	}
+	if err := openrouter.RegisterAll(reg, *cfg, dataDir); err != nil {
 		return nil, err
 	}
 	if err := gsgc.RegisterAll(reg, *cfg, dataDir); err != nil {
@@ -264,6 +268,10 @@ func applyCardFields(nc *config.Config, name string, fields map[string]string) {
 		if v, ok := get("api_key"); ok && v != "" {
 			nc.Zhipu.APIKey = v
 		}
+	case "openrouter":
+		if v, ok := get("api_key"); ok && v != "" {
+			nc.OpenRouter.APIKey = v
+		}
 	}
 }
 
@@ -280,6 +288,8 @@ func (s *Service) reloadCard(name string, nc config.Config) {
 		xiaomi.ReRegisterAll(s.reg, nc, nc.DataDir)
 	case "zhipu":
 		zhipu.ReRegisterAll(s.reg, nc, nc.DataDir)
+	case "openrouter":
+		openrouter.ReRegisterAll(s.reg, nc, nc.DataDir)
 	}
 }
 
@@ -297,12 +307,14 @@ func (s *Service) ReloadDiskConfig(disk *config.Config) {
 	nc.Qianwen = disk.Qianwen
 	nc.Xiaomi = disk.Xiaomi
 	nc.Zhipu = disk.Zhipu
+	nc.OpenRouter = disk.OpenRouter
 	s.cfg.Store(&nc)
 	volcengine.ReRegisterAll(s.reg, nc, nc.DataDir)
 	mvsep.ReRegisterAll(s.reg, nc, nc.DataDir)
 	qianwen.ReRegisterAll(s.reg, nc, nc.DataDir)
 	xiaomi.ReRegisterAll(s.reg, nc, nc.DataDir)
 	zhipu.ReRegisterAll(s.reg, nc, nc.DataDir)
+	openrouter.ReRegisterAll(s.reg, nc, nc.DataDir)
 	s.rebuildStorageClient(nc.Storage)
 }
 
@@ -580,6 +592,22 @@ func (s *Service) TestZhipuConnection() (string, bool) {
 	defer cancel()
 	if _, err := zhipu.NewTTSClient(key, zhipu.BaseURL).Synthesize(ctx, zhipu.TTSSynthesizeReq{
 		Text: "测", Voice: zhipu.DefaultVoice,
+	}); err != nil {
+		return err.Error(), false
+	}
+	return "连接成功", true
+}
+
+// TestOpenRouterConnection OpenRouter 连通性探测：极短文本合成（消耗少量额度，同千问/小米/智谱模式）。
+func (s *Service) TestOpenRouterConnection() (string, bool) {
+	key := s.cfg.Load().OpenRouter.APIKey
+	if key == "" {
+		return "未配置 OpenRouter API Key：请执行 voxbox config set openrouter.api_key 或在 Web 设置页配置", false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := openrouter.NewTTSClient(key, openrouter.BaseURL).Synthesize(ctx, openrouter.TTSReq{
+		Text: "测", Voice: openrouter.DefaultVoice,
 	}); err != nil {
 		return err.Error(), false
 	}

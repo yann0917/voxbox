@@ -21,7 +21,7 @@ func TestProviderCardsValid(t *testing.T) {
 		}
 		seen[c.Name] = true
 	}
-	for _, want := range []string{"volcengine", "mediakit", "mvsep", "qianwen", "xiaomi", "zhipu", "audiotool", "gsgc"} {
+	for _, want := range []string{"volcengine", "mediakit", "mvsep", "qianwen", "xiaomi", "zhipu", "openrouter", "audiotool", "gsgc"} {
 		if !seen[want] {
 			t.Errorf("缺少卡: %s", want)
 		}

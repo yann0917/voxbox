@@ -16,7 +16,7 @@
 
 ## 界面一览
 
-**语音合成**：五套引擎（火山 / 千问 / 小米 / 智谱 / 本地推理）一台切换，同步、流式、长文本三通道。
+**语音合成**：六套引擎（火山 / 千问 / 小米 / 智谱 / OpenRouter / 本地推理）一台切换，同步、流式、长文本三通道。
 
 ![语音合成](docs/images/tts.png)
 
@@ -123,6 +123,7 @@ MCP 接入配置见 [docs/mcp.md](docs/mcp.md)。
 | 火山引擎 | APP ID + Access Token，或新版 API Key | 合成 / 识别 / 播客 / 翻译 / 妙记 |
 | 火山 AI MediaKit | MediaKit API Key（独立） | 人声背景分离 |
 | 千问 / 小米 / 智谱 | 各一个 API Key | 合成与识别备选引擎 |
+| OpenRouter | 一个 API Key（[openrouter.ai](https://openrouter.ai/settings/keys) 创建） | Gemini TTS 合成备选引擎 |
 | MVSep | API Token（[mvsep.com](https://mvsep.com) 注册获取） | 120+ 分离算法 |
 | 格式工厂 / 转换猫 | 无需凭证 | 免费分离与格式转换 |
 | 本地推理 | 无需凭证 | 离线合成与识别 |

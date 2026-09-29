@@ -15,8 +15,8 @@ import (
 func TestNewRegistersTools(t *testing.T) {
 	svc := newTestService(t)
 	metas := svc.Registry().List()
-	if len(metas) != 43 { // 火山 8 + MVSep 1 + 千问 2 + 小米 2 + 智谱 4 + gsgc 11（1 分离 + 10 站点功能）+ zhuanhuanmao 1 分离 + 音频剪辑 12 + 本地推理 2
-		t.Fatalf("registered tools = %d, want 43", len(metas))
+	if len(metas) != 44 { // 火山 8 + MVSep 1 + 千问 2 + 小米 2 + 智谱 4 + OpenRouter 1 + gsgc 11（1 分离 + 10 站点功能）+ zhuanhuanmao 1 分离 + 音频剪辑 12 + 本地推理 2
+		t.Fatalf("registered tools = %d, want 44", len(metas))
 	}
 	if _, ok := svc.Registry().Get("local", "tts"); !ok {
 		t.Error("local.tts not found")
@@ -96,8 +96,8 @@ func TestSaveProviderFieldsHotReload(t *testing.T) {
 	if _, ok := svc.Registry().Get("volcengine", "tts"); !ok {
 		t.Error("volcengine.tts missing after hot reload")
 	}
-	if len(svc.Registry().List()) != 43 {
-		t.Errorf("List len = %d, want 43（火山 8 + MVSep 1 + 千问 2 + 小米 2 + 智谱 4 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12 + 本地推理 2）", len(svc.Registry().List()))
+	if len(svc.Registry().List()) != 44 {
+		t.Errorf("List len = %d, want 44（火山 8 + MVSep 1 + 千问 2 + 小米 2 + 智谱 4 + OpenRouter 1 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12 + 本地推理 2）", len(svc.Registry().List()))
 	}
 	// 持久化：重读磁盘配置与内存一致
 	persisted, err := config.Load()
@@ -152,8 +152,8 @@ func TestReloadVolcFromDisk(t *testing.T) {
 	if _, ok := svc.Registry().Get("volcengine", "tts"); !ok {
 		t.Error("volcengine.tts missing after reload")
 	}
-	if len(svc.Registry().List()) != 43 {
-		t.Errorf("List len = %d, want 43（火山 8 + MVSep 1 + 千问 2 + 小米 2 + 智谱 4 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12 + 本地推理 2）", len(svc.Registry().List()))
+	if len(svc.Registry().List()) != 44 {
+		t.Errorf("List len = %d, want 44（火山 8 + MVSep 1 + 千问 2 + 小米 2 + 智谱 4 + OpenRouter 1 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12 + 本地推理 2）", len(svc.Registry().List()))
 	}
 }
 

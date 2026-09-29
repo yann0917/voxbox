@@ -34,6 +34,9 @@ type Config struct {
 	// Zhipu 智谱开放平台（open.bigmodel.cn）凭证：语音合成/识别/音色管理共用一个 API Key，
 	// BaseURL 固定官方，不提供覆写。
 	Zhipu ZhipuConfig
+	// OpenRouter 聚合网关（openrouter.ai）凭证：Gemini 语音合成经网关调用，一个 API Key，
+	// BaseURL 固定官方，不提供覆写。
+	OpenRouter OpenRouterConfig
 }
 
 type ServerConfig struct {
@@ -72,6 +75,9 @@ type XiaomiConfig struct{ APIKey string }
 
 // ZhipuConfig 智谱开放平台凭证：语音合成/识别/音色管理共用一个 API Key。
 type ZhipuConfig struct{ APIKey string }
+
+// OpenRouterConfig OpenRouter 聚合网关凭证：语音合成用一个 API Key。
+type OpenRouterConfig struct{ APIKey string }
 
 // StorageConfig 对象存储（大文件中转）：语音识别/人声分离/妙记等 URL-only 工具的本地文件
 // 会在任务执行时转存到该桶并取预签名 URL 提交上游。Provider 留空表示未启用；
@@ -240,6 +246,9 @@ func configFromViper(v *viper.Viper) *Config {
 		Qianwen: QianwenConfig{APIKey: strings.TrimSpace(v.GetString("qianwen.api_key"))},
 		Xiaomi:  XiaomiConfig{APIKey: strings.TrimSpace(v.GetString("xiaomi.api_key"))},
 		Zhipu:   ZhipuConfig{APIKey: strings.TrimSpace(v.GetString("zhipu.api_key"))},
+		OpenRouter: OpenRouterConfig{
+			APIKey: strings.TrimSpace(v.GetString("openrouter.api_key")),
+		},
 	}
 }
 
@@ -408,6 +417,7 @@ func List() ([]KV, error) {
 		{"qianwen.api_key", mask(cfg.Qianwen.APIKey)},
 		{"xiaomi.api_key", mask(cfg.Xiaomi.APIKey)},
 		{"zhipu.api_key", mask(cfg.Zhipu.APIKey)},
+		{"openrouter.api_key", mask(cfg.OpenRouter.APIKey)},
 	}
 	// 各通道段独立列出（bucket/AK/SK）；键即真实落盘布局，可直接指导 config set。
 	for _, name := range slices.Sorted(maps.Keys(cfg.StorageChannels)) {

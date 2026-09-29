@@ -120,6 +120,7 @@ func (s *Server) testConnection(c *gin.Context) {
 		{"qianwen", s.svc.TestQianwenConnection},
 		{"xiaomi", s.svc.TestXiaomiConnection},
 		{"zhipu", s.svc.TestZhipuConnection},
+		{"openrouter", s.svc.TestOpenRouterConnection},
 	}
 	results := make([]providerTest, 0, len(tests))
 	for _, tt := range tests {
