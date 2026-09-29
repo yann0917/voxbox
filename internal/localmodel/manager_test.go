@@ -355,8 +355,78 @@ func TestDownloadHappyPath(t *testing.T) {
 	}
 }
 
-func TestDownloadNestedPath(t *testing.T) {
-	// 目录条目允许子目录文件(tts-small: m/model.bin):落盘前 MkdirAll 补父目录,
+// TestDownloadEmitsEvents 状态机迁移必须逐一经 SetNotifier 发射:downloading →
+// verifying → installed,终态事件携带完整字节数与空错误;进度事件(at least 1)存在。
+func TestDownloadEmitsEvents(t *testing.T) {
+	content := bytes.Repeat([]byte("x"), 4096)
+	f := newFakeScope(t, fileMap("a.bin", content, "b.bin", []byte("hello world")))
+	entries := testEntries()
+	m, _, _ := newTestManager(t, entries)
+	m.baseURL = f.srv.URL
+	var mu sync.Mutex
+	var events []Event
+	m.SetNotifier(func(ev Event) {
+		mu.Lock()
+		events = append(events, ev)
+		mu.Unlock()
+	})
+	if err := m.Start("asr-small"); err != nil {
+		t.Fatalf("启动下载失败: %v", err)
+	}
+	waitFor(t, m, "asr-small", StatusInstalled)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(events) == 0 {
+		t.Fatal("未收到任何事件")
+	}
+	statuses := make([]Status, 0, len(events))
+	progress := 0
+	for _, ev := range events {
+		if ev.ID != "asr-small" {
+			t.Fatalf("事件 id 应为 asr-small: %+v", ev)
+		}
+		if len(statuses) == 0 || statuses[len(statuses)-1] != ev.Status {
+			statuses = append(statuses, ev.Status)
+		}
+		if ev.Status == StatusDownloading && ev.DownloadedBytes > 0 {
+			progress++
+		}
+	}
+	// 去重后的状态序列必须以 downloading 开头、verifying 中转、installed 收尾
+	if len(statuses) < 3 || statuses[0] != StatusDownloading ||
+		statuses[len(statuses)-1] != StatusInstalled {
+		t.Fatalf("状态序列不符: %v", statuses)
+	}
+	hasVerifying := false
+	for _, s := range statuses {
+		if s == StatusVerifying {
+			hasVerifying = true
+		}
+	}
+	if !hasVerifying {
+		t.Fatalf("缺 verifying 状态: %v", statuses)
+	}
+	last := events[len(events)-1]
+	if last.DownloadedBytes != int64(len(content))+11 || last.Error != "" {
+		t.Fatalf("终态事件字节/错误不符: %+v", last)
+	}
+}
+
+// TestNotifyNilIsNoop 未接线 SetNotifier 时整条下载链路零影响(既有行为的回归锁定)。
+func TestNotifyNilIsNoop(t *testing.T) {
+	content := []byte("tiny")
+	f := newFakeScope(t, fileMap("a.bin", content, "b.bin", []byte("hello world")))
+	entries := testEntries()
+	m, _, _ := newTestManager(t, entries)
+	m.baseURL = f.srv.URL
+	if err := m.Start("asr-small"); err != nil {
+		t.Fatalf("启动下载失败: %v", err)
+	}
+	waitFor(t, m, "asr-small", StatusInstalled)
+}
+
+func TestDownloadNestedPath(t *testing.T) { // 目录条目允许子目录文件(tts-small: m/model.bin):落盘前 MkdirAll 补父目录,
 	// 文件必须落在 models/tts-small/m/model.bin 子目录且安装成功。
 	content := []byte("nested-model-bytes")
 	f := newFakeScope(t, fileMap("m/model.bin", content))

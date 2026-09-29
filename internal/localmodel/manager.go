@@ -38,6 +38,19 @@ var ErrUnknownModel = errors.New("未知模型")
 // ErrBusy 全局单飞行冲突。
 var ErrBusy = errors.New("已有模型在下载")
 
+// Event 模型状态变更事件(经 WS Hub 推送,替代前端下载期轮询)。
+type Event struct {
+	ID              string `json:"model_id"`
+	Status          Status `json:"status"`
+	DownloadedBytes int64  `json:"downloaded_bytes"`
+	TotalBytes      int64  `json:"total_bytes"`
+	Error           string `json:"error,omitempty"`
+}
+
+// progressEmitEvery 进度事件发射节流:下载字节每 chunk 变化,逐条推 WS 会洪泛,
+// 按模型限频;状态转换事件不受此限(强制发射)。
+const progressEmitEvery = 400 * time.Millisecond
+
 // ModelState 目录条目的实时状态动态部分。
 type ModelState struct {
 	ID              string `json:"-"` // 冗余记账(状态表按 id 索引);JSON 由 ModelView.Entry.id 提供,置 "-" 防平铺冲突
@@ -82,6 +95,34 @@ type Manager struct {
 	states     map[string]*ModelState
 	active     string             // 正在下载的模型 id(""=无)
 	cancel     context.CancelFunc // 活动下载的取消函数
+	notifier   func(Event)        // 状态变更回调(SetNotifier 接线;nil=不发射)
+	lastEmit   map[string]time.Time
+}
+
+// SetNotifier 注册状态变更回调(server 启动期接线到 WS Hub)。须在 Start 之前调用;
+// 回调在 Manager 锁内同步执行,实现方须非阻塞(Hub.broadcast 满足)。
+func (m *Manager) SetNotifier(fn func(Event)) {
+	m.mu.Lock()
+	m.notifier = fn
+	m.mu.Unlock()
+}
+
+// emitLocked 快照当前状态并发射(调用方持锁)。进度路径 force=false 走节流,
+// 状态转换路径 force=true 直发;未接线时静默。
+func (m *Manager) emitLocked(id string, force bool) {
+	if m.notifier == nil {
+		return
+	}
+	st := m.states[id]
+	if st == nil {
+		return
+	}
+	now := time.Now()
+	if !force && now.Sub(m.lastEmit[id]) < progressEmitEvery {
+		return
+	}
+	m.lastEmit[id] = now
+	m.notifier(Event{ID: id, Status: st.Status, DownloadedBytes: st.DownloadedBytes, TotalBytes: st.TotalBytes, Error: st.Error})
 }
 
 // NewManager 构造管理器并扫盘恢复(服务启动期调用一次)。
@@ -95,7 +136,7 @@ func newManager(modelsDir, enginesDir, baseURL string, entries []Entry) *Manager
 	for _, e := range entries {
 		byID[e.ID] = e
 	}
-	m := &Manager{entries: entries, byID: byID, baseDir: modelsDir, enginesDir: enginesDir, baseURL: baseURL, states: map[string]*ModelState{}}
+	m := &Manager{entries: entries, byID: byID, baseDir: modelsDir, enginesDir: enginesDir, baseURL: baseURL, states: map[string]*ModelState{}, lastEmit: map[string]time.Time{}}
 	m.restore()
 	return m
 }
@@ -314,6 +355,7 @@ func (m *Manager) setFailedLocked(id, msg string) {
 	}
 	has, downloaded := diskResidue(m.modelDir(id))
 	st.HasPartial, st.DownloadedBytes = has, downloaded
+	m.emitLocked(id, true)
 }
 
 // downloadClient 下载专用客户端:连接复用 + 30s 响应头超时(大 body 不限总时长),
@@ -348,6 +390,7 @@ func (m *Manager) Start(id string) error {
 	m.active, m.cancel = id, cancel
 	st := m.states[id]
 	st.Status, st.Error = StatusDownloading, ""
+	m.emitLocked(id, true)
 	go m.run(ctx, e)
 	return nil
 }
@@ -382,6 +425,7 @@ func (m *Manager) Delete(id string) error {
 		return fmt.Errorf("删除模型目录失败: %w", err)
 	}
 	m.states[id] = &ModelState{ID: id, Status: StatusIdle, TotalBytes: e.SizeBytes}
+	m.emitLocked(id, true)
 	return nil
 }
 
@@ -437,6 +481,7 @@ func (m *Manager) run(ctx context.Context, e Entry) {
 	}
 	m.mu.Lock()
 	m.states[e.ID].Status = StatusVerifying
+	m.emitLocked(e.ID, true)
 	m.mu.Unlock()
 	if err := verifyModel(dir, e, sizes); err != nil {
 		m.setFailed(e.ID, err.Error())
@@ -452,6 +497,7 @@ func (m *Manager) run(ctx context.Context, e Entry) {
 	if m.active == e.ID { // installed 终态与 active 清除同临界区
 		m.active, m.cancel = "", nil
 	}
+	m.emitLocked(e.ID, true)
 	m.mu.Unlock()
 }
 
@@ -466,6 +512,7 @@ func (m *Manager) finish(ctx context.Context, id string, err error) {
 		if m.active == id {
 			m.active, m.cancel = "", nil
 		}
+		m.emitLocked(id, true)
 		m.mu.Unlock()
 		return
 	}
@@ -567,6 +614,7 @@ func (m *Manager) runArchive(ctx context.Context, e Entry) {
 	}
 	m.mu.Lock()
 	m.states[e.ID].Status = StatusVerifying
+	m.emitLocked(e.ID, true)
 	m.mu.Unlock()
 	archivePath := filepath.Join(dir, archiveName)
 	if wantSHA != "" {
@@ -658,6 +706,7 @@ func (m *Manager) runArchive(ctx context.Context, e Entry) {
 	if m.active == e.ID { // installed 终态与 active 清除同临界区(与 run 一致)
 		m.active, m.cancel = "", nil
 	}
+	m.emitLocked(e.ID, true)
 	m.mu.Unlock()
 }
 
@@ -884,6 +933,7 @@ func (m *Manager) fetchOne(ctx context.Context, e Entry, file string, size int64
 func (m *Manager) setProgress(id string, n int64) {
 	m.mu.Lock()
 	m.states[id].DownloadedBytes = n
+	m.emitLocked(id, false)
 	m.mu.Unlock()
 }
 

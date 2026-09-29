@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/yann0917/voxbox/internal/localmodel"
 	"github.com/yann0917/voxbox/internal/service"
 	"github.com/yann0917/voxbox/internal/store"
 )
@@ -18,7 +19,10 @@ type Server struct {
 }
 
 func New(svc *service.Service) *Server {
-	return &Server{svc: svc, hub: NewHub(), desktop: os.Getenv("VOXBOX_DESKTOP") == "1"}
+	s := &Server{svc: svc, hub: NewHub(), desktop: os.Getenv("VOXBOX_DESKTOP") == "1"}
+	// 模型状态机 → WS:下载进度/状态迁移经 Hub 推送,前端 /api/models 免轮询
+	svc.LocalModels().SetNotifier(s.hub.NotifyModel)
+	return s
 }
 
 func (s *Server) Hub() *Hub { return s.hub }
@@ -38,5 +42,24 @@ func (s *Server) snapshotJSONFor(userID string) []byte {
 		dtos = append(dtos, toTaskDTO(t))
 	}
 	raw, _ := json.Marshal(map[string]any{"type": "task.snapshot", "tasks": dtos})
+	return raw
+}
+
+// modelsSnapshotJSON 返回在途模型快照消息(downloading/verifying;空返回 nil 不补发)。
+// 与任务快照同理:连接晚于下载开始或 WS 断连重连后,前端以此对齐缓存。
+func (s *Server) modelsSnapshotJSON() []byte {
+	var evs []localmodel.Event
+	for _, v := range s.svc.LocalModels().List() {
+		if v.Status == localmodel.StatusDownloading || v.Status == localmodel.StatusVerifying {
+			evs = append(evs, localmodel.Event{
+				ID: v.Entry.ID, Status: v.Status,
+				DownloadedBytes: v.DownloadedBytes, TotalBytes: v.TotalBytes, Error: v.Error,
+			})
+		}
+	}
+	if len(evs) == 0 {
+		return nil
+	}
+	raw, _ := json.Marshal(map[string]any{"type": "model.snapshot", "models": evs})
 	return raw
 }

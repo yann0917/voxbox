@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 
+export interface ModelEventState {
+  model_id: string;
+  status: "idle" | "downloading" | "verifying" | "installed" | "failed";
+  downloaded_bytes: number;
+  total_bytes: number;
+  error?: string;
+}
+
 export interface TaskEvent {
-  type: "progress" | "done" | "error" | "canceled" | "task.snapshot";
+  type: "progress" | "done" | "error" | "canceled" | "task.snapshot" | "model" | "model.snapshot";
   task_id?: string;
   provider?: string;
   tool?: string;
@@ -10,6 +18,12 @@ export interface TaskEvent {
   note?: string;
   error?: string;
   tasks?: unknown[];
+  // model 事件:单模型状态迁移;model.snapshot:连接建立/重连时补发的在途模型列表
+  model_id?: string;
+  status?: string;
+  downloaded_bytes?: number;
+  total_bytes?: number;
+  models?: ModelEventState[];
   // 仅 progress 事件携带的工具自定义展示数据（后端 task.Event.Detail，如播客对话流轮次）。
   detail?: { round_id?: number; speaker?: string; text?: string; rounds_done?: number; task_id?: string; poll?: number; status?: string; chunks?: number };
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/yann0917/voxbox/internal/localmodel"
 	"github.com/yann0917/voxbox/internal/task"
 )
 
@@ -72,6 +73,19 @@ func (h *Hub) Notify(ev task.Event) {
 	h.broadcast(raw)
 }
 
+// NotifyModel 广播模型状态事件(下载进度/状态机迁移):与任务事件同通道不同 type,
+// 前端据此更新 /api/models 缓存,替代下载期轮询。
+func (h *Hub) NotifyModel(ev localmodel.Event) {
+	raw, err := json.Marshal(struct {
+		Type string `json:"type"`
+		localmodel.Event
+	}{Type: "model", Event: ev})
+	if err != nil {
+		return
+	}
+	h.broadcast(raw)
+}
+
 func (h *Hub) broadcast(raw []byte) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -125,7 +139,7 @@ func (h *Hub) writePump(c *client) {
 	}
 }
 
-func (h *Hub) serveWS(w http.ResponseWriter, r *http.Request, snapshotJSON func() []byte) {
+func (h *Hub) serveWS(w http.ResponseWriter, r *http.Request, snapshotJSON func() []byte, modelSnapshotJSON func() []byte) {
 	conn, err := up.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -133,9 +147,10 @@ func (h *Hub) serveWS(w http.ResponseWriter, r *http.Request, snapshotJSON func(
 	c := &client{conn: conn, send: make(chan []byte, 64)}
 	h.register(c)
 	go h.writePump(c)
-	// 连接建立即补发非终态任务快照，防漏消息
-	if snapshotJSON != nil {
-		if snap := snapshotJSON(); snap != nil {
+	// 连接建立即补发非终态任务与在途模型快照,防漏消息(WS 断连期间的事件由
+	// 重连后的快照自愈,前端缓存以此对齐,无需轮询兜底)
+	for _, snap := range [][]byte{snapshotJSON(), modelSnapshotJSON()} {
+		if snap != nil {
 			c.send <- snap
 		}
 	}
@@ -166,5 +181,5 @@ func (s *Server) wsProgress(c *gin.Context) {
 	if p.IsAdmin() {
 		uid = "" // admin 快照收全量（含无主历史任务）
 	}
-	s.hub.serveWS(c.Writer, c.Request, func() []byte { return s.snapshotJSONFor(uid) })
+	s.hub.serveWS(c.Writer, c.Request, func() []byte { return s.snapshotJSONFor(uid) }, s.modelsSnapshotJSON)
 }

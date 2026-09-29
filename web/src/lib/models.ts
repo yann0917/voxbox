@@ -1,5 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJSON } from "./api";
+import { onTaskEvent } from "./ws";
 
 export type ModelStatus = "idle" | "downloading" | "verifying" | "installed" | "failed";
 
@@ -39,17 +41,51 @@ export const deleteModel = (id: string) =>
   fetchJSON(`/api/models/${id}`, { method: "DELETE" });
 export const openModelsDir = () => fetchJSON("/api/models/open-dir", { method: "POST" });
 
-const POLL_MS = 1000;
-
-/** 模型目录+实时状态:存在下载/校验时 1s 轮询,否则不轮询。 */
+/** 模型目录+实时状态:进度由 WS model 事件驱动(setQueryData 直接 patch 缓存),
+ *  不再轮询;快照消息(model.snapshot)在连接建立/重连时补发在途状态自愈,
+ *  staleTime 压窗口聚焦重取频率作离线兜底。 */
 export function useModels() {
+  const qc = useQueryClient();
+  useEffect(
+    () =>
+      onTaskEvent((ev) => {
+        const apply = (m: ModelItem, e: { status: ModelStatus; downloaded_bytes: number; total_bytes: number; error?: string }): ModelItem => ({
+          ...m,
+          status: e.status,
+          downloaded_bytes: e.downloaded_bytes,
+          total_bytes: e.total_bytes,
+          error: e.error,
+        });
+        if (ev.type === "model" && ev.model_id) {
+          const e = {
+            status: (ev.status ?? "idle") as ModelStatus,
+            downloaded_bytes: ev.downloaded_bytes ?? 0,
+            total_bytes: ev.total_bytes ?? 0,
+            error: ev.error,
+          };
+          qc.setQueryData<{ items: ModelItem[] }>(["models"], (d) =>
+            d ? { items: d.items.map((m) => (m.id === ev.model_id ? apply(m, e) : m)) } : d,
+          );
+        } else if (ev.type === "model.snapshot" && ev.models) {
+          const byId = new Map(ev.models.map((x) => [x.model_id, x]));
+          qc.setQueryData<{ items: ModelItem[] }>(["models"], (d) =>
+            d
+              ? {
+                  items: d.items.map((m) => {
+                    const e = byId.get(m.id);
+                    return e ? apply(m, e) : m;
+                  }),
+                }
+              : d,
+          );
+        }
+      }),
+    [qc],
+  );
   return useQuery({
     queryKey: ["models"],
     queryFn: listModels,
-    refetchInterval: (q) =>
-      q.state.data?.items.some((m) => m.status === "downloading" || m.status === "verifying")
-        ? POLL_MS
-        : false,
+    staleTime: 30_000,
   });
 }
 

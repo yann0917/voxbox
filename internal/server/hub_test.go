@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/yann0917/voxbox/internal/localmodel"
 	"github.com/yann0917/voxbox/internal/task"
 )
 
@@ -32,8 +33,33 @@ func TestHubBroadcast(t *testing.T) {
 	}
 }
 
-// TestHubPingPongKeepalive 心跳保活：缩短 ping 周期与读超时，客户端应答 pong 时
-// 连接跨多个读超时窗口存活且能继续收广播；服务端 ping 按期到达。
+// TestHubNotifyModel 模型事件走同一 WS 通道:NotifyModel 广播 type=model 消息,
+// 字段与前端 ModelEventState 对齐(model_id/status/字节数)。
+func TestHubNotifyModel(t *testing.T) {
+	ts, s, ac := newTestServer(t)
+	url := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/ws"
+	ws, _, err := websocket.DefaultDialer.Dial(url, http.Header{"Cookie": []string{sessionCookieHeader(t, ac, ts)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+
+	s.Hub().NotifyModel(localmodel.Event{
+		ID: "kokoro-v1.0", Status: localmodel.StatusDownloading,
+		DownloadedBytes: 1024, TotalBytes: 4096,
+	})
+
+	_ = ws.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, msg, err := ws.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"type":"model"`, `"model_id":"kokoro-v1.0"`, `"status":"downloading"`, "1024"} {
+		if !strings.Contains(string(msg), want) {
+			t.Errorf("msg 缺少 %s: %s", want, msg)
+		}
+	}
+}
 func TestHubPingPongKeepalive(t *testing.T) {
 	ts, s, ac := newTestServer(t)
 	s.Hub().SetHeartbeat(50*time.Millisecond, 300*time.Millisecond)
