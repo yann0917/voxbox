@@ -13,6 +13,7 @@ import (
 type TTSReq struct {
 	Text  string
 	Voice string // provider 预置音色名（Zephyr 等 30 个）
+	Model string // 模型卡 ID；空 = flash 标准版（既有调用方不传，行为不变）
 }
 
 // Synthesize 合成并返回音频字节（mp3）。
@@ -20,8 +21,12 @@ func (c *TTSClient) Synthesize(ctx context.Context, req TTSReq) ([]byte, error) 
 	if strings.TrimSpace(req.Voice) == "" {
 		return nil, fmt.Errorf("OpenRouter TTS 缺少必填参数: voice")
 	}
+	model := req.Model
+	if model == "" {
+		model = ModelTTS
+	}
 	body := map[string]any{
-		"model":           ModelTTS,
+		"model":           model,
 		"input":           req.Text,
 		"voice":           req.Voice,
 		"response_format": "mp3",
@@ -41,4 +46,12 @@ type TTSClient struct{ apiKey, baseURL string }
 
 func NewTTSClient(apiKey, baseURL string) *TTSClient {
 	return &TTSClient{apiKey: apiKey, baseURL: strings.TrimRight(baseURL, "/")}
+}
+
+// effectiveModel 请求模型为空回落标准版（summary 展示用，与 Synthesize 的回落同口径）。
+func effectiveModel(m string) string {
+	if strings.TrimSpace(m) == "" {
+		return ModelTTS
+	}
+	return m
 }

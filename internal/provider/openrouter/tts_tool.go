@@ -13,7 +13,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider"
 )
 
-// TTSTool OpenRouter Gemini 语音合成（google/gemini-3.8-flash-tts，非流式，响应为 mp3 二进制）。
+// TTSTool OpenRouter Gemini 语音合成（flash / flash-lite 双模型，非流式，响应为 mp3 二进制）。
 type TTSTool struct {
 	client *TTSClient
 	apiKey string
@@ -29,7 +29,7 @@ func (t *TTSTool) Meta() provider.ToolMeta {
 		Provider:    "openrouter",
 		Name:        "tts",
 		Title:       "语音合成（OpenRouter）",
-		Description: "Gemini 3.8 Flash TTS 经 OpenRouter 网关合成，30 个预置音色，响应为 mp3",
+		Description: "Gemini 3.8 Flash(-Lite) TTS 经 OpenRouter 网关合成，30 个预置音色，lite 版输出价更低，响应为 mp3",
 		Group:       "语音",
 	}
 }
@@ -38,6 +38,11 @@ func (t *TTSTool) ParamSpecs() []provider.ParamSpec {
 	return []provider.ParamSpec{
 		{Key: "text", Label: "文本", Type: provider.ParamText, Required: true,
 			Placeholder: "输入要合成的文本", Group: "内容"},
+		{Key: "model", Label: "模型", Type: provider.ParamEnum, Default: ModelTTS, Group: "参数",
+			Options: []provider.ParamOption{
+				{Value: ModelTTS, Label: "gemini-3.8-flash-tts（标准）"},
+				{Value: ModelTTSLite, Label: "gemini-3.8-flash-lite-tts（输出价更低）"},
+			}},
 		{Key: "voice", Label: "音色", Type: provider.ParamEnum, Default: DefaultVoice, Group: "参数",
 			Options:     VoiceOptions(),
 			Placeholder: "OpenRouter 预置音色（Zephyr 等）"},
@@ -57,10 +62,12 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	if voice == "" {
 		voice = DefaultVoice
 	}
+	// 模型：空 = 标准版（既有默认）；lite 由前端/CLI 显式选择
+	model := paramString(in.Params, "model")
 
 	// 官方未给单次输入上限：整段一次请求，超限由上游错误透出（不做猜测性预切）
 	report(20, "正在合成", nil)
-	audio, err := t.client.Synthesize(ctx, TTSReq{Text: text, Voice: voice})
+	audio, err := t.client.Synthesize(ctx, TTSReq{Text: text, Voice: voice, Model: model})
 	if err != nil {
 		return provider.TaskOutput{}, err
 	}
@@ -85,7 +92,7 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		}},
 		Summary: map[string]any{
 			"char_count": utf8.RuneCountInString(text),
-			"model":      ModelTTS,
+			"model":      effectiveModel(model),
 			"voice":      voice,
 		},
 	}, nil

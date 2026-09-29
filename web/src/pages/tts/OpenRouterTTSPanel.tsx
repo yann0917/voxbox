@@ -24,9 +24,16 @@ interface OpenRouterVoice {
   label: string;
 }
 
+/** 合成模型（与后端 voices.go 同词表）：标准版 / lite 轻量版（输出价更低）。 */
+const TTS_MODELS = [
+  { value: "google/gemini-3.8-flash-tts", label: "gemini-3.8-flash-tts（标准）" },
+  { value: "google/gemini-3.8-flash-lite-tts", label: "gemini-3.8-flash-lite-tts（输出价更低）" },
+];
+
 /** OpenRouter Gemini TTS 面板：整段一次合成（官方未给单次上限），响应为 mp3。 */
 export default function OpenRouterTTSPanel() {
   const [text, setText] = useState("");
+  const [model, setModel] = useState(TTS_MODELS[0].value);
   const [voice, setVoice] = useState("Zephyr");
   const [taskId, setTaskId] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
@@ -78,7 +85,7 @@ export default function OpenRouterTTSPanel() {
     mutationFn: () =>
       fetchJSON<{ task_id: string }>("/api/tasks", {
         method: "POST",
-        body: JSON.stringify({ provider: "openrouter", tool: "tts", params: { text: text.trim(), voice } }),
+        body: JSON.stringify({ provider: "openrouter", tool: "tts", params: { text: text.trim(), model, voice } }),
       }),
     onSuccess: (d) => {
       setTaskId(d.task_id);
@@ -139,6 +146,17 @@ export default function OpenRouterTTSPanel() {
             aside={<span className="micro">openrouter · tts</span>}
           />
           <CardBody className="space-y-4">
+            <Field label="模型" hint="lite 输出价更低">
+              {() => (
+                <Select id="openrouter-model" value={model} onChange={(e) => setModel(e.target.value)}>
+                  {TTS_MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
             <Field label="音色" hint="30 个预置英文音色，响应为 mp3">
               {() => (
                 <Select id="openrouter-voice" value={voice} onChange={(e) => setVoice(e.target.value)}>

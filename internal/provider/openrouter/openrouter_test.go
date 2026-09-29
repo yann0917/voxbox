@@ -75,6 +75,35 @@ func TestSynthesizeDecodeError(t *testing.T) {
 	}
 }
 
+// TestSynthesizeModelPassthrough 模型显式透传：lite 轻量版 model 值原样进请求体；
+// 空模型回落标准版（既有调用方行为不变）。
+func TestSynthesizeModelPassthrough(t *testing.T) {
+	var gotModels []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotModels = append(gotModels, body["model"].(string))
+		_, _ = w.Write([]byte("x"))
+	}))
+	defer ts.Close()
+
+	c := NewTTSClient("sk-test", ts.URL)
+	_, err := c.Synthesize(context.Background(), TTSReq{Text: "测", Voice: "Zephyr", Model: ModelTTSLite})
+	if err != nil {
+		t.Fatalf("lite Synthesize: %v", err)
+	}
+	_, err = c.Synthesize(context.Background(), TTSReq{Text: "测", Voice: "Zephyr"})
+	if err != nil {
+		t.Fatalf("默认 Synthesize: %v", err)
+	}
+	if gotModels[0] != ModelTTSLite {
+		t.Errorf("lite model = %s, want %s", gotModels[0], ModelTTSLite)
+	}
+	if gotModels[1] != ModelTTS {
+		t.Errorf("默认 model = %s, want %s", gotModels[1], ModelTTS)
+	}
+}
+
 // TestSynthesizeNoVoice voice 缺参在请求前拦截。
 func TestSynthesizeNoVoice(t *testing.T) {
 	c := NewTTSClient("sk-test", "https://openrouter.ai/api/v1")
@@ -164,16 +193,23 @@ func TestVoices(t *testing.T) {
 	}
 }
 
-// TestParamSpecs 参数声明：text 必填 + voice 枚举默认音色。
+// TestParamSpecs 参数声明：text 必填 + model 双模型枚举 + voice 枚举默认音色。
 func TestParamSpecs(t *testing.T) {
 	specs := NewTTSTool("k", ".").ParamSpecs()
-	if len(specs) != 2 {
-		t.Fatalf("specs = %d, want 2", len(specs))
+	if len(specs) != 3 {
+		t.Fatalf("specs = %d, want 3", len(specs))
 	}
 	if specs[0].Key != "text" || !specs[0].Required {
 		t.Errorf("text spec = %+v", specs[0])
 	}
-	if specs[1].Key != "voice" || specs[1].Default != DefaultVoice || len(specs[1].Options) == 0 {
-		t.Errorf("voice spec = %+v", specs[1])
+	// model 枚举：默认标准版，含 lite 轻量项
+	if specs[1].Key != "model" || specs[1].Default != ModelTTS || len(specs[1].Options) != 2 {
+		t.Errorf("model spec = %+v", specs[1])
+	}
+	if specs[1].Options[0].Value != ModelTTS || specs[1].Options[1].Value != ModelTTSLite {
+		t.Errorf("model options = %+v", specs[1].Options)
+	}
+	if specs[2].Key != "voice" || specs[2].Default != DefaultVoice || len(specs[2].Options) == 0 {
+		t.Errorf("voice spec = %+v", specs[2])
 	}
 }

@@ -46,8 +46,11 @@ var presetVoices = []Voice{
 // DefaultVoice 默认音色（模型卡示例同款，列表首项）。
 const DefaultVoice = "Zephyr"
 
-// ModelTTS 合成模型（OpenRouter 模型卡 ID）。
-const ModelTTS = "google/gemini-3.8-flash-tts"
+// 合成模型（OpenRouter 模型卡 ID）：flash 标准版 / lite 轻量版（输出价更低）。
+const (
+	ModelTTS     = "google/gemini-3.8-flash-tts"      // 标准版（既有默认，行为不变）
+	ModelTTSLite = "google/gemini-3.8-flash-lite-tts" // 轻量版（输出价更低）
+)
 
 // Voices 返回预置音色列表（静态表：接口无音色列表端点）。
 func Voices() []Voice { return presetVoices }

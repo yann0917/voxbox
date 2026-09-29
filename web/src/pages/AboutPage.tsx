@@ -211,8 +211,9 @@ export default function AboutPage() {
             （wav/mp3 ≤25MB/30 秒、热词与上下文，输出纯文本）；REST 协议。
           </p>
           <p className="text-sm leading-relaxed text-fg-2">
-            <span className="font-medium text-fg">OpenRouter（合成备选）</span>——google/gemini-3.8-flash-tts
-            经 openrouter.ai 网关合成（30 个预置英文音色，响应为 mp3），一个 API Key 按用量计费；REST 协议。
+            <span className="font-medium text-fg">OpenRouter（合成备选）</span>——google/gemini-3.8-flash(-lite)-tts
+            双模型经 openrouter.ai 网关合成（30 个预置英文音色，响应为 mp3，lite 输出价更低），
+            一个 API Key 按用量计费；REST 协议。
           </p>
           <p className="text-sm leading-relaxed text-fg-2">
             <span className="font-medium text-fg">本地推理（离线可用）</span>——设置页「本地环境」下载引擎与模型后即离线运行：
