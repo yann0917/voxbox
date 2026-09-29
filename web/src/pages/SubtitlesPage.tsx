@@ -14,6 +14,7 @@ import {
   Input,
   PageHeader,
   Select,
+  Switch,
   Tabs,
   Textarea,
   useToast,
@@ -390,7 +391,7 @@ export default function SubtitlesPage() {
               </Field>
             </div>
             <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
-              <input type="checkbox" checked={karaoke} onChange={(e) => setKaraoke(e.target.checked)} className="size-4 cursor-pointer accent-accent" />
+              <Switch checked={karaoke} onChange={setKaraoke} />
               卡拉 OK 逐字渲染（行内均匀分布）
             </label>
 

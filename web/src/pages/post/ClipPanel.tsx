@@ -29,6 +29,7 @@ import {
   Select,
   Skeleton,
   StatusBadge,
+  Switch,
   WaveLoader,
   WavePlayer,
   useToast,
@@ -645,12 +646,7 @@ export default function ClipPanel() {
                 </div>
                 <p className="text-[11px] text-muted">淡入/淡出超选区一半时服务端自动折半。</p>
                 <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
-                  <input
-                    type="checkbox"
-                    checked={loudOn}
-                    onChange={(e) => setLoudOn(e.target.checked)}
-                    className="size-4 cursor-pointer accent-accent"
-                  />
+                  <Switch checked={loudOn} onChange={setLoudOn} />
                   响度归一（-14 LUFS）
                 </label>
                 <Field label="输出格式" hint="m4r 即 iPhone 铃声（AAC 128k）">

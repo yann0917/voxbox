@@ -29,6 +29,7 @@ import {
   PageHeader,
   Select,
   Skeleton,
+  Switch,
   Tabs,
   useToast,
   type TabItem,
@@ -500,11 +501,10 @@ export default function SettingsPage() {
             <CardHeader title="通知" icon={<Bell size={15} strokeWidth={1.75} />} />
             <CardBody className="space-y-3">
               <label className="flex cursor-pointer items-start gap-2 text-sm text-fg-2">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={notifyOn}
-                  onChange={(e) => {
-                    if (e.target.checked) {
+                  onChange={(on) => {
+                    if (on) {
                       if (!("Notification" in window)) {
                         toast({ tone: "error", title: "当前浏览器不支持系统通知" });
                         return;
@@ -523,7 +523,7 @@ export default function SettingsPage() {
                       setNotifyOn(false);
                     }
                   }}
-                  className="mt-0.5 size-4 cursor-pointer accent-accent"
+                  className="mt-0.5"
                 />
                 <span>
                   任务终态系统通知

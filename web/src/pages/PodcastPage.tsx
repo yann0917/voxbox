@@ -37,6 +37,7 @@ import {
   Select,
   Skeleton,
   StatusBadge,
+  Switch,
   Tabs,
   Textarea,
   WavePlayer,
@@ -646,12 +647,7 @@ export default function PodcastPage() {
               <div className="flex flex-col justify-end gap-1.5">
                 <span className="micro">开头音乐</span>
                 <label className="flex cursor-pointer items-start gap-2.5 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-3 py-2">
-                  <input
-                    type="checkbox"
-                    checked={headMusic}
-                    onChange={(e) => setHeadMusic(e.target.checked)}
-                    className="mt-0.5 size-4 shrink-0 cursor-pointer accent-accent"
-                  />
+                  <Switch checked={headMusic} onChange={setHeadMusic} className="mt-0.5 shrink-0" />
                   <span className="min-w-0 space-y-0.5">
                     <span className="block text-sm text-fg">叠加开头音乐</span>
                     <span className="block text-[11px] text-muted">在成品音频前加一段音乐前奏</span>

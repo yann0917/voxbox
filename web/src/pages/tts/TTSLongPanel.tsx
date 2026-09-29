@@ -27,6 +27,7 @@ import {
   Select,
   Skeleton,
   StatusBadge,
+  Switch,
   Textarea,
   useToast,
 } from "../../ui";
@@ -261,15 +262,9 @@ export default function TTSLongPanel() {
             </div>
 
             <Field label="时间戳字幕" hint="开启后按分句时间戳产出 SRT 字幕文件">
-              {({ id }) => (
-                <label htmlFor={id} className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
-                  <input
-                    id={id}
-                    type="checkbox"
-                    checked={timestamps}
-                    onChange={(e) => setTimestamps(e.target.checked)}
-                    className="size-4 cursor-pointer accent-accent"
-                  />
+              {() => (
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
+                  <Switch checked={timestamps} onChange={setTimestamps} />
                   生成 SRT 字幕
                 </label>
               )}
@@ -399,15 +394,9 @@ export default function TTSLongPanel() {
                       )}
                     </Field>
                     <Field label="AIGC 标识">
-                      {({ id }) => (
-                        <label htmlFor={id} className="flex h-10 cursor-pointer items-center gap-2 text-sm text-fg-2">
-                          <input
-                            id={id}
-                            type="checkbox"
-                            checked={aigcWatermark}
-                            onChange={(e) => setAigcWatermark(e.target.checked)}
-                            className="size-4 cursor-pointer accent-accent"
-                          />
+                      {() => (
+                        <label className="flex h-10 cursor-pointer items-center gap-2 text-sm text-fg-2">
+                          <Switch checked={aigcWatermark} onChange={setAigcWatermark} />
                           结尾节奏标识
                         </label>
                       )}

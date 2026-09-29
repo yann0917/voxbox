@@ -17,6 +17,7 @@ import {
   ProgressBar,
   Select,
   StatusBadge,
+  Switch,
   WaveLoader,
   WavePlayer,
   useToast,
@@ -366,12 +367,7 @@ export default function DuckPanel() {
               )}
             </Field>
             <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
-              <input
-                type="checkbox"
-                checked={loudOn}
-                onChange={(e) => setLoudOn(e.target.checked)}
-                className="size-4 cursor-pointer accent-accent"
-              />
+              <Switch checked={loudOn} onChange={setLoudOn} />
               响度归一（-14 LUFS）
             </label>
             <Field label="输出格式" hint="mp3 128k / wav 无损">

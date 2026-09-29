@@ -41,6 +41,7 @@ import {
   Select,
   Skeleton,
   StatusBadge,
+  Switch,
   Tabs,
   type TabItem,
   WavePlayer,
@@ -696,12 +697,7 @@ export default function ASRPage() {
                           )}
                         </Field>
                         <label className="flex cursor-pointer items-start gap-2.5 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-3 py-2">
-                          <input
-                            type="checkbox"
-                            checked={diarization}
-                            onChange={(e) => setDiarization(e.target.checked)}
-                            className="mt-0.5 size-4 shrink-0 cursor-pointer accent-accent"
-                          />
+                          <Switch checked={diarization} onChange={setDiarization} className="mt-0.5 shrink-0" />
                           <span className="min-w-0 space-y-0.5">
                             <span className="block text-sm text-fg">说话人分离</span>
                             <span className="block text-[11px] text-muted">区分不同说话人（≤2h 且单声道音频）</span>

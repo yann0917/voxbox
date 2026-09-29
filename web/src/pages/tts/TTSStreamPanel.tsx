@@ -27,6 +27,7 @@ import {
   Select,
   Skeleton,
   StatusBadge,
+  Switch,
   Textarea,
   useToast,
 } from "../../ui";
@@ -239,15 +240,9 @@ export default function TTSStreamPanel() {
             </div>
 
             <Field label="字级时间戳" hint="按句末标点聚合并产出 SRT 字幕（仅中英语种）">
-              {({ id }) => (
-                <label htmlFor={id} className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
-                  <input
-                    id={id}
-                    type="checkbox"
-                    checked={subtitle}
-                    onChange={(e) => setSubtitle(e.target.checked)}
-                    className="size-4 cursor-pointer accent-accent"
-                  />
+              {() => (
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
+                  <Switch checked={subtitle} onChange={setSubtitle} />
                   生成 SRT 字幕
                 </label>
               )}
@@ -434,30 +429,18 @@ export default function TTSStreamPanel() {
                   </Field>
                   {resource === "seed-icl-2.0" && (
                     <Field label="还原模式" hint="尽量复刻训练音频的音色与说话风格（不支持跨语种）">
-                      {({ id }) => (
-                        <label htmlFor={id} className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
-                          <input
-                            id={id}
-                            type="checkbox"
-                            checked={toneFidelity}
-                            onChange={(e) => setToneFidelity(e.target.checked)}
-                            className="size-4 cursor-pointer accent-accent"
-                          />
+                      {() => (
+                        <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
+                          <Switch checked={toneFidelity} onChange={setToneFidelity} />
                           tone_fidelity
                         </label>
                       )}
                     </Field>
                   )}
                   <Field label="AIGC 标识">
-                    {({ id }) => (
-                      <label htmlFor={id} className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
-                        <input
-                          id={id}
-                          type="checkbox"
-                          checked={aigcWatermark}
-                          onChange={(e) => setAigcWatermark(e.target.checked)}
-                          className="size-4 cursor-pointer accent-accent"
-                        />
+                    {() => (
+                      <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
+                        <Switch checked={aigcWatermark} onChange={setAigcWatermark} />
                         结尾节奏标识
                       </label>
                     )}

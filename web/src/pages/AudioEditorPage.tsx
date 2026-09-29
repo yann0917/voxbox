@@ -37,6 +37,7 @@ import {
   ProgressBar,
   Select,
   StatusBadge,
+  Switch,
   Tabs,
   useToast,
 } from "../ui";
@@ -404,7 +405,7 @@ function CutForm({ src, disabled, task, onSubmit }: {
       </div>
 
       <label className="flex cursor-pointer items-center gap-2 text-xs text-fg-2">
-        <input type="checkbox" checked={cutout} onChange={(e) => setCutout(e.target.checked)} className="accent-[var(--accent)]" />
+        <Switch checked={cutout} onChange={setCutout} />
         挖除选区（删除选中段，保留其余部分——去广告 / 去口误）
       </label>
 
@@ -612,7 +613,7 @@ function WaveEditor({ src, sel, onSelChange }: {
           {playing ? "停止" : "试听选区"}
         </Button>
         <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-2">
-          <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} className="accent-[var(--accent)]" />
+          <Switch checked={loop} onChange={setLoop} />
           循环
         </label>
         <span className="mx-1 text-line-strong">|</span>
@@ -989,7 +990,7 @@ function VolumeForm({ disabled, task, onSubmit }: {
       </div>
       <div className="flex flex-wrap items-center gap-4">
         <label className="flex cursor-pointer items-center gap-2 text-xs text-fg-2">
-          <input type="checkbox" checked={normalize} onChange={(e) => setNormalize(e.target.checked)} className="accent-[var(--accent)]" />
+          <Switch checked={normalize} onChange={setNormalize} />
           响度归一化（EBU R128，覆盖增益滑条）
         </label>
         {normalize && (

@@ -22,6 +22,7 @@ import {
   Select,
   Skeleton,
   StatusBadge,
+  Switch,
   WaveLoader,
   WavePlayer,
   useToast,
@@ -554,14 +555,12 @@ export default function MixerPanel() {
                   )}
                 </Field>
                 <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={hpOn}
-                    onChange={(e) => {
-                      setHpOn(e.target.checked);
-                      engineRef.current?.setVocalHighpass(e.target.checked ? hpHz : 0);
+                    onChange={(on) => {
+                      setHpOn(on);
+                      engineRef.current?.setVocalHighpass(on ? hpHz : 0);
                     }}
-                    className="size-4 cursor-pointer accent-accent"
                   />
                   人声低切（去低频轰头）
                 </label>
@@ -612,12 +611,7 @@ export default function MixerPanel() {
               </Field>
 
               <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-2">
-                <input
-                  type="checkbox"
-                  checked={loudOn}
-                  onChange={(e) => setLoudOn(e.target.checked)}
-                  className="size-4 cursor-pointer accent-accent"
-                />
+                <Switch checked={loudOn} onChange={setLoudOn} />
                 导出响度归一（-14 LUFS）
               </label>
 
