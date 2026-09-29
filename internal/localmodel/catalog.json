@@ -167,5 +167,20 @@
     "archive_size": 147031220,
     "archive_sha256": "a1e94694776049035c4f2c6529f003aaece993c76aae9a78995831c3c4dcafc6",
     "extract_files": ["model.int8.onnx", "voices.bin", "tokens.txt", "lexicon-us-en.txt", "lexicon-zh.txt", "date-zh.fst", "phone-zh.fst", "number-zh.fst", "espeak-ng-data/"]
+  },
+  {
+    "id": "chatterbox-q8",
+    "kind": "tts",
+    "family": "chatterbox",
+    "name": "Chatterbox 0.5B 克隆(q8)",
+    "summary": "Resemble AI 零样本音色克隆,英文为主 19 语,需真人参考音频,不支持预置音色与中文(GGUF 量化)",
+    "size_bytes": 2088393668,
+    "requirements": { "device": "metal" },
+    "license": "MIT",
+    "license_url": "https://huggingface.co/ResembleAI/chatterbox",
+    "requires_engine": "audiocpp",
+    "files": ["chatterbox-q8_0.gguf"],
+    "file_urls": { "chatterbox-q8_0.gguf": "https://modelscope.cn/models/HereIsMark/audio.cpp-gguf/resolve/master/Chatterbox-GGUF/chatterbox-q8_0.gguf" },
+    "sha256": { "chatterbox-q8_0.gguf": "d586dd1aa59613cab8046176fb7ca5ba191c02a9b10ffa5b0d892ed22b470656" }
   }
 ]

@@ -67,10 +67,10 @@ func TestParseCatalogRejects(t *testing.T) {
 }
 
 // TestParseCatalogFamilyRuling 落实 family 校验规则:
-// kind=tts 必填且 ∈{qwen3_tts, index_tts2, kokoro};kind∈{asr,engine} 必须为空。
+// kind=tts 必填且 ∈{qwen3_tts, index_tts2, kokoro, chatterbox};kind∈{asr,engine} 必须为空。
 func TestParseCatalogFamilyRuling(t *testing.T) {
 	// tts:合法族值都通过
-	for _, family := range []string{"qwen3_tts", "index_tts2", "kokoro"} {
+	for _, family := range []string{"qwen3_tts", "index_tts2", "kokoro", "chatterbox"} {
 		e := ttsEntry()
 		e.Family = family
 		if _, err := parseCatalog(withEngine(t, e)); err != nil {
@@ -118,10 +118,10 @@ func TestEmbeddedCatalog(t *testing.T) {
 	wantIDs := []string{
 		"sherpa-onnx", "audiocpp",
 		"sensevoice-int8", "qwen3-tts-base-q8", "qwen3-tts-customvoice-q8", "qwen3-tts-base-0.6b-q8",
-		"index-tts2_5-q8", "kokoro-v1.1-zh-int8",
+		"index-tts2_5-q8", "kokoro-v1.1-zh-int8", "chatterbox-q8",
 	}
 	if len(catalog) != len(wantIDs) {
-		t.Fatalf("内嵌目录应为 %d 条(2 引擎 + 6 模型),实际 %d", len(wantIDs), len(catalog))
+		t.Fatalf("内嵌目录应为 %d 条(2 引擎 + 7 模型),实际 %d", len(wantIDs), len(catalog))
 	}
 	engineIDs := map[string]bool{}
 	for _, e := range catalog {
@@ -166,9 +166,9 @@ func TestEmbeddedCatalog(t *testing.T) {
 			// family 规则:tts 必填族值,asr 必须为空
 			if e.Kind == "tts" {
 				switch e.Family {
-				case "qwen3_tts", "index_tts2", "kokoro":
+				case "qwen3_tts", "index_tts2", "kokoro", "chatterbox":
 				default:
-					t.Errorf("tts 条目 %s 的 family 必须是 qwen3_tts|index_tts2|kokoro: %q", e.ID, e.Family)
+					t.Errorf("tts 条目 %s 的 family 必须是 qwen3_tts|index_tts2|kokoro|chatterbox: %q", e.ID, e.Family)
 				}
 			} else if e.Family != "" {
 				t.Errorf("asr 条目 %s 不应声明 family: %q", e.ID, e.Family)
@@ -421,6 +421,35 @@ func TestCheckRelPathDirEntries(t *testing.T) {
 			t.Errorf("非法目录条目 %q 应被拒", bad)
 		}
 	}
+}
+
+// TestEmbeddedCatalogChatterbox 落实 family 规则与 chatterbox 条目实测留档:
+// Chatterbox-GGUF/chatterbox-q8_0.gguf 为本机两次下载实测(sha256 一致),
+// file_urls 直链走魔搭 HereIsMark 仓库,MIT 许可指向 HF 官方模型页。
+func TestEmbeddedCatalogChatterbox(t *testing.T) {
+	for _, e := range catalog {
+		if e.ID != "chatterbox-q8" {
+			continue
+		}
+		if e.Family != "chatterbox" {
+			t.Fatalf("chatterbox-q8 的 family 应为 chatterbox,实际 %q", e.Family)
+		}
+		if e.RequiresEngine != "audiocpp" {
+			t.Errorf("chatterbox-q8 的 requires_engine 应为 audiocpp,实际 %q", e.RequiresEngine)
+		}
+		if e.SizeBytes != 2088393668 {
+			t.Errorf("chatterbox-q8 size_bytes 应为实测 2088393668,实际 %d", e.SizeBytes)
+		}
+		const want = "d586dd1aa59613cab8046176fb7ca5ba191c02a9b10ffa5b0d892ed22b470656"
+		if e.SHA256["chatterbox-q8_0.gguf"] != want {
+			t.Errorf("chatterbox-q8 的文件 sha256 应为实测整文件哈希,实际 %q", e.SHA256["chatterbox-q8_0.gguf"])
+		}
+		if e.License != "MIT" {
+			t.Errorf("chatterbox-q8 许可应为 MIT,实际 %q", e.License)
+		}
+		return
+	}
+	t.Fatal("内嵌目录缺少 chatterbox-q8 条目")
 }
 
 func TestArchiveForPlatform(t *testing.T) {

@@ -56,6 +56,29 @@ const INDEX_LANGS = [
   { value: "ar", label: "阿拉伯语" },
 ];
 
+// chatterbox 家族的语言码(与后端 chatterboxLanguages 同源,19 语无中文)
+const CHATTERBOX_LANGS = [
+  { value: "en", label: "英文" },
+  { value: "ko", label: "韩语" },
+  { value: "de", label: "德语" },
+  { value: "fr", label: "法语" },
+  { value: "es", label: "西班牙语" },
+  { value: "it", label: "意大利语" },
+  { value: "pt", label: "葡萄牙语" },
+  { value: "nl", label: "荷兰语" },
+  { value: "pl", label: "波兰语" },
+  { value: "sv", label: "瑞典语" },
+  { value: "no", label: "挪威语" },
+  { value: "da", label: "丹麦语" },
+  { value: "fi", label: "芬兰语" },
+  { value: "el", label: "希腊语" },
+  { value: "hi", label: "印地语" },
+  { value: "ms", label: "马来语" },
+  { value: "sw", label: "斯瓦希里语" },
+  { value: "tr", label: "土耳其语" },
+  { value: "ar", label: "阿拉伯语" },
+];
+
 /** 毫秒 → 秒展示(下拉项 name(duration) 用)。 */
 const fmtSec = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
@@ -65,10 +88,11 @@ const defaultNameFromFile = (f: File) => f.name.replace(/\.[^.]+$/, "");
 /** 命名弹窗状态机:save=录制/上传完成后入库命名;rename=已入库音色改名。 */
 type NameModal = { kind: "save"; file: File } | { kind: "rename"; id: string } | null;
 
-/** 本地语音合成面板:audio.cpp 引擎 + 已安装 Qwen3-TTS / IndexTTS2.5,sherpa-onnx + Kokoro。
+/** 本地语音合成面板:audio.cpp 引擎 + 已安装 Qwen3-TTS / IndexTTS2.5 / Chatterbox,
+ *  sherpa-onnx + Kokoro。
  *  克隆走音色库(录制/上传入库 → voice_id 提交),不再用临时文件上传;
  *  家族感知:index_tts2 锁克隆 + 六语言 + 情感参数,kokoro 锁预置音色 + 无语言/风格参数,
- *  qwen3_tts 维持预置 + 四语言。 */
+ *  chatterbox 锁克隆 + 19 语无中文,qwen3_tts 维持预置 + 四语言。 */
 export default function LocalTTSPanel() {
   const [text, setText] = useState("");
   const [model, setModel] = useState("");
@@ -103,16 +127,23 @@ export default function LocalTTSPanel() {
   const selectedModelItem = installedModels.find((m) => m.id === model);
   const isIndex = selectedModelItem?.family === "index_tts2";
   const isKokoro = selectedModelItem?.family === "kokoro";
-  // 家族强制:effectiveMode 决定渲染与提交,index 锁克隆、kokoro 锁预置,
+  const isChatterbox = selectedModelItem?.family === "chatterbox";
+  // 家族强制:effectiveMode 决定渲染与提交,index/chatterbox 锁克隆、kokoro 锁预置,
   // 切回 qwen3 时用户先前的选择自动恢复
-  const effectiveMode: "clone" | "preset" = isKokoro ? "preset" : isIndex ? "clone" : mode;
+  const effectiveMode: "clone" | "preset" = isKokoro
+    ? "preset"
+    : isIndex || isChatterbox
+      ? "clone"
+      : mode;
   // 预置音色列表按家族拉取:kokoro 103 个内置音色,qwen3 九个 CustomVoice speaker
   const presetVoices = useLocalVoices(isKokoro ? "kokoro" : undefined);
-  // 家族切换时把语言校正到当前家族支持集内(qwen3 全名 / index 语言码;kokoro 不发语言)
+  // 家族切换时把语言校正到当前家族支持集内(qwen3 全名 / index、chatterbox 语言码;kokoro 不发语言)
   useEffect(() => {
-    const langSet = (isIndex ? INDEX_LANGS : LANGS).map((l) => l.value);
-    setLanguage((l) => (langSet.includes(l) ? l : isIndex ? "auto" : "Chinese"));
-  }, [isIndex]);
+    const langSet = (isChatterbox ? CHATTERBOX_LANGS : isIndex ? INDEX_LANGS : LANGS).map((l) => l.value);
+    setLanguage((l) =>
+      langSet.includes(l) ? l : isChatterbox ? "en" : isIndex ? "auto" : "Chinese",
+    );
+  }, [isIndex, isChatterbox]);
   // kokoro 音色表与 qwen3 不通用:进入/离开 kokoro 家族时清掉失配的选中音色
   useEffect(() => {
     setSpeaker("");
@@ -372,7 +403,15 @@ export default function LocalTTSPanel() {
             </Field>
             <Field
               label="音色模式"
-              hint={isIndex ? "IndexTTS2.5 仅支持参考音频克隆" : isKokoro ? "Kokoro 仅支持预置音色" : undefined}
+              hint={
+                isIndex
+                  ? "IndexTTS2.5 仅支持参考音频克隆"
+                  : isKokoro
+                    ? "Kokoro 仅支持预置音色"
+                    : isChatterbox
+                      ? "Chatterbox 仅支持参考音频克隆"
+                      : undefined
+              }
             >
               {({ id, ...rest }) => (
                 <Select
@@ -382,13 +421,20 @@ export default function LocalTTSPanel() {
                   {...rest}
                 >
                   {!isKokoro && <option value="clone">参考音频克隆</option>}
-                  {!isIndex && <option value="preset">预置音色</option>}
+                  {!isIndex && !isChatterbox && <option value="preset">预置音色</option>}
                 </Select>
               )}
             </Field>
             {effectiveMode === "clone" ? (
               <>
-                <Field label="克隆音色" hint="1-60 秒清晰人声,合成时作参考音频">
+                <Field
+                  label="克隆音色"
+                  hint={
+                    isChatterbox
+                      ? "1-60 秒清晰真人人声(合成音/低质录音易致幻听),合成时作参考音频"
+                      : "1-60 秒清晰人声,合成时作参考音频"
+                  }
+                >
                   {({ id, ...rest }) => (
                     <div className="space-y-2">
                       {libVoices.length === 0 ? (
@@ -522,7 +568,7 @@ export default function LocalTTSPanel() {
               <Field label="语言">
                 {({ id, ...rest }) => (
                   <Select id={id} value={language} onChange={(e) => setLanguage(e.target.value)} {...rest}>
-                    {(isIndex ? INDEX_LANGS : LANGS).map((l) => (
+                    {(isChatterbox ? CHATTERBOX_LANGS : isIndex ? INDEX_LANGS : LANGS).map((l) => (
                       <option key={l.value} value={l.value}>{l.label}</option>
                     ))}
                   </Select>

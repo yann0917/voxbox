@@ -71,7 +71,8 @@ export default function AboutPage() {
             它把五家语音平台的 AI 能力装进同一个任务引擎——火山引擎豆包语音的八项能力为主干，
             另接千问平台（qwen3-tts 合成 / qwen3-asr 文件转写）、小米 MiMo（MiMo-V2.5-TTS 合成 / mimo-v2.5-asr 同步转写）、
             智谱（glm-tts 合成 / glm-asr 短音频转写）与 OpenRouter（Gemini TTS 合成，经 openrouter.ai 网关）作为备用引擎；
-            不配云端凭证也能离线跑：设置页「本地环境」可下载 Qwen3-TTS、IndexTTS 2.5 与 SenseVoice 本地推理引擎。
+            不配云端凭证也能离线跑：设置页「本地环境」可下载 Qwen3-TTS、IndexTTS 2.5、Kokoro、Chatterbox
+            与 SenseVoice 本地推理引擎。
             提交任务、实时进度、产物落盘、历史可溯，面向配音、转写、播客、会议纪要、翻译等日常内容生产场景。
           </p>
           <p className="text-sm leading-relaxed text-fg-2">
@@ -217,9 +218,10 @@ export default function AboutPage() {
           </p>
           <p className="text-sm leading-relaxed text-fg-2">
             <span className="font-medium text-fg">本地推理（离线可用）</span>——设置页「本地环境」下载引擎与模型后即离线运行：
-            Qwen3-TTS（audio.cpp，1.7B / 0.6B 音色克隆 + 9 预置音色）、IndexTTS 2.5（克隆合成 + 情感文本/强度控制）
-            与 SenseVoice int8 多语种识别（sherpa-onnx，中英日韩粤）；纯子进程实现，无 Python 依赖，
-            克隆参考音频由音色库统一管理。
+            Qwen3-TTS（audio.cpp，1.7B / 0.6B 音色克隆 + 9 预置音色）、IndexTTS 2.5（克隆合成 + 情感文本/强度控制）、
+            Kokoro 82M（sherpa-onnx，103 个内置音色含 100 中文，不支持克隆）、Chatterbox 0.5B（audio.cpp，
+            英文等 19 语零样本克隆，不支持中文）与 SenseVoice int8 多语种识别（sherpa-onnx，中英日韩粤）；
+            纯子进程实现，无 Python 依赖，克隆参考音频由音色库统一管理。
           </p>
           <p className="text-xs text-muted">音色列表、能力边界与计费口径均以各家官方文档为准。</p>
           <div className="space-y-1.5">

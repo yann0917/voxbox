@@ -23,7 +23,8 @@ import (
 
 // SynthRequest 一次合成请求(参数与 audiocpp_server /v1/tasks/run 对齐)。
 type SynthRequest struct {
-	ModelID  string // 已安装的 TTS 条目 id(qwen3 GGUF / IndexTTS2.5 GGUF)
+	ModelID  string // 已安装的 TTS 条目 id(qwen3 GGUF / IndexTTS2.5 GGUF / chatterbox GGUF)
+	Family   string // 模型族:决定 server 配置 task(chatterbox→clon)与 options 取舍
 	Text     string
 	RefWav   string // 克隆:参考 wav 绝对路径(24k mono pcm16);空=preset 模式
 	RefText  string // 克隆:参考音频转写;空则走 x_vector_only_mode
@@ -191,7 +192,12 @@ func (t *TTSRuntime) startLocked() (string, error) {
 		if family == "" {
 			family = "qwen3_tts" // 防御:目录已强制 tts 必填 family,空值回落 qwen3
 		}
-		serverModels = append(serverModels, serverModel{ID: e.Entry.ID, Family: family, Path: p, Task: "tts", Mode: "offline"})
+		// task 按家族路由:chatterbox 家族 server 只收 clon/vc,其余走 tts
+		task := "tts"
+		if family == "chatterbox" {
+			task = "clon"
+		}
+		serverModels = append(serverModels, serverModel{ID: e.Entry.ID, Family: family, Path: p, Task: task, Mode: "offline"})
 	}
 	if len(serverModels) == 0 {
 		return "", fmt.Errorf("没有已安装的本地 TTS 模型:请到设置页下载(Qwen3-TTS / IndexTTS)")
@@ -240,7 +246,10 @@ func (t *TTSRuntime) Synthesize(ctx context.Context, req SynthRequest, report fu
 	opts := map[string]any{}
 	if req.RefWav != "" {
 		inner["voice_ref"] = req.RefWav
-		if req.RefText != "" {
+		if req.Family == "chatterbox" {
+			// chatterbox 纯零样本克隆:server 只收 voice_ref,reference_text/
+			// x_vector_only_mode 是 qwen3 语义,不透传
+		} else if req.RefText != "" {
 			opts["reference_text"] = req.RefText
 			opts["x_vector_only_mode"] = false
 		} else {

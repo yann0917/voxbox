@@ -118,15 +118,15 @@ func parseCatalog(data []byte) ([]Entry, error) {
 		if e.Kind != "asr" && e.Kind != "tts" && e.Kind != "engine" {
 			return nil, fmt.Errorf("条目 %s 的 kind 必须是 asr|tts|engine", e.ID)
 		}
-		// family 规则:tts 必填且 ∈{qwen3_tts, index_tts2, kokoro};asr/engine 必须为空。
-		// 下游按 family 区分合成引擎调用链(qwen3 走预置音色/克隆参数,index 走情感控制,
-		// kokoro 走 sherpa 子进程预置音色)。
+		// family 规则:tts 必填且 ∈{qwen3_tts, index_tts2, kokoro, chatterbox};asr/engine 必须为空。
+		// 下游按 family 区分合成引擎调用链(qwen3 走预置音色/克隆参数,index/chatterbox 走
+		// audiocpp 克隆,index 另有情感控制,kokoro 走 sherpa 子进程预置音色)。
 		switch e.Kind {
 		case "tts":
 			switch e.Family {
-			case "qwen3_tts", "index_tts2", "kokoro":
+			case "qwen3_tts", "index_tts2", "kokoro", "chatterbox":
 			default:
-				return nil, fmt.Errorf("条目 %s 的 family 必须是 qwen3_tts|index_tts2|kokoro", e.ID)
+				return nil, fmt.Errorf("条目 %s 的 family 必须是 qwen3_tts|index_tts2|kokoro|chatterbox", e.ID)
 			}
 		default:
 			if e.Family != "" {

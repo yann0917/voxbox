@@ -499,6 +499,83 @@ func TestKokoroVoicesTable(t *testing.T) {
 	}
 }
 
+// —— chatterbox 家族:纯克隆模型,RefText 不透传,语言 19 语无中文 ——
+
+// seedChatterbox 播种 audiocpp 引擎 + chatterbox 条目的已安装态。
+func seedChatterbox(t *testing.T, dataDir string, m *localmodel.Manager) {
+	t.Helper()
+	seedEngine(t, dataDir, m, "audiocpp", "audiocpp_server")
+	seedModelFile(t, dataDir, m, "chatterbox-q8", "chatterbox-q8_0.gguf")
+}
+
+// TestTTSChatterboxRejectsPreset chatterbox 为纯克隆模型:preset 模式直述不支持。
+func TestTTSChatterboxRejectsPreset(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedChatterbox(t, dataDir, m)
+	tts := newTTSTool(dataDir, m, nil, nil)
+	tts.synthesizeFn = noSynthStub(t)
+	_, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "chatterbox-q8", "mode": "preset", "speaker": "Vivian", "text": "hello"},
+	}, func(p int, note string, d map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "Chatterbox 为克隆模型") {
+		t.Fatalf("chatterbox 条目 preset 应直述不支持: %v", err)
+	}
+}
+
+// TestTTSChatterboxLanguageRuling chatterbox 语言 19 语无中文:zh 拒绝,缺省 en。
+func TestTTSChatterboxLanguageRuling(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedChatterbox(t, dataDir, m)
+	tts := newTTSTool(dataDir, m, nil, nil)
+	tts.synthesizeFn = noSynthStub(t)
+	_, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "chatterbox-q8", "mode": "clone", "language": "zh", "text": "hello"},
+		Files:  map[string]string{},
+	}, func(p int, note string, d map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "暂不支持中文") {
+		t.Fatalf("chatterbox 应拒绝 zh 并直述: %v", err)
+	}
+}
+
+// TestTTSChatterboxHappyPath 克隆全链路:Family 透传,RefText 丢弃(零样本无转写语义),
+// 语言缺省回落 en,artifact Meta engine 随条目为 audiocpp。
+func TestTTSChatterboxHappyPath(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedChatterbox(t, dataDir, m)
+	voices := voicelib.New(dataDir)
+	wantWav := seedVoice(t, dataDir, "abcdef12")
+	tts := newTTSTool(dataDir, m, nil, voices)
+	tts.lookPath = func(string) (string, error) { return "", fmt.Errorf("ffmpeg 不可用") }
+	outWav := fakeOutWav(t, dataDir)
+	var got localruntime.SynthRequest
+	tts.synthesizeFn = func(ctx context.Context, req localruntime.SynthRequest, report func(p int, note string)) (string, error) {
+		got = req
+		return outWav, nil
+	}
+	out, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{
+			"model": "chatterbox-q8", "mode": "clone", "voice_id": "abcdef12",
+			"text": "hello", "ref_text": "some transcript",
+		},
+		Files: map[string]string{},
+	}, func(p int, note string, d map[string]any) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Family != "chatterbox" || got.RefWav != wantWav {
+		t.Fatalf("Family/RefWav 不符: %+v", got)
+	}
+	if got.RefText != "" {
+		t.Fatalf("chatterbox 应丢弃 RefText: %+v", got)
+	}
+	if got.Language != "en" {
+		t.Fatalf("缺省语言应回落 en: %+v", got)
+	}
+	if out.Artifacts[0].Meta["engine"] != "audiocpp" {
+		t.Fatalf("artifact Meta engine 应为 audiocpp: %+v", out.Artifacts[0].Meta)
+	}
+}
+
 // —— 播种 helper:绕过下载,直接构造 installed 态(Task 3 的访问器读 manifest)——
 
 func seedEngine(t *testing.T, dataDir string, m *localmodel.Manager, id, binaryName string) {

@@ -32,6 +32,14 @@ var qwen3Languages = map[string]bool{"Chinese": true, "English": true, "Japanese
 // 语言仅参与发音词典预处理,不透传合成引擎。
 var kokoroLanguages = map[string]bool{"auto": true, "zh": true, "en": true}
 
+// chatterboxLanguages audio.cpp chatterbox 家族语言码(空回落 en;打包语言表 19 语
+// 无中文,传 zh 不会报错但产物为噪声,须在入口拦截)。
+var chatterboxLanguages = map[string]bool{
+	"en": true, "ko": true, "de": true, "fr": true, "es": true, "it": true, "pt": true,
+	"nl": true, "pl": true, "sv": true, "no": true, "da": true, "fi": true, "el": true,
+	"hi": true, "ms": true, "sw": true, "tr": true, "ar": true,
+}
+
 type ttsTool struct {
 	dataDir string
 	models  *localmodel.Manager
@@ -60,7 +68,7 @@ func newTTSTool(dataDir string, models *localmodel.Manager, tts *localruntime.TT
 
 func (t *ttsTool) Meta() provider.ToolMeta {
 	return provider.ToolMeta{Provider: "local", Name: "tts", Title: "本地语音合成",
-		Description: "本地合成（Qwen3-TTS / IndexTTS / Kokoro）：参考音频、音色库克隆或预置音色，离线可用；IndexTTS 支持情感文本控制。", Group: "合成"}
+		Description: "本地合成（Qwen3-TTS / IndexTTS / Kokoro / Chatterbox）：参考音频、音色库克隆或预置音色，离线可用；IndexTTS 支持情感文本控制。", Group: "合成"}
 }
 
 func (t *ttsTool) ParamSpecs() []provider.ParamSpec {
@@ -121,10 +129,12 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		return provider.TaskOutput{}, fmt.Errorf("本地模型未安装:请到设置页「本地环境」下载 %s", e.Name)
 	}
 	// 家族与模式匹配:index_tts2 为纯克隆模型(无预置音色);kokoro 为纯预置模型
-	// (不支持克隆);qwen3 家族沿用文件名变体匹配校验。
+	// (不支持克隆);chatterbox 为纯克隆模型;qwen3 家族沿用文件名变体匹配校验。
 	switch {
 	case e.Family == "index_tts2" && mode == "preset":
 		return provider.TaskOutput{}, fmt.Errorf("IndexTTS 为克隆模型,不支持预置音色")
+	case e.Family == "chatterbox" && mode == "preset":
+		return provider.TaskOutput{}, fmt.Errorf("Chatterbox 为克隆模型,不支持预置音色")
 	case e.Family == "kokoro" && mode == "clone":
 		return provider.TaskOutput{}, fmt.Errorf("Kokoro 为预置音色模型,不支持参考音频克隆")
 	case e.Family == "qwen3_tts":
@@ -152,6 +162,13 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		if !kokoroLanguages[language] {
 			return provider.TaskOutput{}, fmt.Errorf("参数错误: Kokoro 语言仅支持 auto|zh|en,当前 %s", language)
 		}
+	case "chatterbox":
+		if language == "" {
+			language = "en"
+		}
+		if !chatterboxLanguages[language] {
+			return provider.TaskOutput{}, fmt.Errorf("参数错误: Chatterbox 暂不支持中文,语言仅支持 en|ko|de|fr|es|it|pt|nl|pl|sv|no|da|fi|el|hi|ms|sw|tr|ar,当前 %s", language)
+		}
 	default:
 		if language == "" {
 			language = "Chinese"
@@ -161,7 +178,7 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		}
 	}
 
-	req := localruntime.SynthRequest{ModelID: modelID, Language: language}
+	req := localruntime.SynthRequest{ModelID: modelID, Family: e.Family, Language: language}
 	// 情感参数仅 index_tts2 家族透传(qwen3 无此语义,直接忽略)
 	if e.Family == "index_tts2" {
 		req.EmotionText = paramString(in.Params, "emotion_text", "")
@@ -218,6 +235,10 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		} else {
 			req.Instruct = paramString(in.Params, "instruct", "")
 		}
+	}
+	// chatterbox 纯零样本克隆:参考转写无语义,不透传(server 只收 voice_ref)
+	if e.Family == "chatterbox" {
+		req.RefText = ""
 	}
 
 	report(5, "准备本地合成…", nil)
