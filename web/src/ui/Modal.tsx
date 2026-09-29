@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { Button } from "./Button";
 
@@ -26,7 +27,9 @@ export function Modal({ open, title, onClose, children, footer, width = 480 }: M
 
   if (!open) return null;
 
-  return (
+  // portal 到 body：玻璃材质卡片的 backdrop-blur/transform 会成为 fixed 后代的包含块，
+  // 就地渲染的弹窗会被锁进卡片区域（出屏裁切）——挂在根层永远以视口定位。
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]"
       onClick={(e) => {
@@ -39,10 +42,10 @@ export function Modal({ open, title, onClose, children, footer, width = 480 }: M
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="rise w-full rounded-[var(--radius-lg)] border border-line bg-panel shadow-[var(--shadow-3)]"
+        className="rise flex max-h-[85vh] w-full flex-col rounded-[var(--radius-lg)] border border-line bg-panel shadow-[var(--shadow-3)]"
         style={{ maxWidth: width }}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-3">
           <h2 className="text-sm font-medium text-fg">{title}</h2>
           <button
             onClick={onClose}
@@ -52,10 +55,12 @@ export function Modal({ open, title, onClose, children, footer, width = 480 }: M
             <X size={16} strokeWidth={1.75} />
           </button>
         </div>
-        <div className="px-4 py-4 text-sm text-fg-2">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-line px-4 py-3">{footer}</div>}
+        {/* 内容区内部滚动：内容超过视口时 header/footer 恒定可见，footer 按钮不再溢出视口 */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 text-sm text-fg-2">{children}</div>
+        {footer && <div className="flex shrink-0 justify-end gap-2 border-t border-line px-4 py-3">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

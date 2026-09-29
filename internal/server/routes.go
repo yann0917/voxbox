@@ -11,7 +11,7 @@ import (
 // （产物流/下载与路径、越权防御）、settings.go（凭证/存储/连通性）、pronunciation.go、
 // subtitles.go、search.go（转写全文搜索）、lookups.go（工具/音色/词典清单）、
 // mvsep.go、minutes_export.go、local.go、models.go、voicelib.go、assistant.go、
-// mediaenv.go（gsgcHealth）、hub.go（wsProgress）。
+// prompts.go（提示词库+AI 写作）、mediaenv.go（gsgcHealth）、hub.go（wsProgress）。
 func (s *Server) Handler() http.Handler {
 	r := gin.Default()
 	gin.SetMode(gin.ReleaseMode)
@@ -73,6 +73,7 @@ func (s *Server) Handler() http.Handler {
 	{
 		settingsAdmin.PUT("/providers/:name", s.putProviderSettings)
 		settingsAdmin.PUT("/storage", s.putStorageSettings)
+		settingsAdmin.PUT("/assistant", s.putAssistantSettings)
 		settingsAdmin.POST("/test-connection", s.testConnection)
 	}
 
@@ -138,6 +139,16 @@ func (s *Server) Handler() http.Handler {
 	{
 		assistantRoutes.GET("/models", s.assistantModels)
 		assistantRoutes.POST("/chat", s.assistantChat)
+	}
+
+	// 提示词库（内置+用户自定义）：条目按登录用户隔离，AI 写作流式同助手协议
+	promptRoutes := api.Group("/prompts")
+	{
+		promptRoutes.GET("", s.listPrompts)
+		promptRoutes.POST("", s.createPrompt)
+		promptRoutes.PUT("/:id", s.updatePrompt)
+		promptRoutes.DELETE("/:id", s.deletePrompt)
+		promptRoutes.POST("/apply", s.applyPrompt)
 	}
 
 	// MCP Streamable HTTP：独立组只受 mcpAuth 门控（仅 Bearer API token，客户端不携带

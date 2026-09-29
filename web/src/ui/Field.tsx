@@ -23,11 +23,12 @@ export function Textarea({ className = "", ...rest }: TextareaHTMLAttributes<HTM
 }
 
 export interface FieldProps {
-  label: string;
+  /** 刻印微标签；不传时不渲染标签行（控件建议自带 aria-label 兜底可访问名） */
+  label?: string;
   hint?: string;
   error?: string;
   required?: boolean;
-  /** 右侧小字（如「可选」「默认 mp3」） */
+  /** 右侧小字（如「可选」「默认 mp3」）；仅与 label 同行显示 */
   aside?: ReactNode;
   children: (props: { id: string; "aria-invalid"?: boolean; "aria-describedby"?: string }) => ReactNode;
 }
@@ -41,13 +42,17 @@ export function Field({ label, hint, error, required, aside, children }: FieldPr
   const descId = hint || error ? `${id}-desc` : undefined;
   return (
     <div className="space-y-1.5">
-      <div className="flex items-baseline justify-between gap-3">
-        <label htmlFor={id} className="micro">
-          {label}
-          {required && <span className="text-accent ml-1">*</span>}
-        </label>
-        {aside && <span className="text-[11px] text-muted">{aside}</span>}
-      </div>
+      {(label || aside) && (
+        <div className="flex items-baseline justify-between gap-3">
+          {label && (
+            <label htmlFor={id} className="micro">
+              {label}
+              {required && <span className="text-accent ml-1">*</span>}
+            </label>
+          )}
+          {aside && <span className="text-[11px] text-muted">{aside}</span>}
+        </div>
+      )}
       {children({ id, "aria-invalid": error ? true : undefined, "aria-describedby": descId })}
       {error ? (
         <p id={descId} className="text-[11px] text-danger">

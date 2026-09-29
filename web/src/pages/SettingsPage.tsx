@@ -36,6 +36,7 @@ import {
 } from "../ui";
 import LocalModelsSection from "./LocalModelsSection";
 import PronunciationSection from "./PronunciationSection";
+import AssistantModelCard from "./AssistantModelCard";
 
 /** test-connection 响应：results 逐卡回 name/ok/message，storage 独立段。 */
 interface ConnResult {
@@ -456,6 +457,9 @@ export default function SettingsPage() {
               </p>
             </CardBody>
           </Card>
+
+          {/* AI 默认大模型：悬浮助手与 AI 生成/润色共用；放 Tab 末尾，下拉不被下方大卡遮挡 */}
+          <AssistantModelCard />
         </div>
       ) : tab === "pronunciation" ? (
         <PronunciationSection />

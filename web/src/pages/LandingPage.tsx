@@ -17,7 +17,7 @@ import { Button } from "../ui";
 /** 能力矩阵（与控制台导航同序同义，公开页只做介绍不拉数据）。 */
 const CAPABILITIES = [
   { icon: AudioLines, title: "语音合成", desc: "火山三通道 + 千问双模型，多音色与自然语言风格指令" },
-  { icon: Mic, title: "语音识别", desc: "一句话秒级转写、长音频批量识别、说话人分离与分句时间戳" },
+  { icon: Mic, title: "语音识别", desc: "一句话秒级转写、说话人分离与分句时间戳" },
   { icon: Podcast, title: "播客工坊", desc: "双人对话稿一键合成播客节目" },
   { icon: Waves, title: "人声分离", desc: "多引擎人声与伴奏分轨，站点线路备选" },
   { icon: Scissors, title: "音频剪辑", desc: "ffmpeg 本地处理：裁剪合并、变调、均衡、口播闪避" },

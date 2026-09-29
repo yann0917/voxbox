@@ -18,6 +18,7 @@ import {
   type VoiceLibItem,
 } from "../../lib/voiceLibrary";
 import { AudioRow, ProgressBody, type Run } from "./TTSShared";
+import AIWrite from "./AIWrite";
 import {
   Button,
   Card,
@@ -364,13 +365,19 @@ export default function LocalTTSPanel() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* 左:文本编辑区 + 运行态 + 结果 */}
         <Card className="min-w-0">
-          <CardHeader title="合成文本" icon={<AudioLines size={15} strokeWidth={1.75} />} />
+          <CardHeader
+            title="合成文本"
+            icon={<AudioLines size={15} strokeWidth={1.75} />}
+            aside={<AIWrite value={text} onChange={setText} />}
+          />
           <CardBody className="space-y-3">
             <Textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              rows={8}
+              rows={14}
+              aria-label="文本内容"
               placeholder="输入要合成的文本…"
+              className="min-h-[320px] max-h-[60vh]"
             />
             {/* ProgressBody 是运行中组件(带波形骨架):仅非终态显示,完成/失败由产物行与错误行接管 */}
             {taskId && run && run.status !== "succeeded" && run.status !== "failed" && (

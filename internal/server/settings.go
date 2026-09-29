@@ -29,8 +29,28 @@ func (s *Server) getSettings(c *gin.Context) {
 			// 各存储类型独立配置段：设置页切换存储类型时按段换显已存值，互不覆盖。
 			"channels": storageChannelsPayload(cfg.StorageChannels),
 		},
-		"data_dir": cfg.DataDir,
+		// AI 默认大模型（悬浮助手与生成/润色共用），空=自动回落。
+		"assistant": gin.H{"default_model": cfg.Assistant.DefaultModel},
+		"data_dir":  cfg.DataDir,
 	})
+}
+
+type putAssistantReq struct {
+	DefaultModel string `json:"default_model"`
+}
+
+// putAssistantSettings 保存「AI 默认大模型」（空串=恢复自动回落）。
+func (s *Server) putAssistantSettings(c *gin.Context) {
+	var req putAssistantReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, CodeBadRequest, "参数错误")
+		return
+	}
+	if err := s.svc.SaveAssistantDefault(req.DefaultModel); err != nil {
+		fail(c, CodeBadRequest, err.Error())
+		return
+	}
+	ok(c, gin.H{"ok": true, "note": "默认大模型已保存并即时生效"})
 }
 
 // storageChannelsPayload 各存储类型的独立配置（secret 只回传 has_secret_key）。

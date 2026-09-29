@@ -73,3 +73,17 @@ type Artifact struct {
 	Meta       string `gorm:"type:text"` // JSON
 	CreatedAt  time.Time
 }
+
+// Prompt 提示词库的用户自定义条目；内置条目烤在 internal/prompts 不入库。
+// 内容是发给大模型的系统提示模板，朗读约束由服务端在调用时统一追加，不依赖用户自觉。
+type Prompt struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	UserID      string    `gorm:"size:36;index" json:"-"` // 所有者（公网多用户隔离）；提示词始终按人隔离，admin 也不例外
+	Name        string    `gorm:"size:64" json:"name"`
+	Category    string    `gorm:"size:32" json:"category"` // 分组标签，与内置条目的 Category 同一命名空间
+	Description string    `gorm:"size:255" json:"description"`
+	Content     string    `gorm:"type:text" json:"content"`
+	Kind        string    `gorm:"size:16;default:generate" json:"kind"` // generate|polish
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

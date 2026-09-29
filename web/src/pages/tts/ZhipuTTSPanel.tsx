@@ -6,6 +6,7 @@ import type { TaskDetail } from "../../lib/types";
 import { useTaskEvents } from "../../lib/ws";
 import ZhipuVoicePicker, { type ZhipuVoice } from "../../components/ZhipuVoicePicker";
 import { AudioRow, ProgressBody, type Run } from "./TTSShared";
+import AIWrite from "./AIWrite";
 import {
   Button,
   Card,
@@ -19,8 +20,8 @@ import {
   useToast,
 } from "../../ui";
 
-/** 智谱 glm-tts 非流式合成：单请求整段返回 wav；input ≤1024 字符（与后端同口径）。 */
-const MAX_CHARS = 1024;
+/** 智谱 glm-tts 非流式合成：单请求整段返回 wav；超单次上限由服务端按句自动分段拼 Wav，前端不设上限。 */
+const ZHIPU_SPLIT_CHARS = 1024;
 
 /** 智谱语音合成面板：官方/复刻音色（运行时列表，含试听），语速/音量可选。 */
 export default function ZhipuTTSPanel() {
@@ -120,23 +121,27 @@ export default function ZhipuTTSPanel() {
             title="合成文本"
             icon={<AudioLines size={15} strokeWidth={1.75} />}
             aside={
-              <span className={`font-mono text-[11px] tabular-nums ${charCount > MAX_CHARS ? "text-danger" : "text-muted"}`}>
-                {charCount} / {MAX_CHARS} 字
-              </span>
+              <div className="flex items-center gap-2">
+                <AIWrite value={text} onChange={setText} />
+                <span className="font-mono text-[11px] tabular-nums text-muted">{charCount} 字</span>
+              </div>
             }
           />
           <CardBody className="space-y-3">
             {/* 包裹层仅用于「去输入文本」聚焦：Textarea 组件不透传 ref */}
             <div ref={textWrapRef}>
-              <Field label="文本内容" hint="支持中英文混排，数字与标点按原文合成。">
+              <Field
+                hint={charCount > ZHIPU_SPLIT_CHARS ? "超过 1024 字将自动分段合成，各段分别计费。" : "支持中英文混排，数字与标点按原文合成。"}
+              >
                 {({ id, ...rest }) => (
                   <Textarea
                     id={id}
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    rows={10}
+                    rows={14}
+                    aria-label="文本内容"
                     placeholder="输入要合成的文本…"
-                    className="min-h-[220px] max-h-[46vh]"
+                    className="min-h-[320px] max-h-[60vh]"
                     {...rest}
                   />
                 )}

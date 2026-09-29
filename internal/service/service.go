@@ -308,6 +308,7 @@ func (s *Service) ReloadDiskConfig(disk *config.Config) {
 	nc.Xiaomi = disk.Xiaomi
 	nc.Zhipu = disk.Zhipu
 	nc.OpenRouter = disk.OpenRouter
+	nc.Assistant = disk.Assistant
 	s.cfg.Store(&nc)
 	volcengine.ReRegisterAll(s.reg, nc, nc.DataDir)
 	mvsep.ReRegisterAll(s.reg, nc, nc.DataDir)

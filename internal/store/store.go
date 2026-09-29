@@ -17,7 +17,7 @@ func Open(path string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := g.AutoMigrate(&Task{}, &Artifact{}, &User{}, &Session{}); err != nil {
+	if err := g.AutoMigrate(&Task{}, &Artifact{}, &User{}, &Session{}, &Prompt{}); err != nil {
 		return nil, err
 	}
 	d := &DB{gorm: g}

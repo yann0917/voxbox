@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowUp, Sparkles, Square, X } from "lucide-react";
 import { fetchJSON } from "../lib/api";
 import { usePlayer } from "../lib/player";
+import { useSettings } from "../lib/useStorageEnabled";
 import { IconButton, Markdown, Select, Textarea, useToast, WaveLoader } from "../ui";
 
 interface AssistantPlatform {
@@ -35,15 +36,22 @@ export default function AssistantWidget() {
     queryFn: () => fetchJSON<AssistantPlatform[]>("/api/assistant/models"),
     staleTime: 60_000,
   });
+  const { data: settings } = useSettings();
 
-  // 默认模型：首个已配置平台的第一个模型，渲染期派生（目录未到位为空串 → 显示占位）
+  // 默认模型：设置页「AI 默认大模型」优先（平台仍可用时；与 AI 生成/润色共用一个口径），
+  // 未设置或已失效回落「首个已配置平台的第一个模型」，渲染期派生（目录未到位为空串 → 显示占位）
+  const storedDefault = settings?.assistant?.default_model ?? "";
+  const storedUsable = storedDefault !== "" &&
+    (platforms ?? []).some((p) => p.enabled && p.models.some((m) => `${p.provider}:${m.id}` === storedDefault));
   const model =
     picked ||
-    (() => {
-      const first =
-        platforms?.find((p) => p.enabled && p.models.length > 0) ?? platforms?.find((p) => p.models.length > 0);
-      return first ? `${first.provider}:${first.models[0].id}` : "";
-    })();
+    (storedUsable
+      ? storedDefault
+      : (() => {
+          const first =
+            platforms?.find((p) => p.enabled && p.models.length > 0) ?? platforms?.find((p) => p.models.length > 0);
+          return first ? `${first.provider}:${first.models[0].id}` : "";
+        })());
 
   // 流式输出贴底滚动；用户上翻（距底 > 64px）则停止跟随
   useEffect(() => {

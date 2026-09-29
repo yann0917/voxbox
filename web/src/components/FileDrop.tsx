@@ -6,7 +6,7 @@ interface FileDropProps {
   /** 单文件模式的受控值（与 multiple 互斥使用） */
   file?: File | null;
   onFile?: (f: File | null) => void;
-  /** 多文件模式（工作台批量识别）：受控 File 数组，拖入/选择为追加语义由父层决定 */
+  /** 多文件模式：受控 File 数组，拖入/选择为追加语义由父层决定 */
   multiple?: boolean;
   files?: File[];
   onFiles?: (fs: File[]) => void;
@@ -20,8 +20,7 @@ interface FileDropProps {
   error?: string;
 }
 
-/** 本地文件拖放/点选区：人声分离/妙记的单文件与工作台批量识别的多文件上传通道
- *（文件经服务端中转对象存储）。 */
+/** 本地文件拖放/点选区（人声分离/妙记等页面的上传通道，文件经服务端中转对象存储）。 */
 export function FileDrop({ file, onFile, multiple, files, onFiles, accept, emptyHint, label, error }: FileDropProps) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);

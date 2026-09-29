@@ -37,6 +37,14 @@ type Config struct {
 	// OpenRouter 聚合网关（openrouter.ai）凭证：Gemini 语音合成经网关调用，一个 API Key，
 	// BaseURL 固定官方，不提供覆写。
 	OpenRouter OpenRouterConfig
+	// Assistant AI 文本能力（悬浮助手/提示词库生成与润色）的共享设置：默认大模型
+	// "provider:model"，空=自动回落第一个已配置平台的第一个模型。
+	Assistant AssistantConfig
+}
+
+// AssistantConfig AI 文本能力的共享设置段。
+type AssistantConfig struct {
+	DefaultModel string `mapstructure:"default_model"`
 }
 
 type ServerConfig struct {
@@ -249,6 +257,9 @@ func configFromViper(v *viper.Viper) *Config {
 		OpenRouter: OpenRouterConfig{
 			APIKey: strings.TrimSpace(v.GetString("openrouter.api_key")),
 		},
+		Assistant: AssistantConfig{
+			DefaultModel: strings.TrimSpace(v.GetString("assistant.default_model")),
+		},
 	}
 }
 
@@ -418,6 +429,7 @@ func List() ([]KV, error) {
 		{"xiaomi.api_key", mask(cfg.Xiaomi.APIKey)},
 		{"zhipu.api_key", mask(cfg.Zhipu.APIKey)},
 		{"openrouter.api_key", mask(cfg.OpenRouter.APIKey)},
+		{"assistant.default_model", cfg.Assistant.DefaultModel},
 	}
 	// 各通道段独立列出（bucket/AK/SK）；键即真实落盘布局，可直接指导 config set。
 	for _, name := range slices.Sorted(maps.Keys(cfg.StorageChannels)) {

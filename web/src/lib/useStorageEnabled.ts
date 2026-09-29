@@ -50,6 +50,8 @@ export interface SettingsShape {
     /** 各存储类型独立配置（键=provider 名）：切换类型按段换显，互不覆盖。 */
     channels: Record<string, StorageChannelShape>;
   };
+  /** AI 默认大模型（"provider:model"，空=自动回落），悬浮助手与 AI 生成/润色共用。 */
+  assistant?: { default_model: string };
   data_dir: string;
 }
 

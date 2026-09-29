@@ -23,6 +23,7 @@ const GsgcPage = lazy(() => import("./pages/GsgcPage"));
 const TranslatePage = lazy(() => import("./pages/TranslatePage"));
 const MinutesPage = lazy(() => import("./pages/MinutesPage"));
 const SubtitlesPage = lazy(() => import("./pages/SubtitlesPage"));
+const PromptLibraryPage = lazy(() => import("./pages/PromptLibraryPage"));
 const AboutPage = lazy(() => import("./pages/AboutPage"));
 const HistoryPage = lazy(() => import("./pages/HistoryPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
@@ -89,6 +90,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="/translate" element={<TranslatePage />} />
               <Route path="/minutes" element={<MinutesPage />} />
               <Route path="/subtitles" element={<SubtitlesPage />} />
+              <Route path="/prompts" element={<PromptLibraryPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/settings" element={<SettingsPage />} />

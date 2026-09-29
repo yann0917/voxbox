@@ -14,6 +14,7 @@ import type { TaskDetail, TaskStatus, Voice } from "../../lib/types";
 import { useTaskEvents } from "../../lib/ws";
 import { VoicePicker } from "../../components/VoicePicker";
 import { ArtifactRow } from "../../components/ArtifactRow";
+import AIWrite from "./AIWrite";
 import {
   Button,
   Card,
@@ -171,19 +172,25 @@ export default function TTSStreamPanel() {
           <CardHeader
             title="合成文本"
             icon={<Radio size={15} strokeWidth={1.75} />}
-            aside={<span className="font-mono text-[11px] tabular-nums text-muted">{charCount} 字</span>}
+            aside={
+              <div className="flex items-center gap-2">
+                <AIWrite value={text} onChange={setText} />
+                <span className="font-mono text-[11px] tabular-nums text-muted">{charCount} 字</span>
+              </div>
+            }
           />
           <CardBody className="space-y-3">
             <div ref={textWrapRef}>
-              <Field label="文本内容" hint="一次性输入、流式返回：适合短中篇的低延迟合成；10 万字长文请用「长文本合成」。">
+              <Field hint="一次性输入、流式返回：适合短中篇的低延迟合成；10 万字长文请用「长文本合成」。">
                 {({ id, ...rest }) => (
                   <Textarea
                     id={id}
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    rows={12}
+                    rows={16}
+                    aria-label="文本内容"
                     placeholder="输入要合成的文本…"
-                    className="min-h-[260px] max-h-[52vh]"
+                    className="min-h-[320px] max-h-[60vh]"
                     {...rest}
                   />
                 )}

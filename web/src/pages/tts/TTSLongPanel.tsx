@@ -14,6 +14,7 @@ import type { TaskDetail, TaskStatus, Voice } from "../../lib/types";
 import { useTaskEvents } from "../../lib/ws";
 import { VoicePicker } from "../../components/VoicePicker";
 import { ArtifactRow } from "../../components/ArtifactRow";
+import AIWrite from "./AIWrite";
 import {
   Button,
   Card,
@@ -186,15 +187,17 @@ export default function TTSLongPanel() {
             title="合成文本"
             icon={<ScrollText size={15} strokeWidth={1.75} />}
             aside={
-              <span className={`font-mono text-[11px] tabular-nums ${overLimit ? "text-danger" : "text-muted"}`}>
-                {charCount} / {MAX_CHARS} 字
-              </span>
+              <div className="flex items-center gap-2">
+                <AIWrite value={text} onChange={setText} />
+                <span className={`font-mono text-[11px] tabular-nums ${overLimit ? "text-danger" : "text-muted"}`}>
+                  {charCount} / {MAX_CHARS} 字
+                </span>
+              </div>
             }
           />
           <CardBody className="space-y-3">
             <div ref={textWrapRef}>
               <Field
-                label="文本内容"
                 hint="异步任务模式：提交后轮询产出，合成耗时与文本量正相关（分钟级）。支持从文件粘贴大段文本。"
                 error={textError}
               >
@@ -204,6 +207,7 @@ export default function TTSLongPanel() {
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     rows={16}
+                    aria-label="文本内容"
                     placeholder="粘贴或输入要合成的长文本…"
                     className="min-h-[320px] max-h-[60vh]"
                     {...rest}

@@ -61,19 +61,55 @@ func TestScanStreamDoneWithoutTerminator(t *testing.T) {
 }
 
 func TestBuildChatRequest(t *testing.T) {
-	req := buildChatRequest(ProviderQianwen, "qwen3.8-flash", []Message{{Role: "user", Content: "你好"}})
+	req := buildChatRequest(ProviderQianwen, "qwen3.8-flash", systemPrompt, []Message{{Role: "user", Content: "你好"}})
 	if !req.Stream || len(req.Messages) != 2 {
 		t.Fatalf("req = %+v", req)
 	}
-	if req.Messages[0].Role != "system" || req.Messages[1].Role != "user" || req.Messages[1].Content != "你好" {
+	if req.Messages[0].Role != "system" || req.Messages[0].Content != systemPrompt ||
+		req.Messages[1].Role != "user" || req.Messages[1].Content != "你好" {
 		t.Fatalf("messages = %+v", req.Messages)
 	}
 	if req.EnableThinking == nil || *req.EnableThinking {
 		t.Fatalf("千问应携带 enable_thinking=false, got %+v", req.EnableThinking)
 	}
-	other := buildChatRequest(ProviderZhipu, "glm-5.3-flash", nil)
+	other := buildChatRequest(ProviderZhipu, "glm-5.3-flash", systemPrompt, nil)
 	if other.EnableThinking != nil {
 		t.Fatalf("智谱不应发送 enable_thinking")
+	}
+	compose := buildChatRequest(ProviderQianwen, "qwen3.8-flash", "自定义系统提示", nil)
+	if len(compose.Messages) != 1 || compose.Messages[0].Content != "自定义系统提示" {
+		t.Fatalf("StreamCompose 的 system 应可替换: %+v", compose.Messages)
+	}
+}
+
+func TestResolveDefault(t *testing.T) {
+	// 全未配置：报哨兵错误（failErr 映射业务码 4）
+	if _, _, err := ResolveDefault(&config.Config{}); err == nil {
+		t.Fatal("全未配置应报错")
+	}
+	// 未配置默认：回落第一个已配置平台的第一个模型
+	cfg := &config.Config{Qianwen: config.QianwenConfig{APIKey: "k"}}
+	p, model, err := ResolveDefault(cfg)
+	if err != nil || p != ProviderQianwen || model != "qwen3.8-flash" {
+		t.Fatalf("got %s/%s, %v; want qianwen/qwen3.8-flash", p, model, err)
+	}
+	// 配置了默认且可用：按配置走
+	cfg.Assistant.DefaultModel = "zhipu:glm-5.3"
+	cfg.Zhipu = config.ZhipuConfig{APIKey: "k"}
+	if p, model, _ := ResolveDefault(cfg); p != ProviderZhipu || model != "glm-5.3" {
+		t.Fatalf("got %s/%s; want zhipu/glm-5.3", p, model)
+	}
+	// 配置的默认失效（模型不在目录/无凭证）：回落
+	cfg2 := &config.Config{Assistant: config.AssistantConfig{DefaultModel: "zhipu:glm-5.3"}}
+	if p, model, _ := ResolveDefault(cfg2); p != "" && model == "glm-5.3" {
+		t.Fatalf("无凭证的默认应回落, got %s/%s", p, model)
+	}
+	cfg3 := &config.Config{
+		Qianwen:   config.QianwenConfig{APIKey: "k"},
+		Assistant: config.AssistantConfig{DefaultModel: "zhipu:gpt-4o"},
+	}
+	if p, model, _ := ResolveDefault(cfg3); p != ProviderQianwen || model != "qwen3.8-flash" {
+		t.Fatalf("目录外默认应回落, got %s/%s", p, model)
 	}
 }
 

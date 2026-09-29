@@ -5,6 +5,7 @@ import { fetchJSON } from "../../lib/api";
 import type { TaskDetail } from "../../lib/types";
 import { useTaskEvents } from "../../lib/ws";
 import { AudioRow, ProgressBody, type Run } from "./TTSShared";
+import AIWrite from "./AIWrite";
 import {
   Button,
   Card,
@@ -116,20 +117,26 @@ export default function OpenRouterTTSPanel() {
           <CardHeader
             title="合成文本"
             icon={<AudioLines size={15} strokeWidth={1.75} />}
-            aside={<span className="font-mono text-[11px] tabular-nums text-muted">{charCount} 字</span>}
+            aside={
+              <div className="flex items-center gap-2">
+                <AIWrite value={text} onChange={setText} />
+                <span className="font-mono text-[11px] tabular-nums text-muted">{charCount} 字</span>
+              </div>
+            }
           />
           <CardBody className="space-y-3">
             {/* 包裹层仅用于「去输入文本」聚焦：Textarea 组件不透传 ref */}
             <div ref={textWrapRef}>
-              <Field label="文本内容" hint="整段一次合成，超限由上游报错提示。">
+              <Field hint="整段一次合成，超限由上游报错提示。">
                 {({ id, ...rest }) => (
                   <Textarea
                     id={id}
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    rows={10}
+                    rows={14}
+                    aria-label="文本内容"
                     placeholder="输入要合成的文本…"
-                    className="min-h-[220px] max-h-[46vh]"
+                    className="min-h-[320px] max-h-[60vh]"
                     {...rest}
                   />
                 )}

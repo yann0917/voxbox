@@ -139,6 +139,34 @@ func ModelAllowed(p Provider, model string) bool {
 	return false
 }
 
+// ResolveDefault 解析「AI 默认大模型」：配置了 assistant.default_model 且平台、模型、
+// 凭证三者齐备时按配置走；未配置或已失效（换 key/下架模型）回落第一个已配置平台的
+// 第一个模型；三家全未配置时报可映射业务码 4 的哨兵错误。悬浮助手与提示词库的
+// 生成/润色共用这一个口径。
+func ResolveDefault(cfg *config.Config) (Provider, string, error) {
+	if v := cfg.Assistant.DefaultModel; v != "" {
+		if p, model, ok := splitModelRef(v); ok && KnownProvider(p) && ModelAllowed(p, model) && apiKeyOf(cfg, p) != "" {
+			return p, model, nil
+		}
+	}
+	for _, c := range catalog {
+		if apiKeyOf(cfg, c.Provider) != "" {
+			return c.Provider, c.Models[0].ID, nil
+		}
+	}
+	return "", "", errNoCredOf(ProviderZhipu)
+}
+
+// splitModelRef 拆 "provider:model" 引用。
+func splitModelRef(v string) (Provider, string, bool) {
+	name, model, found := strings.Cut(v, ":")
+	p, model := Provider(strings.TrimSpace(name)), strings.TrimSpace(model)
+	if !found || p == "" || model == "" {
+		return "", "", false
+	}
+	return p, model, true
+}
+
 // endpoint 各平台 OpenAI 兼容 chat/completions 入口：智谱/小米与语音调用同域同鉴权；
 // 千问走 DashScope 兼容模式（maas.qianwenaiapi.com/compatible-mode，2026-09-26 真机校准）。
 func endpoint(p Provider) string {
@@ -200,16 +228,27 @@ type apiErrorBody struct {
 }
 
 // Stream 发起流式对话，逐段回调增量正文（delta.content；reasoning_content 思考通道不回调，
-// 思考期表现为短暂等待）。messages 由调用方完成角色与长度约束，system 提示在此统一注入。
+// 思考期表现为短暂等待）。messages 由调用方完成角色与长度约束，助手角色系统提示在此统一注入。
 // 整体硬上限 3 分钟：正常问答远低于此，上游卡死时兜底。
 func Stream(ctx context.Context, cfg *config.Config, p Provider, model string, messages []Message, onDelta func(string)) error {
+	return streamChat(ctx, cfg, p, model, systemPrompt, messages, onDelta)
+}
+
+// StreamCompose 文本生成/润色专用的流式调用：system 提示由调用方给定（提示词库条目），
+// 不注入助手角色提示。其余语义与 Stream 完全一致。
+func StreamCompose(ctx context.Context, cfg *config.Config, p Provider, model, system string, messages []Message, onDelta func(string)) error {
+	return streamChat(ctx, cfg, p, model, system, messages, onDelta)
+}
+
+// streamChat 流式调用共用实现：凭证与模型白名单校验后直连平台 SSE 端点。
+func streamChat(ctx context.Context, cfg *config.Config, p Provider, model, system string, messages []Message, onDelta func(string)) error {
 	if err := CheckCredential(cfg, p); err != nil {
 		return err
 	}
 	if !ModelAllowed(p, model) {
 		return fmt.Errorf("平台 %s 不支持模型 %s", Label(p), model)
 	}
-	raw, err := json.Marshal(buildChatRequest(p, model, messages))
+	raw, err := json.Marshal(buildChatRequest(p, model, system, messages))
 	if err != nil {
 		return err
 	}
@@ -308,9 +347,9 @@ func decodeProviderError(p Provider, body []byte, status int) error {
 }
 
 // buildChatRequest 组装请求：system 提示前置 + 客户端消息原样；千问附带关闭思考模式。
-func buildChatRequest(p Provider, model string, messages []Message) chatRequest {
+func buildChatRequest(p Provider, model, system string, messages []Message) chatRequest {
 	msgs := make([]chatMessage, 0, len(messages)+1)
-	msgs = append(msgs, chatMessage{Role: "system", Content: systemPrompt})
+	msgs = append(msgs, chatMessage{Role: "system", Content: system})
 	for _, m := range messages {
 		msgs = append(msgs, chatMessage{Role: m.Role, Content: m.Content})
 	}
