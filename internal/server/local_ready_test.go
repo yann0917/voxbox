@@ -88,7 +88,7 @@ func TestLocalReadyKokoroPair(t *testing.T) {
 	modelsRoot := s.svc.LocalModels().Dir()
 	dataDir := filepath.Dir(modelsRoot)
 	seedInstalledEngine(t, dataDir, "sherpa-onnx")
-	seedInstalledModel(t, modelsRoot, "kokoro-v1.1-zh-int8")
+	seedInstalledModel(t, modelsRoot, "kokoro-v1.1-zh")
 	resp, err := ac.Get(ts.URL + "/api/local/ready?tool=tts")
 	if err != nil {
 		t.Fatal(err)

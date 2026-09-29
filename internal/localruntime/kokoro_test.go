@@ -35,7 +35,7 @@ func writeArgvRecordingKokoro(t *testing.T, dir string) string {
 func seedKokoroModelFiles(t *testing.T, dir string) {
 	t.Helper()
 	_ = os.MkdirAll(dir, 0o755)
-	for _, name := range []string{"model.int8.onnx", "voices.bin", "tokens.txt"} {
+	for _, name := range []string{"model.onnx", "voices.bin", "tokens.txt"} {
 		_ = os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644)
 	}
 	_ = os.MkdirAll(filepath.Join(dir, "espeak-ng-data"), 0o755)
@@ -62,7 +62,7 @@ func TestSynthesizeKokoroArgvAssembly(t *testing.T) {
 		return strings.Join(paths, ",")
 	}
 	want := []string{
-		"--kokoro-model=" + filepath.Join(dir, "model.int8.onnx"),
+		"--kokoro-model=" + filepath.Join(dir, "model.onnx"),
 		"--kokoro-voices=" + filepath.Join(dir, "voices.bin"),
 		"--kokoro-tokens=" + filepath.Join(dir, "tokens.txt"),
 		"--kokoro-data-dir=" + filepath.Join(dir, "espeak-ng-data"),
@@ -144,9 +144,9 @@ func TestKokoroTTS(t *testing.T) {
 		t.Fatal("播种引擎后 Installed 仍为 false")
 	}
 	// 播种 kokoro 模型目录 + manifest
-	modelDir := filepath.Join(dataDir, "models", "kokoro-v1.1-zh-int8")
+	modelDir := filepath.Join(dataDir, "models", "kokoro-v1.1-zh")
 	seedKokoroModelFiles(t, modelDir)
-	mmf := `{"id":"kokoro-v1.1-zh-int8","revision":"master","completed_at":"2026-01-01T00:00:00Z"}`
+	mmf := `{"id":"kokoro-v1.1-zh","revision":"master","completed_at":"2026-01-01T00:00:00Z"}`
 	if err := os.WriteFile(filepath.Join(modelDir, "manifest.json"), []byte(mmf), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestKokoroTTS(t *testing.T) {
 	t.Setenv("KOKORO_ARGV_OUT", argvOut)
 	k := NewKokoroTTS(dataDir, models)
 	out, err := k.Synthesize(context.Background(), SynthRequest{
-		ModelID: "kokoro-v1.1-zh-int8", Text: "你好", SpeakerSID: 58,
+		ModelID: "kokoro-v1.1-zh", Text: "你好", SpeakerSID: 58,
 	}, func(p int, note string) {})
 	if err != nil {
 		t.Fatal(err)

@@ -23,7 +23,7 @@ const kokoroTTSBinary = "sherpa-onnx-offline-tts"
 // SynthesizeKokoro 一次性子进程合成:sid 选内置音色,输出固定 24kHz 单声道 pcm16
 // (与音色库管线一致)。启动前校验模型文件在位,失败取 stderr 末行,产物未落地视为失败。
 func SynthesizeKokoro(ctx context.Context, binPath, modelDir, outPath, text string, sid int) error {
-	model := filepath.Join(modelDir, "model.int8.onnx")
+	model := filepath.Join(modelDir, "model.onnx")
 	voices := filepath.Join(modelDir, "voices.bin")
 	tokens := filepath.Join(modelDir, "tokens.txt")
 	espeakData := filepath.Join(modelDir, "espeak-ng-data")

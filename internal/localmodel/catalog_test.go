@@ -118,7 +118,7 @@ func TestEmbeddedCatalog(t *testing.T) {
 	wantIDs := []string{
 		"sherpa-onnx", "audiocpp",
 		"sensevoice-int8", "qwen3-tts-base-q8", "qwen3-tts-customvoice-q8", "qwen3-tts-base-0.6b-q8",
-		"index-tts2_5-q8", "kokoro-v1.1-zh-int8", "chatterbox-q8",
+		"index-tts2_5-q8", "kokoro-v1.1-zh", "chatterbox-q8",
 	}
 	if len(catalog) != len(wantIDs) {
 		t.Fatalf("内嵌目录应为 %d 条(2 引擎 + 7 模型),实际 %d", len(wantIDs), len(catalog))
@@ -369,29 +369,29 @@ func TestEmbeddedCatalogIndexTTS2(t *testing.T) {
 }
 
 // TestEmbeddedCatalogKokoro 落实 family 规则与 kokoro 条目实测留档:
-// kokoro-multi-lang-v1_1(int8)即 hexgrad/Kokoro-82M-v1.1-zh 的 sherpa-onnx 导出,
-// archive_size/sha256 为本机对整包实测;espeak-ng-data/ 目录条目验证 checkRelPath
+// kokoro-multi-lang-v1_1(fp32 全量版)即 hexgrad/Kokoro-82M-v1.1-zh 的 sherpa-onnx
+// 导出,archive_size/sha256 为本机对整包实测;espeak-ng-data/ 目录条目验证 checkRelPath
 // 的目录白名单语义(尾缀 / 放行,归档内嵌数据目录不能被 basename 扁平化散架)。
 func TestEmbeddedCatalogKokoro(t *testing.T) {
 	for _, e := range catalog {
-		if e.ID != "kokoro-v1.1-zh-int8" {
+		if e.ID != "kokoro-v1.1-zh" {
 			continue
 		}
 		if e.Family != "kokoro" {
-			t.Fatalf("kokoro-v1.1-zh-int8 的 family 应为 kokoro,实际 %q", e.Family)
+			t.Fatalf("kokoro-v1.1-zh 的 family 应为 kokoro,实际 %q", e.Family)
 		}
 		if e.RequiresEngine != "sherpa-onnx" {
-			t.Errorf("kokoro-v1.1-zh-int8 的 requires_engine 应为 sherpa-onnx,实际 %q", e.RequiresEngine)
+			t.Errorf("kokoro-v1.1-zh 的 requires_engine 应为 sherpa-onnx,实际 %q", e.RequiresEngine)
 		}
-		if e.SizeBytes != 147031220 || e.ArchiveSize != 147031220 {
-			t.Errorf("kokoro-v1.1-zh-int8 size/archive_size 应为实测 147031220,实际 %d/%d",
+		if e.SizeBytes != 364816464 || e.ArchiveSize != 364816464 {
+			t.Errorf("kokoro-v1.1-zh size/archive_size 应为实测 364816464,实际 %d/%d",
 				e.SizeBytes, e.ArchiveSize)
 		}
-		const want = "a1e94694776049035c4f2c6529f003aaece993c76aae9a78995831c3c4dcafc6"
+		const want = "a3f4c73d043860e3fd2e5b06f36795eb81de0fc8e8de6df703245edddd87dbad"
 		if e.ArchiveSHA256 != want {
-			t.Errorf("kokoro-v1.1-zh-int8 archive_sha256 应为实测整包哈希,实际 %q", e.ArchiveSHA256)
+			t.Errorf("kokoro-v1.1-zh archive_sha256 应为实测整包哈希,实际 %q", e.ArchiveSHA256)
 		}
-		for _, want := range []string{"model.int8.onnx", "voices.bin", "tokens.txt",
+		for _, want := range []string{"model.onnx", "voices.bin", "tokens.txt",
 			"lexicon-us-en.txt", "lexicon-zh.txt", "date-zh.fst", "phone-zh.fst", "number-zh.fst", "espeak-ng-data/"} {
 			found := false
 			for _, f := range e.ExtractFiles {
@@ -401,12 +401,12 @@ func TestEmbeddedCatalogKokoro(t *testing.T) {
 				}
 			}
 			if !found {
-				t.Errorf("kokoro-v1.1-zh-int8 的 extract_files 缺少 %q", want)
+				t.Errorf("kokoro-v1.1-zh 的 extract_files 缺少 %q", want)
 			}
 		}
 		return
 	}
-	t.Fatal("内嵌目录缺少 kokoro-v1.1-zh-int8 条目")
+	t.Fatal("内嵌目录缺少 kokoro-v1.1-zh 条目")
 }
 
 // TestCheckRelPathDirEntries 目录条目(尾缀 /)的放行与拒绝边界。

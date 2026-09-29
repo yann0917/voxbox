@@ -130,7 +130,7 @@ func TestTTSHappyPathPreset(t *testing.T) {
 func TestASRHappyPath(t *testing.T) {
 	dataDir, m := newTestPkg(t)
 	seedEngine(t, dataDir, m, "sherpa-onnx", "sherpa-onnx-offline")
-	seedModelFile(t, dataDir, m, "sensevoice-int8", "model.int8.onnx")
+	seedModelFile(t, dataDir, m, "sensevoice-int8", "model.onnx")
 	wav := filepath.Join(dataDir, "in.wav")
 	if err := os.WriteFile(wav, []byte("RIFF"), 0o644); err != nil {
 		t.Fatal(err)
@@ -391,7 +391,7 @@ func TestTTSQwen3IgnoresEmotion(t *testing.T) {
 func seedKokoroTTS(t *testing.T, dataDir string, m *localmodel.Manager) {
 	t.Helper()
 	seedEngine(t, dataDir, m, "sherpa-onnx", "sherpa-onnx-offline")
-	seedModelFile(t, dataDir, m, "kokoro-v1.1-zh-int8", "model.int8.onnx")
+	seedModelFile(t, dataDir, m, "kokoro-v1.1-zh", "model.onnx")
 }
 
 // TestTTSKokoroRejectsClone kokoro 为纯预置模型:clone 模式直述不支持。
@@ -401,7 +401,7 @@ func TestTTSKokoroRejectsClone(t *testing.T) {
 	tts := newTTSTool(dataDir, m, nil, nil)
 	tts.synthesizeFn = noSynthStub(t)
 	_, err := tts.Run(context.Background(), provider.TaskInput{
-		Params: map[string]any{"model": "kokoro-v1.1-zh-int8", "mode": "clone", "text": "你好"},
+		Params: map[string]any{"model": "kokoro-v1.1-zh", "mode": "clone", "text": "你好"},
 		Files:  map[string]string{},
 	}, func(p int, note string, d map[string]any) {})
 	if err == nil || !strings.Contains(err.Error(), "Kokoro 为预置音色模型") {
@@ -416,7 +416,7 @@ func TestTTSKokoroUnknownVoice(t *testing.T) {
 	tts := newTTSTool(dataDir, m, nil, nil)
 	tts.synthesizeFn = noSynthStub(t)
 	_, err := tts.Run(context.Background(), provider.TaskInput{
-		Params: map[string]any{"model": "kokoro-v1.1-zh-int8", "mode": "preset", "speaker": "zf_999", "text": "你好"},
+		Params: map[string]any{"model": "kokoro-v1.1-zh", "mode": "preset", "speaker": "zf_999", "text": "你好"},
 	}, func(p int, note string, d map[string]any) {})
 	if err == nil || !strings.Contains(err.Error(), "未知 Kokoro 音色") {
 		t.Fatalf("未知 kokoro 音色应直述: %v", err)
@@ -438,12 +438,12 @@ func TestTTSKokoroHappyPath(t *testing.T) {
 		return outWav, nil
 	}
 	out, err := tts.Run(context.Background(), provider.TaskInput{
-		Params: map[string]any{"model": "kokoro-v1.1-zh-int8", "mode": "preset", "speaker": "zf_001", "text": "你好"},
+		Params: map[string]any{"model": "kokoro-v1.1-zh", "mode": "preset", "speaker": "zf_001", "text": "你好"},
 	}, func(p int, note string, d map[string]any) {})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ModelID != "kokoro-v1.1-zh-int8" || got.SpeakerSID != 3 || got.Text != "你好" || got.Language != "auto" {
+	if got.ModelID != "kokoro-v1.1-zh" || got.SpeakerSID != 3 || got.Text != "你好" || got.Language != "auto" {
 		t.Fatalf("kokoro 请求不符: %+v", got)
 	}
 	if got.Speaker != "zf_001" || got.Instruct != "" {
@@ -464,7 +464,7 @@ func TestTTSKokoroLanguageRuling(t *testing.T) {
 	tts := newTTSTool(dataDir, m, nil, nil)
 	tts.synthesizeFn = noSynthStub(t)
 	_, err := tts.Run(context.Background(), provider.TaskInput{
-		Params: map[string]any{"model": "kokoro-v1.1-zh-int8", "mode": "preset", "speaker": "zf_001", "language": "Korean", "text": "你好"},
+		Params: map[string]any{"model": "kokoro-v1.1-zh", "mode": "preset", "speaker": "zf_001", "language": "Korean", "text": "你好"},
 	}, func(p int, note string, d map[string]any) {})
 	if err == nil || !strings.Contains(err.Error(), "语言") {
 		t.Fatalf("kokoro 应拒绝 Korean: %v", err)
