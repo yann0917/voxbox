@@ -18,8 +18,9 @@ import (
 // extractLimit 解包字节数上限(防 zip 炸弹),与既有管线约定同值(8GB)。
 const extractLimit = 8 << 30
 
-// extractArchive 解包归档到 destDir。whitelist 非空时只解出命中成员(扁平化到 destDir 根,
-// 供模型归档取 onnx/tokens);为空时保留包内相对结构(引擎包自包含 rpath,不能挪动 lib 布局)。
+// extractArchive 解包归档到 destDir。whitelist 非空时只解出命中成员(文件条目扁平化到
+// destDir 根,供模型归档取 onnx/tokens;目录条目如 "espeak-ng-data/" 保留目录内结构);
+// 为空时保留包内相对结构(引擎包自包含 rpath,不能挪动 lib 布局)。
 // 安全:成员路径 Clean 后必须留在 destDir 内(拒绝绝对路径与 ..);累计解包字节超 extractLimit 报错。
 func extractArchive(format, src, destDir string, whitelist []string) error {
 	f, err := os.Open(src)
@@ -27,18 +28,49 @@ func extractArchive(format, src, destDir string, whitelist []string) error {
 		return err
 	}
 	defer f.Close()
-	keep := map[string]bool{}
-	for _, w := range whitelist {
-		keep[path.Base(w)] = true
-	}
+	keepFiles, keepDirs := splitWhitelist(whitelist)
 	switch format {
 	case "zip":
-		return extractZip(src, destDir, keep, whitelist)
+		return extractZip(src, destDir, keepFiles, keepDirs)
 	case "tar.gz", "tar.bz2", "tar":
-		return extractTar(format, f, destDir, keep, whitelist)
+		return extractTar(format, f, destDir, keepFiles, keepDirs)
 	default:
 		return fmt.Errorf("不支持的归档格式: %s", format)
 	}
+}
+
+// splitWhitelist 拆分白名单:文件条目按 basename 扁平化命中;目录条目(尾缀 /)按路径
+// 组件命中并保留目录内结构。whitelist 为 nil 表示无白名单(整包解出),返回 (nil, nil)。
+func splitWhitelist(whitelist []string) (files map[string]bool, dirs []string) {
+	if whitelist == nil {
+		return nil, nil
+	}
+	files = map[string]bool{}
+	for _, w := range whitelist {
+		if d := strings.TrimSuffix(w, "/"); d != w {
+			dirs = append(dirs, d)
+		} else {
+			files[w] = true
+		}
+	}
+	return files, dirs
+}
+
+// whitelistRel 白名单命中判定,返回解包落盘的相对路径:文件条目扁平化到 destDir 根;
+// 目录条目保留从目录名起的子路径(kokoro 的 espeak-ng-data 等内嵌数据目录不能散架)。
+func whitelistRel(name string, files map[string]bool, dirs []string) (string, bool) {
+	if files[path.Base(name)] {
+		return path.Base(name), true
+	}
+	for _, d := range dirs {
+		if name == d || strings.HasPrefix(name, d+"/") {
+			return name, true
+		}
+		if i := strings.Index(name, "/"+d+"/"); i >= 0 {
+			return name[i+1:], true
+		}
+	}
+	return "", false
 }
 
 // openTarReader 按格式包一层解压 reader:tar.gz 用 gzip,tar.bz2 用 bzip2(标准库仅解压方向),tar 直读。
@@ -59,7 +91,7 @@ func openTarReader(format string, r io.Reader) (io.Reader, *tar.Reader, error) {
 	}
 }
 
-func extractTar(format string, f *os.File, destDir string, keep map[string]bool, whitelist []string) error {
+func extractTar(format string, f *os.File, destDir string, keepFiles map[string]bool, keepDirs []string) error {
 	closer, tr, err := openTarReader(format, f)
 	if err != nil {
 		return err
@@ -90,12 +122,12 @@ func extractTar(format string, f *os.File, destDir string, keep map[string]bool,
 		if hdr.Typeflag == tar.TypeDir {
 			continue
 		}
-		if whitelist != nil && !keep[path.Base(name)] {
-			continue
-		}
 		rel := name
-		if whitelist != nil {
-			rel = path.Base(name) // 白名单模式扁平化
+		if keepFiles != nil || keepDirs != nil {
+			var ok bool
+			if rel, ok = whitelistRel(name, keepFiles, keepDirs); !ok {
+				continue
+			}
 		}
 		dest := filepath.Join(destDir, filepath.FromSlash(rel))
 		if !strings.HasPrefix(filepath.Clean(dest)+string(os.PathSeparator), destRoot) {
@@ -112,7 +144,7 @@ func extractTar(format string, f *os.File, destDir string, keep map[string]bool,
 	}
 }
 
-func extractZip(src, destDir string, keep map[string]bool, whitelist []string) error {
+func extractZip(src, destDir string, keepFiles map[string]bool, keepDirs []string) error {
 	zr, err := zip.OpenReader(src)
 	if err != nil {
 		return err
@@ -132,12 +164,12 @@ func extractZip(src, destDir string, keep map[string]bool, whitelist []string) e
 		if zf.FileInfo().IsDir() {
 			continue
 		}
-		if whitelist != nil && !keep[path.Base(name)] {
-			continue
-		}
 		rel := name
-		if whitelist != nil {
-			rel = path.Base(name)
+		if keepFiles != nil || keepDirs != nil {
+			var ok bool
+			if rel, ok = whitelistRel(name, keepFiles, keepDirs); !ok {
+				continue
+			}
 		}
 		dest := filepath.Join(destDir, filepath.FromSlash(rel))
 		if !strings.HasPrefix(filepath.Clean(dest)+string(os.PathSeparator), destRoot) {

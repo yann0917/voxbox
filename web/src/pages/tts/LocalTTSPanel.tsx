@@ -65,9 +65,10 @@ const defaultNameFromFile = (f: File) => f.name.replace(/\.[^.]+$/, "");
 /** 命名弹窗状态机:save=录制/上传完成后入库命名;rename=已入库音色改名。 */
 type NameModal = { kind: "save"; file: File } | { kind: "rename"; id: string } | null;
 
-/** 本地语音合成面板:audio.cpp 引擎 + 已安装 Qwen3-TTS / IndexTTS2.5。
+/** 本地语音合成面板:audio.cpp 引擎 + 已安装 Qwen3-TTS / IndexTTS2.5,sherpa-onnx + Kokoro。
  *  克隆走音色库(录制/上传入库 → voice_id 提交),不再用临时文件上传;
- *  家族感知:index_tts2 锁克隆 + 六语言 + 情感参数,qwen3_tts 维持预置 + 四语言。 */
+ *  家族感知:index_tts2 锁克隆 + 六语言 + 情感参数,kokoro 锁预置音色 + 无语言/风格参数,
+ *  qwen3_tts 维持预置 + 四语言。 */
 export default function LocalTTSPanel() {
   const [text, setText] = useState("");
   const [model, setModel] = useState("");
@@ -89,7 +90,6 @@ export default function LocalTTSPanel() {
   const ev = useTaskEvents();
 
   const ready = useLocalReady("tts");
-  const presetVoices = useLocalVoices();
   const models = useModels();
   const installedModels = (models.data?.items ?? []).filter(
     (m) => m.kind === "tts" && m.status === "installed",
@@ -102,14 +102,21 @@ export default function LocalTTSPanel() {
   // —— 家族感知:选中模型的 family 决定克隆/预置可用性与语言集(后端 family 平铺在 items 上) ——
   const selectedModelItem = installedModels.find((m) => m.id === model);
   const isIndex = selectedModelItem?.family === "index_tts2";
-  // index 家族强制克隆(后端同样拒绝 index+preset);渲染与提交一律用 effectiveMode,
-  // 切回 qwen3 时用户先前的 preset 选择自动恢复
-  const effectiveMode: "clone" | "preset" = isIndex ? "clone" : mode;
-  // 家族切换时把语言校正到当前家族支持集内(qwen3 全名 / index 语言码)
+  const isKokoro = selectedModelItem?.family === "kokoro";
+  // 家族强制:effectiveMode 决定渲染与提交,index 锁克隆、kokoro 锁预置,
+  // 切回 qwen3 时用户先前的选择自动恢复
+  const effectiveMode: "clone" | "preset" = isKokoro ? "preset" : isIndex ? "clone" : mode;
+  // 预置音色列表按家族拉取:kokoro 103 个内置音色,qwen3 九个 CustomVoice speaker
+  const presetVoices = useLocalVoices(isKokoro ? "kokoro" : undefined);
+  // 家族切换时把语言校正到当前家族支持集内(qwen3 全名 / index 语言码;kokoro 不发语言)
   useEffect(() => {
     const langSet = (isIndex ? INDEX_LANGS : LANGS).map((l) => l.value);
     setLanguage((l) => (langSet.includes(l) ? l : isIndex ? "auto" : "Chinese"));
   }, [isIndex]);
+  // kokoro 音色表与 qwen3 不通用:进入/离开 kokoro 家族时清掉失配的选中音色
+  useEffect(() => {
+    setSpeaker("");
+  }, [isKokoro]);
 
   // —— 音色库 ——
   const vlib = useVoiceLibrary();
@@ -255,8 +262,10 @@ export default function LocalTTSPanel() {
   const submit = useMutation({
     mutationFn: async () => {
       const params: Record<string, unknown> = {
-        text: text.trim(), model, mode: effectiveMode, language,
+        text: text.trim(), model, mode: effectiveMode,
       };
+      // 语言仅 qwen3/index 透传(kokoro 中英混读由文本驱动,后端缺省 auto)
+      if (!isKokoro) params.language = language;
       // 克隆:音色库 voice_id(库内成品已 24kHz 单声道,后端不经转码直用)
       if (effectiveMode === "clone") params.voice_id = voiceId;
       if (effectiveMode === "preset") {
@@ -361,7 +370,10 @@ export default function LocalTTSPanel() {
                 </Select>
               )}
             </Field>
-            <Field label="音色模式" hint={isIndex ? "IndexTTS2.5 仅支持参考音频克隆" : undefined}>
+            <Field
+              label="音色模式"
+              hint={isIndex ? "IndexTTS2.5 仅支持参考音频克隆" : isKokoro ? "Kokoro 仅支持预置音色" : undefined}
+            >
               {({ id, ...rest }) => (
                 <Select
                   id={id}
@@ -369,7 +381,7 @@ export default function LocalTTSPanel() {
                   onChange={(e) => setMode(e.target.value as "clone" | "preset")}
                   {...rest}
                 >
-                  <option value="clone">参考音频克隆</option>
+                  {!isKokoro && <option value="clone">参考音频克隆</option>}
                   {!isIndex && <option value="preset">预置音色</option>}
                 </Select>
               )}
@@ -497,22 +509,26 @@ export default function LocalTTSPanel() {
                     </Select>
                   )}
                 </Field>
-                <Field label="风格指令" hint="选填;自然语言描述语气,如 Very happy">
-                  {({ id, ...rest }) => (
-                    <Input id={id} value={instruct} onChange={(e) => setInstruct(e.target.value)} {...rest} />
-                  )}
-                </Field>
+                {!isKokoro && (
+                  <Field label="风格指令" hint="选填;自然语言描述语气,如 Very happy">
+                    {({ id, ...rest }) => (
+                      <Input id={id} value={instruct} onChange={(e) => setInstruct(e.target.value)} {...rest} />
+                    )}
+                  </Field>
+                )}
               </>
             )}
-            <Field label="语言">
-              {({ id, ...rest }) => (
-                <Select id={id} value={language} onChange={(e) => setLanguage(e.target.value)} {...rest}>
-                  {(isIndex ? INDEX_LANGS : LANGS).map((l) => (
-                    <option key={l.value} value={l.value}>{l.label}</option>
-                  ))}
-                </Select>
-              )}
-            </Field>
+            {!isKokoro && (
+              <Field label="语言">
+                {({ id, ...rest }) => (
+                  <Select id={id} value={language} onChange={(e) => setLanguage(e.target.value)} {...rest}>
+                    {(isIndex ? INDEX_LANGS : LANGS).map((l) => (
+                      <option key={l.value} value={l.value}>{l.label}</option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            )}
             {isIndex && (
               <>
                 <Field label="情感文本" hint="选填;描述朗读情感,如:用开心的语气朗读">

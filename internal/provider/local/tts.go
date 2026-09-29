@@ -28,6 +28,10 @@ var indexLanguages = map[string]bool{"auto": true, "zh": true, "en": true, "ja":
 // qwen3Languages qwen3_tts 家族支持的语言全名(空回落 Chinese)。
 var qwen3Languages = map[string]bool{"Chinese": true, "English": true, "Japanese": true, "Korean": true}
 
+// kokoroLanguages kokoro 家族的语言码(空回落 auto):中英混读由文本驱动,
+// 语言仅参与发音词典预处理,不透传合成引擎。
+var kokoroLanguages = map[string]bool{"auto": true, "zh": true, "en": true}
+
 type ttsTool struct {
 	dataDir string
 	models  *localmodel.Manager
@@ -36,7 +40,9 @@ type ttsTool struct {
 
 	// 测试 seam:缺省绑 TTSRuntime.Synthesize;转码 ffmpeg 可替换探测。
 	synthesizeFn func(ctx context.Context, req localruntime.SynthRequest, report func(p int, note string)) (string, error)
-	lookPath     func(string) (string, error)
+	// kokoro 家族的合成 seam:缺省绑 KokoroTTS.Synthesize(sherpa 一次性子进程)。
+	kokoroSynthesizeFn func(ctx context.Context, req localruntime.SynthRequest, report func(p int, note string)) (string, error)
+	lookPath           func(string) (string, error)
 }
 
 func newTTSTool(dataDir string, models *localmodel.Manager, tts *localruntime.TTSRuntime, voices *voicelib.Library) *ttsTool {
@@ -46,12 +52,15 @@ func newTTSTool(dataDir string, models *localmodel.Manager, tts *localruntime.TT
 		// 生产路径(RegisterAll/AllTools)tts 非 nil,必绑真实实现。
 		t.synthesizeFn = tts.Synthesize
 	}
+	if models != nil {
+		t.kokoroSynthesizeFn = localruntime.NewKokoroTTS(dataDir, models).Synthesize
+	}
 	return t
 }
 
 func (t *ttsTool) Meta() provider.ToolMeta {
 	return provider.ToolMeta{Provider: "local", Name: "tts", Title: "本地语音合成",
-		Description: "本地合成（Qwen3-TTS / IndexTTS）：参考音频、音色库克隆或预置音色，离线可用；IndexTTS 支持情感文本控制。", Group: "合成"}
+		Description: "本地合成（Qwen3-TTS / IndexTTS / Kokoro）：参考音频、音色库克隆或预置音色，离线可用；IndexTTS 支持情感文本控制。", Group: "合成"}
 }
 
 func (t *ttsTool) ParamSpecs() []provider.ParamSpec {
@@ -111,12 +120,14 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	if !t.models.Installed(modelID) {
 		return provider.TaskOutput{}, fmt.Errorf("本地模型未安装:请到设置页「本地环境」下载 %s", e.Name)
 	}
-	// 家族与模式匹配:index_tts2 为纯克隆模型(无预置音色);qwen3 家族沿用文件名
-	// 变体匹配校验(customvoice 条目支持 preset,base 条目支持 clone)。
-	if e.Family == "index_tts2" && mode == "preset" {
+	// 家族与模式匹配:index_tts2 为纯克隆模型(无预置音色);kokoro 为纯预置模型
+	// (不支持克隆);qwen3 家族沿用文件名变体匹配校验。
+	switch {
+	case e.Family == "index_tts2" && mode == "preset":
 		return provider.TaskOutput{}, fmt.Errorf("IndexTTS 为克隆模型,不支持预置音色")
-	}
-	if e.Family != "index_tts2" {
+	case e.Family == "kokoro" && mode == "clone":
+		return provider.TaskOutput{}, fmt.Errorf("Kokoro 为预置音色模型,不支持参考音频克隆")
+	case e.Family == "qwen3_tts":
 		switch {
 		case mode == "preset" && !strings.Contains(e.ID, "customvoice"):
 			return provider.TaskOutput{}, fmt.Errorf("预置音色需要 CustomVoice 模型:当前 %s 为克隆模型,请切换音色模式或下载 CustomVoice 条目", e.Name)
@@ -124,16 +135,24 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 			return provider.TaskOutput{}, fmt.Errorf("参考音频克隆需要 Base 模型:当前 %s 为预置音色模型,请切换音色模式或下载 Base 条目", e.Name)
 		}
 	}
-	// 语言校验按家族:qwen3 收全名、index 收小写码,非法值直述;空值回落家族默认
+	// 语言校验按家族:qwen3 收全名、index/kokoro 收小写码,非法值直述;空值回落家族默认
 	language := paramString(in.Params, "language", "")
-	if e.Family == "index_tts2" {
+	switch e.Family {
+	case "index_tts2":
 		if language == "" {
 			language = "auto"
 		}
 		if !indexLanguages[language] {
 			return provider.TaskOutput{}, fmt.Errorf("参数错误: IndexTTS 语言仅支持 auto|zh|en|ja|es|ar,当前 %s", language)
 		}
-	} else {
+	case "kokoro":
+		if language == "" {
+			language = "auto"
+		}
+		if !kokoroLanguages[language] {
+			return provider.TaskOutput{}, fmt.Errorf("参数错误: Kokoro 语言仅支持 auto|zh|en,当前 %s", language)
+		}
+	default:
 		if language == "" {
 			language = "Chinese"
 		}
@@ -188,11 +207,29 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 			return provider.TaskOutput{}, fmt.Errorf("预置模式需要选择音色: speaker")
 		}
 		req.Speaker = sp
-		req.Instruct = paramString(in.Params, "instruct", "")
+		if e.Family == "kokoro" {
+			// kokoro 的预置音色是 voices.bin 的 sid 位:名字 → sid 在此归一,
+			// 未知音色直述(前端下拉来自 /api/voices,手拼参数在此拦截)
+			sid, ok := KokoroVoiceSID(sp)
+			if !ok {
+				return provider.TaskOutput{}, fmt.Errorf("未知 Kokoro 音色: %s", sp)
+			}
+			req.SpeakerSID = sid
+		} else {
+			req.Instruct = paramString(in.Params, "instruct", "")
+		}
 	}
 
 	report(5, "准备本地合成…", nil)
-	out, err := t.synthesizeFn(ctx, req, func(p int, note string) { report(p, note, nil) })
+	// 运行时分流:kokoro 走 sherpa 一次性子进程,qwen3/index 走 audiocpp 常驻 server
+	synth := t.synthesizeFn
+	if e.Family == "kokoro" {
+		if t.kokoroSynthesizeFn == nil {
+			return provider.TaskOutput{}, fmt.Errorf("本地合成引擎不可用:请重启服务后重试")
+		}
+		synth = t.kokoroSynthesizeFn
+	}
+	out, err := synth(ctx, req, func(p int, note string) { report(p, note, nil) })
 	if err != nil {
 		return provider.TaskOutput{}, err
 	}
@@ -205,12 +242,14 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		return provider.TaskOutput{}, err
 	}
 	report(100, "本地合成完成", nil)
+	// engine 元数据随家族:qwen3/index 为 audiocpp,kokoro 为 sherpa-onnx
+	engine := e.RequiresEngine
 	return provider.TaskOutput{
 		Artifacts: []provider.Artifact{{
 			Kind: "audio", Path: rel, Format: "wav", Size: fi.Size(),
-			Meta: map[string]any{"engine": "audiocpp", "model": modelID, "mode": mode},
+			Meta: map[string]any{"engine": engine, "model": modelID, "mode": mode},
 		}},
-		Summary: map[string]any{"engine": "audiocpp", "model": e.Name, "mode": mode},
+		Summary: map[string]any{"engine": engine, "model": e.Name, "mode": mode},
 	}, nil
 }
 

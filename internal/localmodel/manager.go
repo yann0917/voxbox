@@ -217,6 +217,42 @@ func (m *Manager) InstalledModelFile(id string) (string, error) {
 	return filepath.Join(m.modelDir(id), filepath.FromSlash(e.Files[0])), nil
 }
 
+// InstalledModelDir 已安装多文件/归档模型条目的安装目录绝对路径(GGUF 单文件条目走
+// InstalledModelFile;kokoro 等归档条目的模型文件是成套目录,按目录整体消费)。
+func (m *Manager) InstalledModelDir(id string) (string, error) {
+	m.mu.Lock()
+	e, ok := m.byID[id]
+	m.mu.Unlock()
+	if !ok || e.Kind == "engine" {
+		return "", fmt.Errorf("%w: %s", ErrUnknownModel, id)
+	}
+	if _, installed := m.installedManifest(e); !installed {
+		return "", fmt.Errorf("模型未安装: %s,请到设置页下载", e.Name)
+	}
+	return m.modelDir(id), nil
+}
+
+// EngineBinaryNamed 已安装引擎内按名定位的指定二进制绝对路径。manifest.Binary 只记
+// 一期语义的 Binaries[0](如 sherpa 的 server 二进制),其余成员(kokoro 走的
+// sherpa-onnx-offline-tts 等)按名在引擎目录内定位——解包产物自包含全量 bin,
+// 旧安装未重装同样命中。
+func (m *Manager) EngineBinaryNamed(id, binary string) (string, error) {
+	m.mu.Lock()
+	e, ok := m.byID[id]
+	m.mu.Unlock()
+	if !ok || e.Kind != "engine" {
+		return "", fmt.Errorf("%w: %s", ErrUnknownModel, id)
+	}
+	if _, installed := m.installedManifest(e); !installed {
+		return "", fmt.Errorf("引擎未安装: %s,请到设置页下载", e.Name)
+	}
+	bins, err := findBinaries(m.modelDir(id), []string{binary})
+	if err != nil {
+		return "", fmt.Errorf("引擎二进制缺失: %s,请到设置页删除 %s 后重装", binary, e.Name)
+	}
+	return bins[0], nil
+}
+
 func readManifest(dir string) (*manifest, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
 	if err != nil {

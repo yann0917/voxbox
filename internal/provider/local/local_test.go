@@ -385,6 +385,120 @@ func TestTTSQwen3IgnoresEmotion(t *testing.T) {
 	}
 }
 
+// —— kokoro 家族:纯预置模型,sid 归一,sherpa 子进程分流,engine 元数据随条目 ——
+
+// seedKokoroTTS 播种 sherpa 引擎 + kokoro 归档条目的已安装态。
+func seedKokoroTTS(t *testing.T, dataDir string, m *localmodel.Manager) {
+	t.Helper()
+	seedEngine(t, dataDir, m, "sherpa-onnx", "sherpa-onnx-offline")
+	seedModelFile(t, dataDir, m, "kokoro-v1.1-zh-int8", "model.int8.onnx")
+}
+
+// TestTTSKokoroRejectsClone kokoro 为纯预置模型:clone 模式直述不支持。
+func TestTTSKokoroRejectsClone(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedKokoroTTS(t, dataDir, m)
+	tts := newTTSTool(dataDir, m, nil, nil)
+	tts.synthesizeFn = noSynthStub(t)
+	_, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "kokoro-v1.1-zh-int8", "mode": "clone", "text": "你好"},
+		Files:  map[string]string{},
+	}, func(p int, note string, d map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "Kokoro 为预置音色模型") {
+		t.Fatalf("kokoro 条目 clone 应直述不支持: %v", err)
+	}
+}
+
+// TestTTSKokoroUnknownVoice 预置音色不在内置表(手拼参数)→ 直述未知音色。
+func TestTTSKokoroUnknownVoice(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedKokoroTTS(t, dataDir, m)
+	tts := newTTSTool(dataDir, m, nil, nil)
+	tts.synthesizeFn = noSynthStub(t)
+	_, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "kokoro-v1.1-zh-int8", "mode": "preset", "speaker": "zf_999", "text": "你好"},
+	}, func(p int, note string, d map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "未知 Kokoro 音色") {
+		t.Fatalf("未知 kokoro 音色应直述: %v", err)
+	}
+}
+
+// TestTTSKokoroHappyPath 预置音色全链路:speaker 名归一为 sid,请求分流到
+// kokoro seam(audiocpp seam 不得触达),artifact Meta engine=sherpa-onnx;
+// 语言缺省回落 auto。
+func TestTTSKokoroHappyPath(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedKokoroTTS(t, dataDir, m)
+	tts := newTTSTool(dataDir, m, nil, nil)
+	tts.synthesizeFn = noSynthStub(t)
+	outWav := fakeOutWav(t, dataDir)
+	var got localruntime.SynthRequest
+	tts.kokoroSynthesizeFn = func(ctx context.Context, req localruntime.SynthRequest, report func(p int, note string)) (string, error) {
+		got = req
+		return outWav, nil
+	}
+	out, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "kokoro-v1.1-zh-int8", "mode": "preset", "speaker": "zf_001", "text": "你好"},
+	}, func(p int, note string, d map[string]any) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ModelID != "kokoro-v1.1-zh-int8" || got.SpeakerSID != 3 || got.Text != "你好" || got.Language != "auto" {
+		t.Fatalf("kokoro 请求不符: %+v", got)
+	}
+	if got.Speaker != "zf_001" || got.Instruct != "" {
+		t.Fatalf("kokoro 不应透传 instruct: %+v", got)
+	}
+	if len(out.Artifacts) != 1 {
+		t.Fatalf("应产出 1 个 artifact,实际 %d", len(out.Artifacts))
+	}
+	if out.Artifacts[0].Meta["engine"] != "sherpa-onnx" || out.Artifacts[0].Meta["mode"] != "preset" {
+		t.Fatalf("artifact Meta engine 应随条目为 sherpa-onnx: %+v", out.Artifacts[0].Meta)
+	}
+}
+
+// TestTTSKokoroLanguageRuling kokoro 语言仅收 auto|zh|en,缺省 auto。
+func TestTTSKokoroLanguageRuling(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedKokoroTTS(t, dataDir, m)
+	tts := newTTSTool(dataDir, m, nil, nil)
+	tts.synthesizeFn = noSynthStub(t)
+	_, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "kokoro-v1.1-zh-int8", "mode": "preset", "speaker": "zf_001", "language": "Korean", "text": "你好"},
+	}, func(p int, note string, d map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "语言") {
+		t.Fatalf("kokoro 应拒绝 Korean: %v", err)
+	}
+}
+
+// TestKokoroVoicesTable 内置音色表:sid 连续 0..102,首尾与 PR #1942 实测一致。
+func TestKokoroVoicesTable(t *testing.T) {
+	voices := KokoroVoices()
+	if len(voices) != 103 {
+		t.Fatalf("kokoro 内置音色应 103 个,实际 %d", len(voices))
+	}
+	for i, v := range voices {
+		if v.Sid != i {
+			t.Fatalf("sid 应连续无空洞: voices[%d].Sid=%d", i, v.Sid)
+		}
+	}
+	if voices[0].ID != "af_maple" || voices[1].ID != "af_sol" || voices[2].ID != "bf_vale" {
+		t.Fatalf("英文音色段不符: %v", voices[:3])
+	}
+	if voices[3].ID != "zf_001" {
+		t.Fatalf("sid 3 应为 zf_001,实际 %q", voices[3].ID)
+	}
+	if last := voices[102].ID; last != "zm_100" {
+		t.Fatalf("sid 102 应为 zm_100,实际 %q", last)
+	}
+	if sid, ok := KokoroVoiceSID("zf_001"); !ok || sid != 3 {
+		t.Fatalf("KokoroVoiceSID(zf_001) 应为 3: %d %v", sid, ok)
+	}
+	if _, ok := KokoroVoiceSID("nope"); ok {
+		t.Fatal("未知音色应返回 false")
+	}
+}
+
 // —— 播种 helper:绕过下载,直接构造 installed 态(Task 3 的访问器读 manifest)——
 
 func seedEngine(t *testing.T, dataDir string, m *localmodel.Manager, id, binaryName string) {

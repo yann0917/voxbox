@@ -67,19 +67,18 @@ func TestParseCatalogRejects(t *testing.T) {
 }
 
 // TestParseCatalogFamilyRuling 落实 family 校验规则:
-// kind=tts 必填且 ∈{qwen3_tts, index_tts2};kind∈{asr,engine} 必须为空。
+// kind=tts 必填且 ∈{qwen3_tts, index_tts2, kokoro};kind∈{asr,engine} 必须为空。
 func TestParseCatalogFamilyRuling(t *testing.T) {
-	// tts:两个合法族值都通过
-	if _, err := parseCatalog(withEngine(t, ttsEntry())); err != nil {
-		t.Fatalf("qwen3_tts 族 tts 条目被拒: %v", err)
-	}
-	e := ttsEntry()
-	e.Family = "index_tts2"
-	if _, err := parseCatalog(withEngine(t, e)); err != nil {
-		t.Fatalf("index_tts2 族 tts 条目被拒: %v", err)
+	// tts:合法族值都通过
+	for _, family := range []string{"qwen3_tts", "index_tts2", "kokoro"} {
+		e := ttsEntry()
+		e.Family = family
+		if _, err := parseCatalog(withEngine(t, e)); err != nil {
+			t.Fatalf("%s 族 tts 条目被拒: %v", family, err)
+		}
 	}
 	// tts:缺 family → 拒
-	e = ttsEntry()
+	e := ttsEntry()
 	e.Family = ""
 	if _, err := parseCatalog(withEngine(t, e)); err == nil {
 		t.Error("tts 条目缺 family 应被拒")
@@ -119,10 +118,10 @@ func TestEmbeddedCatalog(t *testing.T) {
 	wantIDs := []string{
 		"sherpa-onnx", "audiocpp",
 		"sensevoice-int8", "qwen3-tts-base-q8", "qwen3-tts-customvoice-q8", "qwen3-tts-base-0.6b-q8",
-		"index-tts2_5-q8",
+		"index-tts2_5-q8", "kokoro-v1.1-zh-int8",
 	}
 	if len(catalog) != len(wantIDs) {
-		t.Fatalf("内嵌目录应为 %d 条(2 引擎 + 5 模型),实际 %d", len(wantIDs), len(catalog))
+		t.Fatalf("内嵌目录应为 %d 条(2 引擎 + 6 模型),实际 %d", len(wantIDs), len(catalog))
 	}
 	engineIDs := map[string]bool{}
 	for _, e := range catalog {
@@ -156,8 +155,9 @@ func TestEmbeddedCatalog(t *testing.T) {
 			}
 		default:
 			if !strings.HasPrefix(e.LicenseURL, "https://modelscope.cn/models/") &&
-				!strings.HasPrefix(e.LicenseURL, "https://github.com/") {
-				t.Errorf("模型条目 %s 的 license_url 应指向魔搭模型页或 GitHub releases 页: %s", e.ID, e.LicenseURL)
+				!strings.HasPrefix(e.LicenseURL, "https://github.com/") &&
+				!strings.HasPrefix(e.LicenseURL, "https://huggingface.co/") {
+				t.Errorf("模型条目 %s 的 license_url 应指向魔搭模型页/GitHub releases 页/HF 模型页: %s", e.ID, e.LicenseURL)
 			}
 			// 裁定 1:asr/tts 条目 requires_engine 必填且指向已声明的 engine 条目
 			if e.RequiresEngine == "" || !engineIDs[e.RequiresEngine] {
@@ -165,8 +165,10 @@ func TestEmbeddedCatalog(t *testing.T) {
 			}
 			// family 规则:tts 必填族值,asr 必须为空
 			if e.Kind == "tts" {
-				if e.Family != "qwen3_tts" && e.Family != "index_tts2" {
-					t.Errorf("tts 条目 %s 的 family 必须是 qwen3_tts|index_tts2: %q", e.ID, e.Family)
+				switch e.Family {
+				case "qwen3_tts", "index_tts2", "kokoro":
+				default:
+					t.Errorf("tts 条目 %s 的 family 必须是 qwen3_tts|index_tts2|kokoro: %q", e.ID, e.Family)
 				}
 			} else if e.Family != "" {
 				t.Errorf("asr 条目 %s 不应声明 family: %q", e.ID, e.Family)
@@ -364,6 +366,61 @@ func TestEmbeddedCatalogIndexTTS2(t *testing.T) {
 		return
 	}
 	t.Fatal("内嵌目录缺少 index-tts2_5-q8 条目")
+}
+
+// TestEmbeddedCatalogKokoro 落实 family 规则与 kokoro 条目实测留档:
+// kokoro-multi-lang-v1_1(int8)即 hexgrad/Kokoro-82M-v1.1-zh 的 sherpa-onnx 导出,
+// archive_size/sha256 为本机对整包实测;espeak-ng-data/ 目录条目验证 checkRelPath
+// 的目录白名单语义(尾缀 / 放行,归档内嵌数据目录不能被 basename 扁平化散架)。
+func TestEmbeddedCatalogKokoro(t *testing.T) {
+	for _, e := range catalog {
+		if e.ID != "kokoro-v1.1-zh-int8" {
+			continue
+		}
+		if e.Family != "kokoro" {
+			t.Fatalf("kokoro-v1.1-zh-int8 的 family 应为 kokoro,实际 %q", e.Family)
+		}
+		if e.RequiresEngine != "sherpa-onnx" {
+			t.Errorf("kokoro-v1.1-zh-int8 的 requires_engine 应为 sherpa-onnx,实际 %q", e.RequiresEngine)
+		}
+		if e.SizeBytes != 147031220 || e.ArchiveSize != 147031220 {
+			t.Errorf("kokoro-v1.1-zh-int8 size/archive_size 应为实测 147031220,实际 %d/%d",
+				e.SizeBytes, e.ArchiveSize)
+		}
+		const want = "a1e94694776049035c4f2c6529f003aaece993c76aae9a78995831c3c4dcafc6"
+		if e.ArchiveSHA256 != want {
+			t.Errorf("kokoro-v1.1-zh-int8 archive_sha256 应为实测整包哈希,实际 %q", e.ArchiveSHA256)
+		}
+		for _, want := range []string{"model.int8.onnx", "voices.bin", "tokens.txt",
+			"lexicon-us-en.txt", "lexicon-zh.txt", "date-zh.fst", "phone-zh.fst", "number-zh.fst", "espeak-ng-data/"} {
+			found := false
+			for _, f := range e.ExtractFiles {
+				if f == want {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("kokoro-v1.1-zh-int8 的 extract_files 缺少 %q", want)
+			}
+		}
+		return
+	}
+	t.Fatal("内嵌目录缺少 kokoro-v1.1-zh-int8 条目")
+}
+
+// TestCheckRelPathDirEntries 目录条目(尾缀 /)的放行与拒绝边界。
+func TestCheckRelPathDirEntries(t *testing.T) {
+	for _, ok := range []string{"espeak-ng-data/", "dict/"} {
+		if err := checkRelPath("m1", ok); err != nil {
+			t.Errorf("目录条目 %q 应放行: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "/", "..", "../", "a/../b/", "./x/", "manifest.json/"} {
+		if err := checkRelPath("m1", bad); err == nil {
+			t.Errorf("非法目录条目 %q 应被拒", bad)
+		}
+	}
 }
 
 func TestArchiveForPlatform(t *testing.T) {

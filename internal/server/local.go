@@ -11,17 +11,6 @@ type missingItem struct {
 }
 
 func (s *Server) localReady(c *gin.Context) {
-	var engineID, modelID string
-	switch c.Query("tool") {
-	case "tts":
-		engineID = "audiocpp"
-	case "asr":
-		engineID = "sherpa-onnx"
-		modelID = "sensevoice-int8"
-	default:
-		fail(c, CodeBadRequest, "参数错误:tool 仅支持 tts|asr")
-		return
-	}
 	m := s.svc.LocalModels()
 	missing := []missingItem{} // ready=true 时序列化为 [] 而非 null,前端省判空
 	ensure := func(kind, id string) {
@@ -33,26 +22,44 @@ func (s *Server) localReady(c *gin.Context) {
 			missing = append(missing, missingItem{Type: kind, ID: id, Name: e.Name})
 		}
 	}
-	ensure("engine", engineID)
-	if modelID != "" {
-		ensure("model", modelID)
-	}
-	if c.Query("tool") == "tts" {
-		// tts:任一已安装的 qwen3 模型即可;一个都没装才把 TTS 模型们列进 missing
-		anyInstalled := false
+	var ready bool
+	switch c.Query("tool") {
+	case "tts":
+		// 依赖链按目录条目推导(kokoro→sherpa-onnx,qwen3/index→audiocpp),不再硬编码
+		// 单一引擎。可用性 = 任一「引擎+模型」成对齐备;missing 是引导清单(缺的引擎
+		// 全列出,一个模型都没装时再列全部模型),与 ready 相互独立——如 linux/arm64
+		// 无 audiocpp 资产,missing 恒含它,但 kokoro+sherpa 装齐即 ready。
+		seenEngines := map[string]bool{}
+		anyModelInstalled := false
 		for _, v := range m.List() {
-			if v.Kind == "tts" && m.Installed(v.Entry.ID) {
-				anyInstalled = true
-				break
+			if v.Entry.Kind != "tts" {
+				continue
+			}
+			if !seenEngines[v.Entry.RequiresEngine] {
+				seenEngines[v.Entry.RequiresEngine] = true
+				ensure("engine", v.Entry.RequiresEngine)
+			}
+			if m.Installed(v.Entry.ID) {
+				anyModelInstalled = true
+				if m.Installed(v.Entry.RequiresEngine) {
+					ready = true
+				}
 			}
 		}
-		if !anyInstalled {
+		if !anyModelInstalled {
 			for _, v := range m.List() {
 				if v.Kind == "tts" {
 					missing = append(missing, missingItem{Type: "model", ID: v.Entry.ID, Name: v.Name})
 				}
 			}
 		}
+	case "asr":
+		ensure("engine", "sherpa-onnx")
+		ensure("model", "sensevoice-int8")
+		ready = len(missing) == 0
+	default:
+		fail(c, CodeBadRequest, "参数错误:tool 仅支持 tts|asr")
+		return
 	}
-	ok(c, gin.H{"ready": len(missing) == 0, "missing": missing})
+	ok(c, gin.H{"ready": ready, "missing": missing})
 }

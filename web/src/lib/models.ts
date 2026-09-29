@@ -15,7 +15,7 @@ export interface ModelItem {
   revision: string;
   name: string;
   kind: string; // asr | tts(开放枚举)
-  /** tts 模型族:qwen3_tts | index_tts2(仅 tts 条目有;asr/engine 无)。 */
+  /** tts 模型族:qwen3_tts | index_tts2 | kokoro(仅 tts 条目有;asr/engine 无)。 */
   family?: string;
   summary: string;
   size_bytes: number;
@@ -79,10 +79,14 @@ export function useLocalReady(tool: "tts" | "asr") {
   });
 }
 
-/** 本地预置音色(CustomVoice GGUF 的 9 个 speaker)。 */
-export function useLocalVoices() {
+/** 本地预置音色:qwen3 CustomVoice 的 9 个 speaker;family=kokoro 时为 103 个内置音色
+ *  (含 voices.bin 的 sid,后端据此归一)。 */
+export function useLocalVoices(family?: string) {
   return useQuery({
-    queryKey: ["voices", "local"],
-    queryFn: () => fetchJSON<{ voices: { id: string; name: string }[] }>("/api/voices?provider=local"),
+    queryKey: ["voices", "local", family ?? ""],
+    queryFn: () =>
+      fetchJSON<{ voices: { id: string; name: string; sid?: number }[] }>(
+        family ? `/api/voices?provider=local&family=${family}` : "/api/voices?provider=local",
+      ),
   });
 }

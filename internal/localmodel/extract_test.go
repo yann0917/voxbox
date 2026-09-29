@@ -79,6 +79,43 @@ func TestExtractTarGzWhitelist(t *testing.T) {
 	}
 }
 
+// TestExtractWhitelistDirEntries 目录白名单条目(kokoro 归档真实形态):文件条目
+// 仍扁平化到根,尾缀 / 的目录条目按路径组件命中并保留目录内结构(嵌套子目录不散架),
+// 白名单外成员不解出。
+func TestExtractWhitelistDirEntries(t *testing.T) {
+	payload := makeTar(t, map[string][]byte{
+		"kokoro/model.int8.onnx":          []byte("onnx"),
+		"kokoro/tokens.txt":               []byte("tokens"),
+		"kokoro/espeak-ng-data/zh":        []byte("zh-dict"),
+		"kokoro/espeak-ng-data/en_dict":   []byte("en"),
+		"kokoro/espeak-ng-data/sub/inner": []byte("inner"),
+		"kokoro/dict/jieba.dict.utf8":     []byte("jieba"),
+		"kokoro/README.md":                []byte("readme"),
+	}, func(b *bytes.Buffer) []byte { return gzBytes(t, b.Bytes()) })
+	dir := t.TempDir()
+	src := writeTemp(t, dir, "a.tar.gz", payload)
+	dest := t.TempDir()
+	if err := extractArchive("tar.gz", src, dest, []string{"model.int8.onnx", "espeak-ng-data/"}); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{
+		"model.int8.onnx":                              "onnx",
+		"espeak-ng-data/zh":                            "zh-dict",
+		"espeak-ng-data/en_dict":                       "en",
+		filepath.FromSlash("espeak-ng-data/sub/inner"): "inner",
+	} {
+		got, err := os.ReadFile(filepath.Join(dest, name))
+		if err != nil || string(got) != want {
+			t.Fatalf("%s 解包不符: %v", name, err)
+		}
+	}
+	for _, absent := range []string{"tokens.txt", "README.md", filepath.FromSlash("dict/jieba.dict.utf8")} {
+		if _, err := os.Stat(filepath.Join(dest, absent)); !os.IsNotExist(err) {
+			t.Errorf("白名单外成员 %s 不应被解出", absent)
+		}
+	}
+}
+
 // tarBz2Blob 预构建的 tar.bz2 样本(tar --format=ustar | bzip2,含 bin/sherpa-onnx-offline
 // 内容 "elf"):标准库 compress/bzip2 只有解压器没有压缩器,测试样本用系统工具离线生成后内嵌。
 var tarBz2Blob = []byte{

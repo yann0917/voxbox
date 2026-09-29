@@ -54,7 +54,7 @@ type Entry struct {
 	Assets         map[string]Asset  `json:"assets,omitempty"`         // engine:键 "goos/goarch"
 	FileURLs       map[string]string `json:"file_urls,omitempty"`      // file → 直链;Repo 非空时可省
 	RequiresEngine string            `json:"requires_engine,omitempty"`
-	Family         string            `json:"family,omitempty"` // tts 模型族:qwen3_tts | index_tts2;asr/engine 必须为空
+	Family         string            `json:"family,omitempty"` // tts 模型族:qwen3_tts | index_tts2 | kokoro;asr/engine 必须为空
 }
 
 // ArchiveFor 按 GOOS/GOARCH 取引擎平台资产;未声明平台返回 false(该平台不展示此引擎)。
@@ -76,13 +76,15 @@ func isSHA256(s string) bool {
 	return true
 }
 
-// checkRelPath 校验清单内的相对文件路径:绝对路径、反斜杠、上级穿越与未规范化形式一律拒绝。
+// checkRelPath 校验清单内的相对文件路径:绝对路径、反斜杠、上级穿越与未规范化形式一律拒绝;
+// 尾缀 / 的目录条目(espeak-ng-data/ 等归档内嵌数据目录)放行,校验去掉尾缀后的目录名。
 func checkRelPath(entryID, f string) error {
-	if f == "" || path.IsAbs(f) || strings.ContainsRune(f, '\\') ||
-		strings.HasPrefix(path.Clean(f), "..") || path.Clean(f) != f {
+	clean := strings.TrimSuffix(f, "/")
+	if clean == "" || path.IsAbs(clean) || strings.ContainsRune(clean, '\\') ||
+		strings.HasPrefix(path.Clean(clean), "..") || path.Clean(clean) != clean {
 		return fmt.Errorf("条目 %s 文件路径非法: %q", entryID, f)
 	}
-	if f == "manifest.json" {
+	if clean == "manifest.json" {
 		// 保留名:manifest.json 是安装完成标记,清单文件同名会覆盖标记,
 		// restore 读到非法 manifest 会把已安装模型静默变回未安装。
 		return fmt.Errorf("条目 %s 文件名 manifest.json 为安装标记保留: %q", entryID, f)
@@ -116,12 +118,15 @@ func parseCatalog(data []byte) ([]Entry, error) {
 		if e.Kind != "asr" && e.Kind != "tts" && e.Kind != "engine" {
 			return nil, fmt.Errorf("条目 %s 的 kind 必须是 asr|tts|engine", e.ID)
 		}
-		// family 规则:tts 必填且 ∈{qwen3_tts, index_tts2};asr/engine 必须为空。
-		// 下游按 family 区分合成引擎调用链(qwen3 走预置音色/克隆参数,index 走情感控制)。
+		// family 规则:tts 必填且 ∈{qwen3_tts, index_tts2, kokoro};asr/engine 必须为空。
+		// 下游按 family 区分合成引擎调用链(qwen3 走预置音色/克隆参数,index 走情感控制,
+		// kokoro 走 sherpa 子进程预置音色)。
 		switch e.Kind {
 		case "tts":
-			if e.Family != "qwen3_tts" && e.Family != "index_tts2" {
-				return nil, fmt.Errorf("条目 %s 的 family 必须是 qwen3_tts|index_tts2", e.ID)
+			switch e.Family {
+			case "qwen3_tts", "index_tts2", "kokoro":
+			default:
+				return nil, fmt.Errorf("条目 %s 的 family 必须是 qwen3_tts|index_tts2|kokoro", e.ID)
 			}
 		default:
 			if e.Family != "" {

@@ -43,6 +43,11 @@ func (s *Server) listVoices(c *gin.Context) {
 		ok(c, gin.H{"voices": zhipu.OfficialVoices})
 		return
 	case "local":
+		// family=kokoro 返回内置音色库(103 个,含 voices.bin sid);缺省 qwen3 九人
+		if c.Query("family") == "kokoro" {
+			ok(c, gin.H{"voices": local.KokoroVoices()})
+			return
+		}
 		ok(c, gin.H{"voices": local.CustomVoices()})
 		return
 	case "openrouter":

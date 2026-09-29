@@ -34,6 +34,9 @@ type SynthRequest struct {
 	// —— IndexTTS2.5 情感控制(qwen3 服务端会忽略,透传无害)——
 	EmotionText  string  // 情感描述文本;非空 → emotion_text + use_emotion_text:true
 	EmotionAlpha float64 // 情感强度 0-1;∈(0,1) 才下发(1.0 为默认全强度,不发送)
+
+	// —— kokoro 家族(sherpa 子进程)——
+	SpeakerSID int // 预置音色在 voices.bin 中的 speaker id(qwen3/index 不消费)
 }
 
 // TTSRuntime audiocpp_server 生命周期管理:懒启动、健康轮询、崩溃自愈、退出回收。
