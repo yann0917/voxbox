@@ -75,12 +75,15 @@ export default function MinutesPage() {
   const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
-  const [features, setFeatures] = useState<string[]>(["summary"]);
+  /** 手选附加功能（仅关闭打包价时生效） */
+  const [manualFeatures, setManualFeatures] = useState<string[]>(["summary"]);
   const [sourceLang, setSourceLang] = useState("zh_cn");
   const [targetLang, setTargetLang] = useState("en_us");
   const [speakers, setSpeakers] = useState(0);
   const [hotwords, setHotwords] = useState("");
   const [allActivate, setAllActivate] = useState(true);
+  /** 生效附加功能：打包价 = 全部 5 项（打包是结构集合一口价，少选不省钱）；关闭时按手选 */
+  const features = allActivate ? FEATURES.map((f) => f.key) : manualFeatures;
   const [taskId, setTaskId] = useState<string | null>(null);
   const [upstreamTaskId, setUpstreamTaskId] = useState("");
   const [run, setRun] = useState<Run | null>(null);
@@ -149,7 +152,7 @@ export default function MinutesPage() {
   }, [ev, taskId, toast]);
 
   const toggleFeature = (key: string) => {
-    setFeatures((prev) => (prev.includes(key) ? prev.filter((f) => f !== key) : [...prev, key]));
+    setManualFeatures((prev) => (prev.includes(key) ? prev.filter((f) => f !== key) : [...prev, key]));
   };
 
   const submit = useMutation({
@@ -339,23 +342,31 @@ export default function MinutesPage() {
           />
           <CardBody className="space-y-4">
             <div className="space-y-2">
-              <MicroLabel>附加功能（至少一项）</MicroLabel>
-              {FEATURES.map((f) => (
-                <label key={f.key} className="flex cursor-pointer items-start gap-2 rounded-[var(--radius-sm)] px-1 py-1 text-sm text-fg-2 transition-colors duration-150 hover:bg-raise-2">
-                  <input
-                    type="checkbox"
-                    checked={features.includes(f.key)}
-                    onChange={() => toggleFeature(f.key)}
-                    className="mt-0.5 size-4 cursor-pointer accent-accent"
-                  />
-                  <span className="min-w-0">
-                    <span className="text-fg">{f.label}</span>
-                    <span className="block text-[11px] text-muted">{f.desc}</span>
-                  </span>
-                </label>
-              ))}
-              {features.length === 0 && (
-                <p className="text-[11px] text-danger">至少选择一项附加功能，否则任务无法提交。</p>
+              <MicroLabel>附加功能{allActivate ? "" : "（至少一项）"}</MicroLabel>
+              {allActivate ? (
+                <p className="text-[11px] leading-relaxed text-muted">
+                  打包价已包含全部附加功能：全文总结、待办、问答、章节、翻译；关闭打包价可单独勾选。
+                </p>
+              ) : (
+                <>
+                  {FEATURES.map((f) => (
+                    <label key={f.key} className="flex cursor-pointer items-start gap-2 rounded-[var(--radius-sm)] px-1 py-1 text-sm text-fg-2 transition-colors duration-150 hover:bg-raise-2">
+                      <input
+                        type="checkbox"
+                        checked={manualFeatures.includes(f.key)}
+                        onChange={() => toggleFeature(f.key)}
+                        className="mt-0.5 size-4 cursor-pointer accent-accent"
+                      />
+                      <span className="min-w-0">
+                        <span className="text-fg">{f.label}</span>
+                        <span className="block text-[11px] text-muted">{f.desc}</span>
+                      </span>
+                    </label>
+                  ))}
+                  {manualFeatures.length === 0 && (
+                    <p className="text-[11px] text-danger">至少选择一项附加功能，否则任务无法提交。</p>
+                  )}
+                </>
               )}
             </div>
 
@@ -394,7 +405,7 @@ export default function MinutesPage() {
                   />
                 )}
               </Field>
-              <Field label="打包计费" hint="关 = 按功能数计费">
+              <Field label="打包计费" hint="开 = 附加功能全选，按打包价计费">
                 {({ id }) => (
                   <label htmlFor={id} className="flex h-9 cursor-pointer items-center gap-2 text-sm text-fg-2">
                     <input

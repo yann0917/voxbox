@@ -409,7 +409,7 @@ function MinutesEstimator() {
         </div>
         <p className="text-[11px] text-muted">
           转写 {MINUTES_PRICE.transcriptionPerHour} 元/小时（必选）+ 结构集合 {MINUTES_PRICE.structureBundlePerHour} 元/小时
-          或单功能 {MINUTES_PRICE.structureSinglePerHour} 元/小时 × N（功能 ≥2 时打包更划算）；
+          或单功能 {MINUTES_PRICE.structureSinglePerHour} 元/小时 × N（5 项全选时打包更划算）；
           视频价格官方未单列，按音频口径估算，以账单为准。
         </p>
       </CardBody>
