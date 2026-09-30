@@ -720,29 +720,26 @@ func TestASRProducesSegments(t *testing.T) {
 	if srt.Kind != "subtitle" || srt.Format != "srt" || !strings.HasSuffix(srt.Path, ".srt") {
 		t.Fatalf("subtitle artifact 不符: %+v", srt)
 	}
-	// summary.segments：句末标点聚合（逗号不切句，与流式 TTS 同语义）：
-	// 「你好，世界！」+ 残余尾句「好」
+	// summary.segments：句末标点聚句（「你好，世界！」+ 残余尾句「好」）后过断句规范——
+	// 尾句 0ms 过短并入前段（合并后 800ms 仍不足最短显示 833ms），整段延长至 933ms
 	raw, _ := json.Marshal(out.Summary["segments"])
 	var segs []map[string]any
 	if err := json.Unmarshal(raw, &segs); err != nil {
 		t.Fatal(err)
 	}
-	if len(segs) != 2 {
-		t.Fatalf("应聚出 2 句: %s", raw)
+	if len(segs) != 1 {
+		t.Fatalf("过短尾句应并入前段成一句: %s", raw)
 	}
-	if segs[0]["text"] != "你好，世界！" || segs[0]["start_ms"] != float64(100) || segs[0]["end_ms"] != float64(700) {
-		t.Fatalf("句 1 不符: %+v", segs[0])
+	if segs[0]["text"] != "你好，世界！好" || segs[0]["start_ms"] != float64(100) || segs[0]["end_ms"] != float64(933) {
+		t.Fatalf("规范后段不符: %+v", segs[0])
 	}
-	if segs[1]["text"] != "好" || segs[1]["start_ms"] != float64(900) {
-		t.Fatalf("尾句不符: %+v", segs[1])
-	}
-	// SRT 内容与句对齐
+	// SRT 内容与规范段时间对齐
 	srtBytes, err := os.ReadFile(filepath.Join(dataDir, srt.Path))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(srtBytes), "00:00:00,100 --> 00:00:00,700") ||
-		!strings.Contains(string(srtBytes), "你好，世界！") {
+	if !strings.Contains(string(srtBytes), "00:00:00,100 --> 00:00:00,933") ||
+		!strings.Contains(string(srtBytes), "你好，世界！好") {
 		t.Fatalf("SRT 内容不符: %s", srtBytes)
 	}
 }

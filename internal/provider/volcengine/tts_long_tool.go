@@ -13,6 +13,7 @@ import (
 
 	"github.com/yann0917/voxbox/internal/pronunciation"
 	"github.com/yann0917/voxbox/internal/provider"
+	"github.com/yann0917/voxbox/internal/subtitle"
 )
 
 // 长文本合成轮询节奏（var 便于测试注入更短间隔）：起步间隔指数退避、退避上限、总超时。
@@ -301,11 +302,34 @@ func (t *TTSLongTool) saveArtifacts(in provider.TaskInput, text, taskID string, 
 	// 「选择任务导入」按 summary.segments 取轴（与 ASR 同形状），配音完成即可入工坊
 	// 样式化/卡拉OK。未开启或空分句则跳过（与 ASR 行为一致）。
 	if timestamps && len(result.Sentences) > 0 {
-		segs := make([]ASRSegment, 0, len(result.Sentences))
+		var segs []subtitle.Segment
+		hasWords := true
 		for _, s := range result.Sentences {
-			segs = append(segs, ASRSegment{Text: s.Text, StartMS: s.StartMS, EndMS: s.EndMS})
+			if len(s.Words) == 0 {
+				hasWords = false
+				break
+			}
 		}
-		srtContent := BuildSRT(segs)
+		if hasWords {
+			// 字级时间戳可用：RefineTokens 显式句界（句末 word 即句界）
+			var words []subtitle.WordSpan
+			var ends []bool
+			for _, sent := range result.Sentences {
+				for i, wd := range sent.Words {
+					words = append(words, wd)
+					ends = append(ends, i == len(sent.Words)-1)
+				}
+			}
+			segs = subtitle.RefineTokens(words, ends)
+		} else {
+			// 兜底：仅句级，按字符比例分配句内时长
+			in := make([]subtitle.Segment, 0, len(result.Sentences))
+			for _, s := range result.Sentences {
+				in = append(in, subtitle.Segment{Text: s.Text, StartMS: s.StartMS, EndMS: s.EndMS})
+			}
+			segs = subtitle.RefineSegments(in)
+		}
+		srtContent := subtitle.BuildSRT(segs)
 		srtAbs := srtPath
 		if !filepath.IsAbs(srtAbs) {
 			srtAbs = filepath.Join(t.outDir, srtPath)
@@ -317,7 +341,7 @@ func (t *TTSLongTool) saveArtifacts(in provider.TaskInput, text, taskID string, 
 		arts = append(arts, provider.Artifact{
 			Kind: "subtitle", Path: srtPath, Format: "srt", Size: int64(len(srtContent)),
 		})
-		summary["segments"] = subtitleSegmentSummaries(segs)
+		summary["segments"] = segs
 	}
 
 	return provider.TaskOutput{Artifacts: arts, Summary: summary}, nil

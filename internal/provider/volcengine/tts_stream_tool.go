@@ -241,11 +241,13 @@ func (t *TTSStreamTool) saveArtifacts(in provider.TaskInput, text string, result
 	// 字级时间戳按句末标点聚合为句级 SRT（字级条目过碎，不适合字幕阅读），句级
 	// segments 同时随 summary 下发——字幕工坊「选择任务导入」按它取轴（与 ASR/tts_long
 	// 同形状），配音完成即可入工坊样式化/卡拉OK。
-	var segs []ASRSegment
+	var segs []subtitle.Segment
 	if paramBool(in.Params, "subtitle", "enable_subtitle") && len(result.Words) > 0 {
-		segs = aggregateSubtitleSegments(result.Words)
+		if base := aggregateSubtitleSegments(result.Words); len(base) > 0 {
+			segs = refineSegments(base)
+		}
 		if len(segs) > 0 {
-			srtContent := BuildSRT(segs)
+			srtContent := subtitle.BuildSRT(segs)
 			srtAbs := srtPath
 			if !filepath.IsAbs(srtAbs) {
 				srtAbs = filepath.Join(t.outDir, srtPath)
@@ -267,19 +269,9 @@ func (t *TTSStreamTool) saveArtifacts(in provider.TaskInput, text string, result
 		"duration_ms":  lastWordEndMS(result.Words),
 	}
 	if len(segs) > 0 {
-		summary["segments"] = subtitleSegmentSummaries(segs)
+		summary["segments"] = segs
 	}
 	return provider.TaskOutput{Artifacts: arts, Summary: summary}, nil
-}
-
-// subtitleSegmentSummaries 分句时间戳 → summary.segments 形状（字幕工坊「选择任务导入」
-// 的取轴契约，与 ASR 任务一致：text/start_ms/end_ms）。tts_long 与 tts_stream 共用。
-func subtitleSegmentSummaries(segs []ASRSegment) []map[string]any {
-	out := make([]map[string]any, 0, len(segs))
-	for _, s := range segs {
-		out = append(out, map[string]any{"text": s.Text, "start_ms": s.StartMS, "end_ms": s.EndMS})
-	}
-	return out
 }
 
 // lastWordEndMS 取最后一个字的结束时间作为音频时长（未开启字幕时为 0）。
@@ -302,5 +294,16 @@ func aggregateSubtitleSegments(words []TTSStreamWord) []ASRSegment {
 	for _, seg := range segs {
 		out = append(out, ASRSegment{Text: seg.Text, StartMS: seg.StartMS, EndMS: seg.EndMS})
 	}
+	return out
+}
+
+// refineSegments 对句级段过断句规范（内部转字级流走 RefineTokens 同一管线）。
+// 流式/长文本 TTS 的 SRT 与 summary.segments 统一在此收口。
+func refineSegments(segs []ASRSegment) []subtitle.Segment {
+	in := make([]subtitle.Segment, 0, len(segs))
+	for _, s := range segs {
+		in = append(in, subtitle.Segment{Text: s.Text, StartMS: s.StartMS, EndMS: s.EndMS})
+	}
+	out := subtitle.RefineSegments(in)
 	return out
 }

@@ -105,10 +105,11 @@ func (a *asrTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		Meta: map[string]any{"engine": asrEngineID, "model": asrModelID, "lang": res.Lang},
 	}}
 
-	// 分句：SenseVoice tokens 与 timestamps 严格 1:1（spike 实测），按句末标点聚合为
-	// 句级段——产出 SRT 产物并随 summary.segments 下发（与云端 ASR 同形状），字幕工坊
-	// 「选择任务导入」按它取轴。tokens 为 ITN 前的原始识别序列（含标点），字幕文本以
-	// 它为准；转写产物仍是 ITN 规整文本，两者在数字读法上可能不同属预期。
+	// 分句+断句规范：SenseVoice tokens 与 timestamps 严格 1:1（spike 实测），先按句末
+	// 标点聚句，再过断句规范（28 字上限下切/过短并合/时长钳制/间隙）——产出 SRT 产物
+	// 并随 summary.segments 下发（与云端 ASR 同形状），字幕工坊「选择任务导入」按它取轴。
+	// tokens 为 ITN 前的原始识别序列（含标点），字幕文本以它为准；转写产物仍是 ITN
+	// 规整文本，两者在数字读法上可能不同属预期。
 	summary := map[string]any{"engine": asrEngineID, "text": res.Text}
 	if len(res.Tokens) > 0 && len(res.Tokens) == len(res.Timestamps) {
 		words := make([]subtitle.WordSpan, 0, len(res.Tokens))
@@ -116,7 +117,7 @@ func (a *asrTool) Run(ctx context.Context, in provider.TaskInput, report provide
 			ms := int64(math.Round(res.Timestamps[i] * 1000))
 			words = append(words, subtitle.WordSpan{Text: tok, StartMS: ms, EndMS: ms})
 		}
-		if segs := subtitle.AggregateBySentence(words); len(segs) > 0 {
+		if segs := subtitle.RefineTokens(words, nil); len(segs) > 0 {
 			srtPath := strings.TrimSuffix(rel, filepath.Ext(rel)) + ".srt"
 			srtContent := subtitle.BuildSRT(segs)
 			if err := os.WriteFile(filepath.Join(a.dataDir, srtPath), srtContent, 0o644); err != nil {

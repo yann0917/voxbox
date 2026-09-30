@@ -120,12 +120,16 @@ func TestTTSStreamToolRunSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// summary.segments：字级时间戳按句末标点聚合成句级（字幕工坊导入契约）
-	segments, ok := out.Summary["segments"].([]map[string]any)
-	if !ok || len(segments) != 1 {
-		t.Fatalf("summary.segments 应为 1 条句级段: %+v", out.Summary["segments"])
+	// summary.segments：字级时间戳聚句+断句规范（字幕工坊导入契约，JSON roundtrip 断言）
+	segRaw, err := json.Marshal(out.Summary["segments"])
+	if err != nil {
+		t.Fatal(err)
 	}
-	if segments[0]["text"] != "你好，世界。" || segments[0]["start_ms"] != int64(0) || segments[0]["end_ms"] != int64(1000) {
+	var segments []map[string]any
+	if err := json.Unmarshal(segRaw, &segments); err != nil || len(segments) != 1 {
+		t.Fatalf("summary.segments 应为 1 条句级段: %s", segRaw)
+	}
+	if segments[0]["text"] != "你好，世界。" || segments[0]["start_ms"] != float64(0) || segments[0]["end_ms"] != float64(1000) {
 		t.Errorf("segments[0] = %+v", segments[0])
 	}
 

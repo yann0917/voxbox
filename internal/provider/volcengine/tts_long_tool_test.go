@@ -159,10 +159,15 @@ func TestTTSLongToolRunSuccess(t *testing.T) {
 		t.Errorf("srt artifact = %+v", srt)
 	}
 
-	// summary.segments：字幕工坊「选择任务导入」按它取轴（与 ASR 同形状）
-	segments, ok := out.Summary["segments"].([]map[string]any)
-	if !ok || len(segments) == 0 {
-		t.Fatalf("summary.segments 缺失或形状不符: %+v", out.Summary["segments"])
+	// summary.segments：字幕工坊「选择任务导入」按它取轴（与 ASR 同形状）——
+	// 经 JSON roundtrip 断言线上契约（结构体在 Go 层，wire 层是 text/start_ms/end_ms）
+	segRaw, err := json.Marshal(out.Summary["segments"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var segments []map[string]any
+	if err := json.Unmarshal(segRaw, &segments); err != nil || len(segments) == 0 {
+		t.Fatalf("summary.segments 缺失或形状不符: %s", segRaw)
 	}
 	first := segments[0]
 	if first["text"] == nil || first["start_ms"] == nil || first["end_ms"] == nil {

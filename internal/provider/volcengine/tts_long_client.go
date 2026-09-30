@@ -11,6 +11,7 @@ import (
 	"github.com/go-resty/resty/v2"
 
 	"github.com/yann0917/voxbox/internal/provider/volcengine/sauc"
+	"github.com/yann0917/voxbox/internal/subtitle"
 )
 
 const (
@@ -51,10 +52,12 @@ type TTSLongSubmitReq struct {
 }
 
 // TTSLongSentence 分句时间戳（秒 → 毫秒归一，供 BuildSRT 直接消费）。
+// Words 为字级时间戳（enable_timestamp 开启时上游随分句返回），供断句规范使用。
 type TTSLongSentence struct {
 	Text    string
 	StartMS int64
 	EndMS   int64
+	Words   []subtitle.WordSpan
 }
 
 // TTSLongQueryResult 查询结果：状态 + 成功时的音频链接与时间戳。
@@ -254,11 +257,19 @@ func (c *TTSLongClient) Query(ctx context.Context, taskID, resource string) (TTS
 		out.Status = "Running"
 	}
 	for _, s := range env.Data.Sentences {
-		out.Sentences = append(out.Sentences, TTSLongSentence{
+		sent := TTSLongSentence{
 			Text:    s.Text,
 			StartMS: secToMS(s.StartTime),
 			EndMS:   secToMS(s.EndTime),
-		})
+		}
+		for _, word := range s.Words {
+			sent.Words = append(sent.Words, subtitle.WordSpan{
+				Text:    word.Word,
+				StartMS: secToMS(word.StartTime),
+				EndMS:   secToMS(word.EndTime),
+			})
+		}
+		out.Sentences = append(out.Sentences, sent)
 	}
 	return out, nil
 }
