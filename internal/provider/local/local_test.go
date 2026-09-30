@@ -758,6 +758,9 @@ func TestASRTranscodesNonWav(t *testing.T) {
 	}
 	asr := newASRTool(dataDir, m)
 	var gotWav string
+	// lookPath 必须注入:CI runner 无 ffmpeg,不注入会先死在环境探测上
+	// (缺 ffmpeg 分支由 TestASRTranscodeNeedsFFmpeg 显式覆盖)
+	asr.lookPath = func(string) (string, error) { return "ffmpeg", nil }
 	asr.transcodeFn = func(ctx context.Context, src, dst string) error {
 		if src != mp3 || filepath.Ext(dst) != ".wav" {
 			t.Errorf("转码参数不符: src=%q dst=%q", src, dst)
