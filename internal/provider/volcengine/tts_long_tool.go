@@ -302,10 +302,8 @@ func (t *TTSLongTool) saveArtifacts(in provider.TaskInput, text, taskID string, 
 	// 样式化/卡拉OK。未开启或空分句则跳过（与 ASR 行为一致）。
 	if timestamps && len(result.Sentences) > 0 {
 		segs := make([]ASRSegment, 0, len(result.Sentences))
-		segSummaries := make([]map[string]any, 0, len(result.Sentences))
 		for _, s := range result.Sentences {
 			segs = append(segs, ASRSegment{Text: s.Text, StartMS: s.StartMS, EndMS: s.EndMS})
-			segSummaries = append(segSummaries, map[string]any{"text": s.Text, "start_ms": s.StartMS, "end_ms": s.EndMS})
 		}
 		srtContent := BuildSRT(segs)
 		srtAbs := srtPath
@@ -319,7 +317,7 @@ func (t *TTSLongTool) saveArtifacts(in provider.TaskInput, text, taskID string, 
 		arts = append(arts, provider.Artifact{
 			Kind: "subtitle", Path: srtPath, Format: "srt", Size: int64(len(srtContent)),
 		})
-		summary["segments"] = segSummaries
+		summary["segments"] = subtitleSegmentSummaries(segs)
 	}
 
 	return provider.TaskOutput{Artifacts: arts, Summary: summary}, nil

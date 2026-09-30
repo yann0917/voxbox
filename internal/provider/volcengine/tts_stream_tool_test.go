@@ -120,6 +120,15 @@ func TestTTSStreamToolRunSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// summary.segments：字级时间戳按句末标点聚合成句级（字幕工坊导入契约）
+	segments, ok := out.Summary["segments"].([]map[string]any)
+	if !ok || len(segments) != 1 {
+		t.Fatalf("summary.segments 应为 1 条句级段: %+v", out.Summary["segments"])
+	}
+	if segments[0]["text"] != "你好，世界。" || segments[0]["start_ms"] != int64(0) || segments[0]["end_ms"] != int64(1000) {
+		t.Errorf("segments[0] = %+v", segments[0])
+	}
+
 	srtText := string(srtBytes)
 	if !strings.Contains(srtText, "00:00:00,000 --> 00:00:01,000") ||
 		!strings.Contains(srtText, "你好，世界。") {

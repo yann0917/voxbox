@@ -126,7 +126,9 @@ export default function SubtitlesPage() {
   };
   // 配音即字幕：长文本 TTS 勾选时间戳后同样带分句时间戳，与识别/妙记任务同源可导
   const candidates = (tasks.data?.items ?? []).filter(
-    (t) => t.status === "succeeded" && (t.tool === "asr" || t.tool === "minutes" || t.tool === "tts_long"),
+    (t) =>
+      t.status === "succeeded" &&
+      (t.tool === "asr" || t.tool === "minutes" || t.tool === "tts_long" || t.tool === "tts_stream"),
   );
 
   const importFromTask = useMutation({
@@ -247,7 +249,7 @@ export default function SubtitlesPage() {
 
             {source === "task" && (
               <div className="space-y-2">
-                <Field label="选择已完成的识别/配音任务" hint="取分句时间戳作为字幕轴（长文本配音需勾选「生成时间戳」）">
+                <Field label="选择已完成的识别/配音任务" hint="取分句时间戳作为字幕轴（火山配音需勾选时间戳输出）">
                   {({ id, ...rest }) => (
                     <Select
                       id={id}

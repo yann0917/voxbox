@@ -237,9 +237,12 @@ func (t *TTSStreamTool) saveArtifacts(in provider.TaskInput, text string, result
 		Size: int64(len(result.Audio)), DurationMS: lastWordEndMS(result.Words),
 	}}
 
-	// 字级时间戳按句末标点聚合为句级 SRT（字级条目过碎，不适合字幕阅读）。
+	// 字级时间戳按句末标点聚合为句级 SRT（字级条目过碎，不适合字幕阅读），句级
+	// segments 同时随 summary 下发——字幕工坊「选择任务导入」按它取轴（与 ASR/tts_long
+	// 同形状），配音完成即可入工坊样式化/卡拉OK。
+	var segs []ASRSegment
 	if paramBool(in.Params, "subtitle", "enable_subtitle") && len(result.Words) > 0 {
-		segs := aggregateSubtitleSegments(result.Words)
+		segs = aggregateSubtitleSegments(result.Words)
 		if len(segs) > 0 {
 			srtContent := BuildSRT(segs)
 			srtAbs := srtPath
@@ -256,15 +259,26 @@ func (t *TTSStreamTool) saveArtifacts(in provider.TaskInput, text string, result
 		}
 	}
 
-	return provider.TaskOutput{
-		Artifacts: arts,
-		Summary: map[string]any{
-			"char_count":   utf8.RuneCountInString(text),
-			"billed_chars": result.BilledWords,
-			"chunks":       result.Chunks,
-			"duration_ms":  lastWordEndMS(result.Words),
-		},
-	}, nil
+	summary := map[string]any{
+		"char_count":   utf8.RuneCountInString(text),
+		"billed_chars": result.BilledWords,
+		"chunks":       result.Chunks,
+		"duration_ms":  lastWordEndMS(result.Words),
+	}
+	if len(segs) > 0 {
+		summary["segments"] = subtitleSegmentSummaries(segs)
+	}
+	return provider.TaskOutput{Artifacts: arts, Summary: summary}, nil
+}
+
+// subtitleSegmentSummaries 分句时间戳 → summary.segments 形状（字幕工坊「选择任务导入」
+// 的取轴契约，与 ASR 任务一致：text/start_ms/end_ms）。tts_long 与 tts_stream 共用。
+func subtitleSegmentSummaries(segs []ASRSegment) []map[string]any {
+	out := make([]map[string]any, 0, len(segs))
+	for _, s := range segs {
+		out = append(out, map[string]any{"text": s.Text, "start_ms": s.StartMS, "end_ms": s.EndMS})
+	}
+	return out
 }
 
 // lastWordEndMS 取最后一个字的结束时间作为音频时长（未开启字幕时为 0）。
