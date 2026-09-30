@@ -129,3 +129,52 @@ func TestRefineSegmentsProportional(t *testing.T) {
 		t.Fatalf("过短尾段应延长: %+v", segs[len(segs)-1])
 	}
 }
+
+// TestRefineMergeOrphanPunct 真实案例回归：句末「。」落在尾静音里、与前文相隔 2 秒
+// （前句无句末标点），聚句后曾自成一段孤立句号——纯标点 token 必须并入前文。
+func TestRefineMergeOrphanPunct(t *testing.T) {
+	words := []WordSpan{
+		w("太", 24000, 24100), w("贵", 24100, 25320), // 前句无句末标点
+		w("。", 25500, 26333), // 2 秒后的尾静音里,833ms 恰好不触发过短
+	}
+	segs := RefineTokens(words, nil)
+	if len(segs) != 1 {
+		t.Fatalf("孤立句号应并入前文成一段: %+v", segs)
+	}
+	if segs[0].Text != "太贵。" {
+		t.Fatalf("文本不符: %q", segs[0].Text)
+	}
+	if segs[0].StartMS != 24000 || segs[0].EndMS != 26333 {
+		t.Fatalf("时间窗应延伸到句号结束: %+v", segs[0])
+	}
+}
+
+// TestMergePunctTokensLeading 流首孤立标点并入后一个内容 token。
+func TestMergePunctTokensLeading(t *testing.T) {
+	got, ends := mergePunctTokens(
+		[]WordSpan{w("。", 0, 100), w("你", 200, 300), w("好", 300, 400)},
+		[]bool{false, false, true},
+	)
+	if len(got) != 2 {
+		t.Fatalf("流首标点应并入后 token: %+v", got)
+	}
+	if got[0].Text != "。你" || got[0].StartMS != 0 {
+		t.Fatalf("合并文本/时间窗不符: %+v", got[0])
+	}
+	if !ends[1] {
+		t.Fatal("句界应随合并保留")
+	}
+}
+
+// TestIsPunctOnly 边界：空串不算、含内容字不算、空白忽略。
+func TestIsPunctOnly(t *testing.T) {
+	cases := map[string]bool{
+		"。": true, "，": true, "！？": true, " . ": true, "…": true,
+		"": false, "好": false, "好。": false,
+	}
+	for text, want := range cases {
+		if got := isPunctOnly(text); got != want {
+			t.Errorf("isPunctOnly(%q) = %v, want %v", text, got, want)
+		}
+	}
+}

@@ -6,6 +6,7 @@ package subtitle
 
 import (
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -34,6 +35,7 @@ func RefineTokens(words []WordSpan, sentenceEnds []bool) []Segment {
 			sentenceEnds[i] = strings.ContainsAny(w.Text, sentenceEndPuncts)
 		}
 	}
+	words, sentenceEnds = mergePunctTokens(words, sentenceEnds)
 	// 聚句（每句收集 word 下标区间）
 	type sentence struct {
 		lo, hi int // words 下标 [lo,hi)
@@ -186,6 +188,60 @@ func splitByLimit(ws []WordSpan) [][]WordSpan {
 		rest = rest[cut:]
 	}
 	return chunks
+}
+
+// mergePunctTokens 纯标点 token 并入相邻内容 token——标点永不独立成段（真实案例：
+// 句末标点落在尾静音里、与前文相隔数秒，聚句后自成一段孤立「。」）。优先并向前一个
+// 内容 token（延伸其时间窗，覆盖标点挂在尾静音的形态）；流首孤立标点并入后一个
+// token（时间窗前置）。显式句界同步折算（被并入 token 的句界 OR 到目标）。
+func mergePunctTokens(words []WordSpan, ends []bool) ([]WordSpan, []bool) {
+	out := make([]WordSpan, 0, len(words))
+	outEnds := make([]bool, 0, len(ends))
+	var pending *int // 流首孤立标点的 words 下标
+	for i, w := range words {
+		switch {
+		case isPunctOnly(w.Text) && len(out) > 0:
+			// 并入前一个内容 token：时间窗延伸、文本追加、句界 OR
+			out[len(out)-1].Text += w.Text
+			if w.EndMS > out[len(out)-1].EndMS {
+				out[len(out)-1].EndMS = w.EndMS
+			}
+			if len(ends) > 0 && ends[i] {
+				outEnds[len(outEnds)-1] = true
+			}
+		case isPunctOnly(w.Text):
+			j := i
+			pending = &j
+		default:
+			if pending != nil {
+				w.Text = words[*pending].Text + w.Text
+				w.StartMS = words[*pending].StartMS
+				pending = nil
+			}
+			out = append(out, w)
+			e := false
+			if len(ends) > 0 && i < len(ends) {
+				e = ends[i]
+			}
+			outEnds = append(outEnds, e)
+		}
+	}
+	return out, outEnds
+}
+
+// isPunctOnly 文本是否仅由标点与空白构成（空串不算）。
+func isPunctOnly(s string) bool {
+	any := false
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		if !unicode.IsPunct(r) && !unicode.IsSymbol(r) {
+			return false
+		}
+		any = true
+	}
+	return any
 }
 
 // canMergeSegs 过短段并合约束：合并后 rune ≤ MaxSegChars、时长 ≤ MaxDurMS
