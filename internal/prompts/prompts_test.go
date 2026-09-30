@@ -33,10 +33,12 @@ func TestBuiltinCatalogIntegrity(t *testing.T) {
 			polish++
 		case KindDialect:
 			dialect++
-			// 方言条目必须自带改写指令骨架(改写动词+只输出约束);
-			// 朗读约束由 SystemPrompt 统一追加,不在此重复
-			if !strings.Contains(e.Content, "改写") || !strings.Contains(e.Content, "只输出") {
-				t.Fatalf("方言条目 %s 正文缺少改写/输出约束: %q", e.Key, e.Content)
+			// 方言条目必须自带防堆砌约束(词表附义仅供理解+母语者语感为准):
+			// 只列特征词不给含义会诱发模型硬塞词(河南话「中」被塞进问句尾的真实案例)
+			for _, anchor := range []string{"改写", "只输出", "母语者的语感", "不为用而用"} {
+				if !strings.Contains(e.Content, anchor) {
+					t.Fatalf("方言条目 %s 正文缺少约束锚点 %q: %q", e.Key, anchor, e.Content)
+				}
 			}
 		}
 	}
