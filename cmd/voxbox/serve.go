@@ -7,7 +7,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -23,6 +25,7 @@ var webDist embed.FS
 
 func newServeCommand() *cobra.Command {
 	var port int
+	var noOpen bool
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "启动 Web 控制台",
@@ -103,6 +106,13 @@ func newServeCommand() *cobra.Command {
 			fmt.Printf("VOXBOX_READY addr=%s\n", addr) // stdout 机器可读就绪行（桌面壳契约，绑定后发出）
 			fmt.Fprintf(os.Stderr, "voxbox Web 已启动: http://%s\n", addr)
 
+			// 自动打开浏览器：CLI 独立使用时服务就绪即开页；桌面模式跳过（壳自己开窗）。
+			// 失败仅提示不阻断（headless 服务器等场景常态）。绑定 0.0.0.0/:: 时浏览器走回环。
+			if !noOpen && os.Getenv("VOXBOX_DESKTOP") != "1" {
+				url := browserURL(addr, cfg.Server.Port)
+				go openBrowser(url)
+			}
+
 			// 优雅关闭：SIGINT/SIGTERM 后停止接新连接、等在途请求排空（上限 10s）。
 			// 不等待 WebSocket 等劫持连接（进程退出即断，浏览器可自动重连），
 			// 也不排空任务池——长任务不阻塞退出，任务状态本就落 SQLite，重启后可见；
@@ -134,5 +144,39 @@ func newServeCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&port, "port", -1, "端口（默认取配置，0 为系统分配空闲端口）")
+	cmd.Flags().BoolVar(&noOpen, "no-open", false, "不自动打开浏览器")
 	return cmd
+}
+
+// browserURL 监听地址 → 浏览器可访问 URL：通配绑定（0.0.0.0/[::]）归一为 127.0.0.1
+// （浏览器连不通通配地址），IPv6 回环展平为 localhost。
+func browserURL(listenAddr string, port int) string {
+	host := listenAddr
+	if h, _, err := net.SplitHostPort(listenAddr); err == nil {
+		host = h
+	}
+	switch host {
+	case "0.0.0.0", "::", "[::]":
+		host = "127.0.0.1"
+	case "::1", "[::1]":
+		host = "localhost"
+	}
+	return fmt.Sprintf("http://%s:%d", host, port)
+}
+
+// openBrowser 按平台用系统默认浏览器打开 URL：macOS open / Windows rundll32 /
+// Linux xdg-open。失败静默降级为 stderr 提示（headless/无桌面环境常态）。
+func openBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "自动打开浏览器失败（%v），请手动访问: %s\n", err, url)
+	}
 }
