@@ -606,13 +606,20 @@ export default function LocalTTSPanel() {
               </Field>
             )}
             {isVoxCPM && (
-              <Field label="音色描述" hint="选填;直读或克隆时用自然语言描述音色与语气,如:温柔的年轻女声">
+              <Field
+                label="音色描述"
+                hint={
+                  voiceId
+                    ? `克隆模式:音色年龄性别由参考音频${selectedVoice ? `「${selectedVoice.name}」` : ""}决定,描述仅调节语气与语速;清空选择后按描述凭空生成音色`
+                    : "直读模式:按描述凭空生成全新音色,建议写完整(年龄/性别/音色质感/语速),如:一位十四岁的少年,声音清亮偏细,语速稍快"
+                }
+              >
                 {({ id, ...rest }) => (
                   <Input
                     id={id}
                     value={style}
                     onChange={(e) => setStyle(e.target.value)}
-                    placeholder="如:温柔的年轻女声,语速平缓"
+                    placeholder="如:一位十四岁的少年,声音清亮偏细,语速稍快"
                     {...rest}
                   />
                 )}
