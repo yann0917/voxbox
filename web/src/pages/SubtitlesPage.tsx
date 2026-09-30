@@ -124,8 +124,9 @@ export default function SubtitlesPage() {
       setKaraoke(p.karaoke);
     }
   };
+  // 配音即字幕：长文本 TTS 勾选时间戳后同样带分句时间戳，与识别/妙记任务同源可导
   const candidates = (tasks.data?.items ?? []).filter(
-    (t) => t.status === "succeeded" && (t.tool === "asr" || t.tool === "minutes"),
+    (t) => t.status === "succeeded" && (t.tool === "asr" || t.tool === "minutes" || t.tool === "tts_long"),
   );
 
   const importFromTask = useMutation({
@@ -246,7 +247,7 @@ export default function SubtitlesPage() {
 
             {source === "task" && (
               <div className="space-y-2">
-                <Field label="选择已完成的识别/妙记任务" hint="取分句时间戳作为字幕轴">
+                <Field label="选择已完成的识别/配音任务" hint="取分句时间戳作为字幕轴（长文本配音需勾选「生成时间戳」）">
                   {({ id, ...rest }) => (
                     <Select
                       id={id}
@@ -254,7 +255,7 @@ export default function SubtitlesPage() {
                       onChange={(e) => importFromTask.mutate(e.target.value)}
                       {...rest}
                     >
-                      <option value="">{candidates.length > 0 ? "选择任务导入…" : "暂无已完成的识别/妙记任务"}</option>
+                      <option value="">{candidates.length > 0 ? "选择任务导入…" : "暂无已完成的识别/配音任务"}</option>
                       {candidates.map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.created_at} · {t.id.slice(0, 8)}

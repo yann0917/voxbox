@@ -289,12 +289,23 @@ func (t *TTSLongTool) saveArtifacts(in provider.TaskInput, text, taskID string, 
 		Kind: "audio", Path: audioPath, Format: format,
 		Size: int64(len(audio)), DurationMS: lastEndMS(result.Sentences),
 	}}
+	summary := map[string]any{
+		"char_count":        utf8.RuneCountInString(text),
+		"synthesized_chars": result.SynthesizeTextLength,
+		"sentence_count":    len(result.Sentences),
+		"upstream_task_id":  taskID,
+		"req_text_length":   result.ReqTextLength,
+	}
 
-	// 时间戳开启且服务端返回分句时产出 SRT；未开启或空分句则跳过（与 ASR 行为一致）。
+	// 时间戳开启且服务端返回分句时产出 SRT 并随 summary 带分句时间戳——字幕工坊
+	// 「选择任务导入」按 summary.segments 取轴（与 ASR 同形状），配音完成即可入工坊
+	// 样式化/卡拉OK。未开启或空分句则跳过（与 ASR 行为一致）。
 	if timestamps && len(result.Sentences) > 0 {
 		segs := make([]ASRSegment, 0, len(result.Sentences))
+		segSummaries := make([]map[string]any, 0, len(result.Sentences))
 		for _, s := range result.Sentences {
 			segs = append(segs, ASRSegment{Text: s.Text, StartMS: s.StartMS, EndMS: s.EndMS})
+			segSummaries = append(segSummaries, map[string]any{"text": s.Text, "start_ms": s.StartMS, "end_ms": s.EndMS})
 		}
 		srtContent := BuildSRT(segs)
 		srtAbs := srtPath
@@ -308,18 +319,10 @@ func (t *TTSLongTool) saveArtifacts(in provider.TaskInput, text, taskID string, 
 		arts = append(arts, provider.Artifact{
 			Kind: "subtitle", Path: srtPath, Format: "srt", Size: int64(len(srtContent)),
 		})
+		summary["segments"] = segSummaries
 	}
 
-	return provider.TaskOutput{
-		Artifacts: arts,
-		Summary: map[string]any{
-			"char_count":        utf8.RuneCountInString(text),
-			"synthesized_chars": result.SynthesizeTextLength,
-			"sentence_count":    len(result.Sentences),
-			"upstream_task_id":  taskID,
-			"req_text_length":   result.ReqTextLength,
-		},
-	}, nil
+	return provider.TaskOutput{Artifacts: arts, Summary: summary}, nil
 }
 
 // lastEndMS 取最后一个分句的结束时间作为音频时长（未开启时间戳时返回 0）。

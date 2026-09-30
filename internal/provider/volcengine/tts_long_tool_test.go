@@ -159,6 +159,16 @@ func TestTTSLongToolRunSuccess(t *testing.T) {
 		t.Errorf("srt artifact = %+v", srt)
 	}
 
+	// summary.segments：字幕工坊「选择任务导入」按它取轴（与 ASR 同形状）
+	segments, ok := out.Summary["segments"].([]map[string]any)
+	if !ok || len(segments) == 0 {
+		t.Fatalf("summary.segments 缺失或形状不符: %+v", out.Summary["segments"])
+	}
+	first := segments[0]
+	if first["text"] == nil || first["start_ms"] == nil || first["end_ms"] == nil {
+		t.Errorf("segments[0] 应含 text/start_ms/end_ms: %+v", first)
+	}
+
 	// 音频与 SRT 内容落盘
 	audioBytes, err := os.ReadFile(filepath.Join(outDir, a.Path))
 	if err != nil || string(audioBytes) != "FAKE_MP3_BYTES" {

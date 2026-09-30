@@ -1,4 +1,4 @@
-import { Download, MicVocal } from "lucide-react";
+import { Captions, Download, MicVocal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { apiBase } from "../lib/api";
 import type { Artifact } from "../lib/types";
@@ -59,6 +59,17 @@ export function ArtifactRow({ a }: { a: Artifact }) {
         >
           <MicVocal size={13} strokeWidth={1.75} />
           去闪避
+        </button>
+      )}
+      {a.kind === "subtitle" && (
+        <button
+          type="button"
+          onClick={() => navigate("/subtitles")}
+          title="到字幕工坊导入该任务分句，样式化后导出 SRT/ASS"
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
+        >
+          <Captions size={13} strokeWidth={1.75} />
+          去字幕工坊
         </button>
       )}
       <a
