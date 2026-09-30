@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { PenLine, Sparkles, Square } from "lucide-react";
+import { Languages, PenLine, Sparkles, Square } from "lucide-react";
 import { Button, Field, Modal, Select, Textarea, useToast, WaveLoader } from "../../ui";
 import { promptRef, streamApplyPrompt, usePrompts, type PromptItem } from "../../lib/prompts";
 
 /** AI 写作：挂在各合成引擎面板「合成文本」卡的 CardHeader aside（字数徽标旁）。
- *  两个入口——AI 生成（按主题出稿）与 AI 润色（改写文本框已有内容）；都是弹窗内
- *  流式预览，确认后才改动文本框，不直接覆盖用户输入。默认大模型在设置页统一配置
- *  （「AI 默认大模型」，与悬浮助手共用），此处不出现模型选择。 */
+ *  三个入口——AI 生成（按主题出稿）、AI 润色（改写文本框已有内容）与方言生成
+ *  （把普通话改写成地方口语文本，配 VoxCPM2 等按文本直出方言语气的引擎）；
+ *  都是弹窗内流式预览，确认后才改动文本框，不直接覆盖用户输入。默认大模型在
+ *  设置页统一配置（「AI 默认大模型」，与悬浮助手共用），此处不出现模型选择。 */
 
 type LengthTier = "short" | "medium" | "long";
 
@@ -235,7 +236,94 @@ function PolishModal({ open, onClose, value, onChange }: { open: boolean; onClos
   );
 }
 
-/** 流式预览区：生成/润色弹窗共用。 */
+/** 方言弹窗：选方言 → 对文本框里的普通话流式改写 → 确认替换。
+ *  dialectTip 为面板注入的搭配提示（仅 VoxCPM2 传：建议同步填「音色描述」）。 */
+function DialectModal({ open, onClose, value, onChange, tip }: { open: boolean; onClose: () => void; value: string; onChange: (v: string) => void; tip?: string }) {
+  const { data } = usePrompts();
+  const { toast } = useToast();
+  const items = (data?.items ?? []).filter((p) => p.kind === "dialect");
+  const [pickedRaw, setPicked] = useState("");
+  const { preview, streaming, error, run, stop, reset } = useStreaming();
+
+  useEffect(() => {
+    if (!open) stop();
+  }, [open, stop]);
+
+  // 默认选中第一个方言（选中项被删时自动回落），渲染期派生
+  const picked = items.some((p) => itemRef(p) === pickedRaw) ? pickedRaw : items.length > 0 ? itemRef(items[0]) : "";
+
+  const chosen = items.find((p) => itemRef(p) === picked);
+  const source = value.trim();
+
+  const replace = () => {
+    if (!preview.trim()) return;
+    onChange(preview);
+    toast({ tone: "ok", title: "已替换为方言文本" });
+    reset();
+    onClose();
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="方言生成" width={520}
+      footer={
+        <>
+          {streaming ? (
+            <Button variant="secondary" icon={<Square size={14} strokeWidth={2} />} onClick={stop}>
+              停止
+            </Button>
+          ) : (
+            <Button variant="secondary" disabled={!chosen || !source} onClick={() => chosen && void run({ ...promptRef(chosen), input: source })}>
+              {preview ? "重新生成" : "生成"}
+            </Button>
+          )}
+          {preview.trim() && !streaming && (
+            <Button variant="primary" onClick={replace}>
+              替换文本框
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="方言" hint={chosen?.description}>
+          {({ id, ...rest }) => (
+            <Select id={id} value={picked} onChange={(e) => { setPicked(e.target.value); reset(); }} {...rest}>
+              <optgroup label="内置方言">
+                {items.filter((p) => p.source === "builtin").map((p) => (
+                  <option key={itemRef(p)} value={itemRef(p)}>{p.name}</option>
+                ))}
+              </optgroup>
+              {items.some((p) => p.source === "user") && (
+                <optgroup label="我的提示词">
+                  {items.filter((p) => p.source === "user").map((p) => (
+                    <option key={itemRef(p)} value={itemRef(p)}>{p.name}</option>
+                  ))}
+                </optgroup>
+              )}
+            </Select>
+          )}
+        </Field>
+        <Field label="普通话原文" aside={<span className="font-mono text-[11px] tabular-nums text-muted">{Array.from(source).length} 字</span>}>
+          {() =>
+            source ? (
+              <div className="max-h-32 overflow-y-auto rounded-[var(--radius-sm)] border border-line bg-inset px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap break-words text-fg-2">
+                {value}
+              </div>
+            ) : (
+              <p className="rounded-[var(--radius-sm)] border border-dashed border-line px-3 py-3 text-xs text-muted">
+                文本框还没有内容：先输入或生成普通话文本，再来转方言。
+              </p>
+            )
+          }
+        </Field>
+        {tip && <p className="text-[11px] text-muted">{tip}</p>}
+        <Preview preview={preview} streaming={streaming} error={error} emptyHint="点击「生成」预览方言改写结果，确认后替换文本框。" />
+      </div>
+    </Modal>
+  );
+}
+
+/** 流式预览区：生成/润色/方言弹窗共用。 */
 function Preview({ preview, streaming, error, emptyHint }: { preview: string; streaming: boolean; error: string; emptyHint: string }) {
   if (error) {
     return (
@@ -261,10 +349,10 @@ function Preview({ preview, streaming, error, emptyHint }: { preview: string; st
   return <p className="text-[11px] text-muted">{emptyHint}</p>;
 }
 
-/** AI 写作入口按钮 + 两项下拉（挂在 aside，占位小）。 */
-export default function AIWrite({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+/** AI 写作入口按钮 + 三项下拉（挂在 aside，占位小）。 */
+export default function AIWrite({ value, onChange, dialectTip }: { value: string; onChange: (v: string) => void; dialectTip?: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [mode, setMode] = useState<"generate" | "polish" | null>(null);
+  const [mode, setMode] = useState<"generate" | "polish" | "dialect" | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -307,6 +395,7 @@ export default function AIWrite({ value, onChange }: { value: string; onChange: 
             [
               { key: "generate", label: "AI 生成文本", icon: Sparkles },
               { key: "polish", label: "AI 润色", icon: PenLine },
+              { key: "dialect", label: "方言生成", icon: Languages },
             ] as const
           ).map(({ key, label, icon: Icon }) => (
             <button
@@ -326,6 +415,7 @@ export default function AIWrite({ value, onChange }: { value: string; onChange: 
       )}
       <GenerateModal open={mode === "generate"} onClose={() => setMode(null)} value={value} onChange={onChange} />
       <PolishModal open={mode === "polish"} onClose={() => setMode(null)} value={value} onChange={onChange} />
+      <DialectModal open={mode === "dialect"} onClose={() => setMode(null)} value={value} onChange={onChange} tip={dialectTip} />
     </div>
   );
 }

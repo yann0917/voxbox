@@ -23,14 +23,14 @@ import {
  *  这里的条目就是各合成引擎面板「AI 写作」弹窗里的主题/方向选项——一处维护，处处可用。
  *  内置条目不可改，需要调整时复制正文新建一条自己的。 */
 
-const KIND_LABEL: Record<string, string> = { generate: "生成", polish: "润色" };
+const KIND_LABEL: Record<string, string> = { generate: "生成", polish: "润色", dialect: "方言" };
 
 /** 编辑器草稿。 */
 interface Draft {
   name: string;
   category: string;
   description: string;
-  kind: "generate" | "polish";
+  kind: "generate" | "polish" | "dialect";
   content: string;
 }
 
@@ -85,7 +85,7 @@ export default function PromptLibraryPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-fg">提示词库</h1>
           <p className="mt-1 text-xs text-muted">
-            AI 生成与润色使用的主题和提示词：内置的直接可用，自己的随时新建；语音合成页「AI 写作」的选项就来自这里。
+            AI 生成、润色与方言改写使用的主题和提示词：内置的直接可用，自己的随时新建；语音合成页「AI 写作」的选项就来自这里。
           </p>
         </div>
         <Button
@@ -315,11 +315,12 @@ function PromptEditor({
             ))}
           </div>
         )}
-        <Field label="用途" hint="生成=按主题写新文本；润色=改写文本框里已有的内容">
+        <Field label="用途" hint="生成=按主题写新文本；润色=改写已有内容；方言=把文本改写成地方口语文本">
           {({ id, ...rest }) => (
             <Select id={id} value={draft.kind} onChange={(e) => setDraft((d) => ({ ...d, kind: e.target.value as Draft["kind"] }))} {...rest}>
               <option value="generate">生成新文本</option>
               <option value="polish">改写已有文本</option>
+              <option value="dialect">改写成方言</option>
             </Select>
           )}
         </Field>

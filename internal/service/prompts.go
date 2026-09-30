@@ -198,6 +198,13 @@ func (s *Service) ResolveApply(userID string, req ApplyReq) (ResolvedApply, erro
 		if len([]rune(input)) > applyMaxSource {
 			return ResolvedApply{}, fmt.Errorf("润色文本不能超过 %d 字", applyMaxSource)
 		}
+	case prompts.KindDialect:
+		if input == "" {
+			return ResolvedApply{}, errors.New("参数错误：请提供要改写成方言的文本")
+		}
+		if len([]rune(input)) > applyMaxSource {
+			return ResolvedApply{}, fmt.Errorf("方言改写文本不能超过 %d 字", applyMaxSource)
+		}
 	default:
 		if len([]rune(input)) > applyMaxInput {
 			return ResolvedApply{}, fmt.Errorf("主题要点不能超过 %d 字", applyMaxInput)

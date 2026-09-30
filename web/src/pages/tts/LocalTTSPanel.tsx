@@ -376,7 +376,14 @@ export default function LocalTTSPanel() {
           <CardHeader
             title="合成文本"
             icon={<AudioLines size={15} strokeWidth={1.75} />}
-            aside={<AIWrite value={text} onChange={setText} />}
+            aside={
+              <AIWrite
+                value={text}
+                onChange={setText}
+                // VoxCPM2 有「音色描述」字段:方言文本配方言标注(口音/人物/语气)更地道
+                dialectTip={isVoxCPM ? "提示：搭配下方「音色描述」填写方言标注（如：粤语，中年男性，语气平淡）效果更佳。" : undefined}
+              />
+            }
           />
           <CardBody className="space-y-3">
             <Textarea

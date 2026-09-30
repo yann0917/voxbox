@@ -103,6 +103,17 @@ func TestResolveApply(t *testing.T) {
 	if strings.Contains(r.System, "【篇幅】") {
 		t.Fatalf("润色不应有篇幅指令: %s", r.System)
 	}
+	// 方言类：原文必填，上限同润色，无篇幅指令
+	if _, err := svc.ResolveApply("u1", ApplyReq{Builtin: "dialect-yue"}); err == nil {
+		t.Fatal("方言缺原文应报错")
+	}
+	r, err = svc.ResolveApply("u1", ApplyReq{Builtin: "dialect-yue", Input: "伙计，麻烦来一个A餐，冻奶茶少甜！"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(r.System, "【篇幅】") || !strings.Contains(r.System, "粤语") {
+		t.Fatalf("方言系统提示应含方言条目正文且无篇幅指令: %s", r.System)
+	}
 	// 自定义条目走 id，且按用户隔离
 	p, err := svc.CreatePrompt("u1", PromptInput{Name: "n", Category: "c", Content: "正文"})
 	if err != nil {

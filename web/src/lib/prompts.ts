@@ -5,7 +5,7 @@ import { fetchJSON } from "./api";
 // AI 写作（生成/润色）走 POST /api/prompts/apply 的 SSE 流，协议与助手 chat 一致：
 // 预检错误为 JSON 包络，流内错误为 {"error":...} 事件，终止 {"done":true}。
 
-export type PromptKind = "generate" | "polish";
+export type PromptKind = "generate" | "polish" | "dialect";
 
 export interface PromptItem {
   source: "builtin" | "user";
@@ -31,7 +31,7 @@ export interface ApplyPromptReq {
   builtin?: string;
   /** 自定义条目 id（与 builtin 二选一） */
   id?: number;
-  /** 生成=主题/要点（可空自拟）；润色=原文（必填） */
+  /** 生成=主题/要点（可空自拟）；润色=原文（必填）；方言=要改写成方言的普通话原文（必填） */
   input: string;
   /** 篇幅档位，仅生成类生效 */
   length?: "short" | "medium" | "long";

@@ -6,16 +6,18 @@ package prompts
 import "fmt"
 
 // Kind 条目用途：generate=按主题生成新文本（用户消息是主题/要点），polish=改写已有文本
-// （用户消息是原文）。自定义条目同样带用途标记，AI 写作弹窗按用途分流。
+// （用户消息是原文），dialect=把普通话文本改写成地方口语文本（用户消息是原文）。
+// 自定义条目同样带用途标记，AI 写作弹窗按用途分流。
 type Kind string
 
 const (
 	KindGenerate Kind = "generate"
 	KindPolish   Kind = "polish"
+	KindDialect  Kind = "dialect"
 )
 
 // Valid 用途标记是否合法。
-func (k Kind) Valid() bool { return k == KindGenerate || k == KindPolish }
+func (k Kind) Valid() bool { return k == KindGenerate || k == KindPolish || k == KindDialect }
 
 // Length 生成文本的篇幅档位：仅在 generate 类条目上生效，转成字数指令拼进系统提示。
 type Length string
@@ -128,6 +130,71 @@ var builtin = []Entry{
 		Content: "你是一位扩写助手。请在用户提供的文本基础上扩写：补充合理的细节、描写和过渡，让内容更丰满、更有画面感。" +
 			"不改变原意和事实，不引入虚构的数据或事件，只输出扩写后的全文。",
 	},
+	// —— 方言改写 9 条：VoxCPM2 等语音模型按方言文本直出方言口音，普通话原文直读出不来
+	// 方言味，所以核心是把文本本身改成方言——词汇句式整体重组而非逐字硬翻。
+	{
+		Key: "dialect-yue", Name: "粤语", Category: "方言", Kind: KindDialect,
+		Description: "普通话改写为地道粤语，词汇句式整体重组。",
+		Content: "你是一位地道的粤语文本改写专家。用户会给出一段普通话文本，请把它整体改写成地道的粤语口语文本：" +
+			"词汇和句式都按粤语的表达习惯重组，不要逐字硬翻；常用词如 唔該、嘅、冇、係、咁、佢，可参考但不必拘泥。" +
+			"语气和原意保持一致，信息量不减，不改事实。只输出改写后的粤语文本，不要解释和对照。",
+	},
+	{
+		Key: "dialect-sichuan", Name: "四川话", Category: "方言", Kind: KindDialect,
+		Description: "普通话改写为地道四川话，词汇句式整体重组。",
+		Content: "你是一位地道的四川话文本改写专家。用户会给出一段普通话文本，请把它整体改写成地道的四川话口语文本：" +
+			"词汇和句式都按四川话的表达习惯重组，不要逐字硬翻；常用词如 巴适、要得、啥子、莫得、安逸，可参考但不必拘泥。" +
+			"语气和原意保持一致，信息量不减，不改事实。只输出改写后的四川话文本，不要解释和对照。",
+	},
+	{
+		Key: "dialect-henan", Name: "河南话", Category: "方言", Kind: KindDialect,
+		Description: "普通话改写为地道河南话，词汇句式整体重组。",
+		Content: "你是一位地道的河南话文本改写专家。用户会给出一段普通话文本，请把它整体改写成地道的河南话口语文本：" +
+			"词汇和句式都按河南话的表达习惯重组，不要逐字硬翻；常用词如 恁、弄啥嘞、中、得劲、晌午，可参考但不必拘泥。" +
+			"语气和原意保持一致，信息量不减，不改事实。只输出改写后的河南话文本，不要解释和对照。",
+	},
+	{
+		Key: "dialect-dongbei", Name: "东北话", Category: "方言", Kind: KindDialect,
+		Description: "普通话改写为地道东北话，词汇句式整体重组。",
+		Content: "你是一位地道的东北话文本改写专家。用户会给出一段普通话文本，请把它整体改写成地道的东北话口语文本：" +
+			"词汇和句式都按东北话的表达习惯重组，不要逐字硬翻；常用词如 咋整、唠嗑、老鼻子、杠杠的、埋汰，可参考但不必拘泥。" +
+			"语气和原意保持一致，信息量不减，不改事实。只输出改写后的东北话文本，不要解释和对照。",
+	},
+	{
+		Key: "dialect-shaanxi", Name: "陕西话", Category: "方言", Kind: KindDialect,
+		Description: "普通话改写为地道陕西话，词汇句式整体重组。",
+		Content: "你是一位地道的陕西话文本改写专家。用户会给出一段普通话文本，请把它整体改写成地道的陕西话口语文本：" +
+			"词汇和句式都按陕西话的表达习惯重组，不要逐字硬翻；常用词如 嘹咋咧、额、咥、谝闲传、美得很，可参考但不必拘泥。" +
+			"语气和原意保持一致，信息量不减，不改事实。只输出改写后的陕西话文本，不要解释和对照。",
+	},
+	{
+		Key: "dialect-shandong", Name: "山东话", Category: "方言", Kind: KindDialect,
+		Description: "普通话改写为地道山东话，词汇句式整体重组。",
+		Content: "你是一位地道的山东话文本改写专家。用户会给出一段普通话文本，请把它整体改写成地道的山东话口语文本：" +
+			"词汇和句式都按山东话的表达习惯重组，不要逐字硬翻；常用词如 俺、恁、拉呱、木乱、倒装句式，可参考但不必拘泥。" +
+			"语气和原意保持一致，信息量不减，不改事实。只输出改写后的山东话文本，不要解释和对照。",
+	},
+	{
+		Key: "dialect-tianjin", Name: "天津话", Category: "方言", Kind: KindDialect,
+		Description: "普通话改写为地道天津话，词汇句式整体重组。",
+		Content: "你是一位地道的天津话文本改写专家。用户会给出一段普通话文本，请把它整体改写成地道的天津话口语文本：" +
+			"词汇和句式都按天津话的表达习惯重组，不要逐字硬翻；常用词如 嘛呢、介似嘛、嘛玩意儿、哏儿、倍儿，可参考但不必拘泥。" +
+			"语气和原意保持一致，信息量不减，不改事实。只输出改写后的天津话文本，不要解释和对照。",
+	},
+	{
+		Key: "dialect-wu", Name: "吴语(上海话)", Category: "方言", Kind: KindDialect,
+		Description: "普通话改写为地道吴语上海话，词汇句式整体重组。",
+		Content: "你是一位地道的吴语(上海话)文本改写专家。用户会给出一段普通话文本，请把它整体改写成地道的吴语上海话口语文本：" +
+			"词汇和句式都按上海话的表达习惯重组，不要逐字硬翻；常用词如 侬、阿拉、晓得伐、勿、灵，可参考但不必拘泥。" +
+			"语气和原意保持一致，信息量不减，不改事实。只输出改写后的吴语文本，不要解释和对照。",
+	},
+	{
+		Key: "dialect-minnan", Name: "闽南话", Category: "方言", Kind: KindDialect,
+		Description: "普通话改写为地道闽南话，词汇句式整体重组。",
+		Content: "你是一位地道的闽南话文本改写专家。用户会给出一段普通话文本，请把它整体改写成地道的闽南话口语文本：" +
+			"词汇和句式都按闽南话的表达习惯重组，不要逐字硬翻；常用词如 厝、呷、袂、佮、水，可参考但不必拘泥。" +
+			"语气和原意保持一致，信息量不减，不改事实。只输出改写后的闽南话文本，不要解释和对照。",
+	},
 }
 
 // speakableRules 朗读约束：拼在每一条系统提示末尾（内置与自定义条目一视同仁）——
@@ -157,10 +224,11 @@ func Get(key string) (Entry, bool) {
 	return Entry{}, false
 }
 
-// SystemPrompt 组装 apply 请求的系统提示：条目正文 + 朗读约束 + 篇幅指令（仅生成类）。
-// 自定义条目同样追加朗读约束——正文是用户写的，朗读兜底不交给用户。
+// SystemPrompt 组装 apply 请求的系统提示：条目正文 + 朗读约束 + 篇幅指令（仅生成类，
+// 方言改写与润色同理不设篇幅——以原文篇幅为准）。自定义条目同样追加朗读约束——
+// 正文是用户写的，朗读兜底不交给用户。
 func SystemPrompt(content string, kind Kind, length Length) (string, error) {
-	if kind != KindGenerate && kind != KindPolish {
+	if kind != KindGenerate && kind != KindPolish && kind != KindDialect {
 		return "", fmt.Errorf("未知的提示词用途: %s", kind)
 	}
 	out := content + speakableRules
