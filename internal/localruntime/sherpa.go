@@ -12,11 +12,14 @@ import (
 )
 
 // SherpaResult sherpa-onnx-offline stdout 的解析结果(字段为其实测 JSON 输出)。
+// Tokens 与 Timestamps 严格 1:1(spike 实测),为 ITN 规整前的原始识别 token 序列;
+// Text 为 ITN 规整后的文本(数字转写等),两者在 ITN 生效时可能不一致。
 type SherpaResult struct {
 	Text       string    `json:"text"`
 	Lang       string    `json:"lang"`
 	Emotion    string    `json:"emotion"`
 	Timestamps []float64 `json:"timestamps"`
+	Tokens     []string  `json:"tokens"`
 }
 
 // Transcribe 一次性子进程识别:启动前校验模型文件在位,stdout 解析一行 JSON,

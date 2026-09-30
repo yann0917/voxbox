@@ -136,3 +136,27 @@ func TestBuildSRT(t *testing.T) {
 		t.Errorf("SRT 输出不符:\n%s", out)
 	}
 }
+
+// TestAggregateBySentence 句末标点聚合：标点随前句、残余尾部成句、空输入返回空。
+func TestAggregateBySentence(t *testing.T) {
+	segs := AggregateBySentence([]WordSpan{
+		{"你", 100, 200}, {"好", 200, 300}, {"。", 300, 320},
+		{"世", 500, 600}, {"界", 600, 700}, {"！", 700, 720},
+		{"好", 900, 950},
+	})
+	if len(segs) != 3 {
+		t.Fatalf("应聚出 3 句,实际 %d: %+v", len(segs), segs)
+	}
+	if segs[0].Text != "你好。" || segs[0].StartMS != 100 || segs[0].EndMS != 320 {
+		t.Fatalf("句 1 不符: %+v", segs[0])
+	}
+	if segs[1].Text != "世界！" || segs[1].EndMS != 720 {
+		t.Fatalf("句 2 不符: %+v", segs[1])
+	}
+	if segs[2].Text != "好" || segs[2].StartMS != 900 {
+		t.Fatalf("残余尾句不符: %+v", segs[2])
+	}
+	if got := AggregateBySentence(nil); len(got) != 0 {
+		t.Fatalf("空输入应返回空: %+v", got)
+	}
+}

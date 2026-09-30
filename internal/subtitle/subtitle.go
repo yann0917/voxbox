@@ -310,3 +310,49 @@ func BuildSRT(segments []Segment) []byte {
 	}
 	return []byte(b.String())
 }
+
+// ---- 分句聚合 ----
+
+// sentenceEndPuncts 句末标点：token 文本包含任一即视为一句结束。
+const sentenceEndPuncts = "。！？；…!?;"
+
+// WordSpan 一个 token/字 的文本与时间窗（SenseVoice token 级、TTS 字级时间戳等）。
+type WordSpan struct {
+	Text    string
+	StartMS int64
+	EndMS   int64
+}
+
+// AggregateBySentence 把 token/字级时间戳按句末标点聚合成句级段：段文本为 token 文本
+// 顺序拼接（标点随前句），段起止取首末 token 时间；无句末标点的残余尾部也成一句；
+// 无 token 时返回空。TTS 字级（volcengine）与本地 ASR token 级（SenseVoice）共用。
+func AggregateBySentence(words []WordSpan) []Segment {
+	segs := make([]Segment, 0, len(words)/4+1)
+	var (
+		text   strings.Builder
+		start  int64
+		end    int64
+		opened bool
+	)
+	flush := func() {
+		if !opened {
+			return
+		}
+		segs = append(segs, Segment{Text: strings.TrimSpace(text.String()), StartMS: start, EndMS: end})
+		text.Reset()
+		opened = false
+	}
+	for _, w := range words {
+		if !opened {
+			start = w.StartMS
+			opened = true
+		}
+		text.WriteString(w.Text)
+		end = w.EndMS
+		if strings.ContainsAny(w.Text, sentenceEndPuncts) {
+			flush()
+		}
+	}
+	flush()
+	return segs
+}

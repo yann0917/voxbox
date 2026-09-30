@@ -687,6 +687,66 @@ func TestTTSVoxCPMClone(t *testing.T) {
 	}
 }
 
+// TestASRProducesSegments tokens/timestamps 1:1 时按句末标点聚合:subtitle 产物 +
+// summary.segments(与云端 ASR 同形状,字幕工坊可导入);转写产物仍为 ITN 文本。
+func TestASRProducesSegments(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedEngine(t, dataDir, m, "sherpa-onnx", "sherpa-onnx-offline")
+	seedModelFile(t, dataDir, m, "sensevoice-int8", "model.int8.onnx")
+	wav := filepath.Join(dataDir, "in.wav")
+	if err := os.WriteFile(wav, []byte("RIFF"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	asr := newASRTool(dataDir, m)
+	asr.transcribeFn = func(ctx context.Context, binPath, modelDir, wavPath, language string, itn bool) (localruntime.SherpaResult, error) {
+		return localruntime.SherpaResult{
+			Text:       "你好，世界！好",
+			Lang:       "<|zh|>",
+			Tokens:     []string{"你", "好", "，", "世", "界", "！", "好"},
+			Timestamps: []float64{0.1, 0.2, 0.3, 0.5, 0.6, 0.7, 0.9},
+		}, nil
+	}
+	out, err := asr.Run(context.Background(), provider.TaskInput{
+		Files: map[string]string{"audio": wav},
+	}, func(p int, note string, d map[string]any) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 产物：转写 txt + 字幕 srt
+	if len(out.Artifacts) != 2 {
+		t.Fatalf("artifacts = %d, want 2（transcript+subtitle）", len(out.Artifacts))
+	}
+	srt := out.Artifacts[1]
+	if srt.Kind != "subtitle" || srt.Format != "srt" || !strings.HasSuffix(srt.Path, ".srt") {
+		t.Fatalf("subtitle artifact 不符: %+v", srt)
+	}
+	// summary.segments：句末标点聚合（逗号不切句，与流式 TTS 同语义）：
+	// 「你好，世界！」+ 残余尾句「好」
+	raw, _ := json.Marshal(out.Summary["segments"])
+	var segs []map[string]any
+	if err := json.Unmarshal(raw, &segs); err != nil {
+		t.Fatal(err)
+	}
+	if len(segs) != 2 {
+		t.Fatalf("应聚出 2 句: %s", raw)
+	}
+	if segs[0]["text"] != "你好，世界！" || segs[0]["start_ms"] != float64(100) || segs[0]["end_ms"] != float64(700) {
+		t.Fatalf("句 1 不符: %+v", segs[0])
+	}
+	if segs[1]["text"] != "好" || segs[1]["start_ms"] != float64(900) {
+		t.Fatalf("尾句不符: %+v", segs[1])
+	}
+	// SRT 内容与句对齐
+	srtBytes, err := os.ReadFile(filepath.Join(dataDir, srt.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(srtBytes), "00:00:00,100 --> 00:00:00,700") ||
+		!strings.Contains(string(srtBytes), "你好，世界！") {
+		t.Fatalf("SRT 内容不符: %s", srtBytes)
+	}
+}
+
 // —— 配音即字幕链路:非 wav 输入自动转码 ——
 
 // TestASRTranscodesNonWav mp3 输入 → ffmpeg 转码(24k mono)→ sherpa 收转码产物;

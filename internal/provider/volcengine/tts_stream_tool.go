@@ -12,6 +12,7 @@ import (
 
 	"github.com/yann0917/voxbox/internal/pronunciation"
 	"github.com/yann0917/voxbox/internal/provider"
+	"github.com/yann0917/voxbox/internal/subtitle"
 )
 
 // TTSStreamTool 单向流式语音合成工具（火山 HTTP Chunked，seed-tts-2.0 资源）。
@@ -289,38 +290,17 @@ func lastWordEndMS(words []TTSStreamWord) int64 {
 	return words[len(words)-1].EndMS
 }
 
-// ttsSentenceEndPuncts 句末标点：字文本包含任一即视为一句结束。
-const ttsSentenceEndPuncts = "。！？；…!?;"
-
-// aggregateSubtitleSegments 把字级时间戳按句末标点聚合成句级段（供 BuildSRT）。
-// 无句末标点的残余尾部也成一句；无任何字时返回空。
+// aggregateSubtitleSegments 把字级时间戳按句末标点聚合成句级段（供 BuildSRT）：
+// 聚合规则统一在 internal/subtitle.AggregateBySentence（与本地 ASR token 级共用）。
 func aggregateSubtitleSegments(words []TTSStreamWord) []ASRSegment {
-	segs := make([]ASRSegment, 0)
-	var (
-		text    strings.Builder
-		startMS int64
-		endMS   int64
-		opened  bool
-	)
-	flush := func() {
-		if !opened {
-			return
-		}
-		segs = append(segs, ASRSegment{Text: strings.TrimSpace(text.String()), StartMS: startMS, EndMS: endMS})
-		text.Reset()
-		opened = false
-	}
+	spans := make([]subtitle.WordSpan, 0, len(words))
 	for _, w := range words {
-		if !opened {
-			startMS = w.StartMS
-			opened = true
-		}
-		text.WriteString(w.Word)
-		endMS = w.EndMS
-		if strings.ContainsAny(w.Word, ttsSentenceEndPuncts) {
-			flush()
-		}
+		spans = append(spans, subtitle.WordSpan{Text: w.Word, StartMS: w.StartMS, EndMS: w.EndMS})
 	}
-	flush()
-	return segs
+	segs := subtitle.AggregateBySentence(spans)
+	out := make([]ASRSegment, 0, len(segs))
+	for _, seg := range segs {
+		out = append(out, ASRSegment{Text: seg.Text, StartMS: seg.StartMS, EndMS: seg.EndMS})
+	}
+	return out
 }

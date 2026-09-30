@@ -3,11 +3,14 @@ package local
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/yann0917/voxbox/internal/subtitle"
 
 	"github.com/google/uuid"
 	"github.com/yann0917/voxbox/internal/localmodel"
@@ -97,14 +100,36 @@ func (a *asrTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	if err := os.WriteFile(filepath.Join(a.dataDir, rel), []byte(res.Text), 0o644); err != nil {
 		return provider.TaskOutput{}, err
 	}
+	arts := []provider.Artifact{{
+		Kind: "transcript", Path: rel, Format: "txt", Size: int64(len(res.Text)),
+		Meta: map[string]any{"engine": asrEngineID, "model": asrModelID, "lang": res.Lang},
+	}}
+
+	// 分句：SenseVoice tokens 与 timestamps 严格 1:1（spike 实测），按句末标点聚合为
+	// 句级段——产出 SRT 产物并随 summary.segments 下发（与云端 ASR 同形状），字幕工坊
+	// 「选择任务导入」按它取轴。tokens 为 ITN 前的原始识别序列（含标点），字幕文本以
+	// 它为准；转写产物仍是 ITN 规整文本，两者在数字读法上可能不同属预期。
+	summary := map[string]any{"engine": asrEngineID, "text": res.Text}
+	if len(res.Tokens) > 0 && len(res.Tokens) == len(res.Timestamps) {
+		words := make([]subtitle.WordSpan, 0, len(res.Tokens))
+		for i, tok := range res.Tokens {
+			ms := int64(math.Round(res.Timestamps[i] * 1000))
+			words = append(words, subtitle.WordSpan{Text: tok, StartMS: ms, EndMS: ms})
+		}
+		if segs := subtitle.AggregateBySentence(words); len(segs) > 0 {
+			srtPath := strings.TrimSuffix(rel, filepath.Ext(rel)) + ".srt"
+			srtContent := subtitle.BuildSRT(segs)
+			if err := os.WriteFile(filepath.Join(a.dataDir, srtPath), srtContent, 0o644); err != nil {
+				return provider.TaskOutput{}, fmt.Errorf("写入 SRT 字幕失败: %w", err)
+			}
+			arts = append(arts, provider.Artifact{
+				Kind: "subtitle", Path: srtPath, Format: "srt", Size: int64(len(srtContent)),
+			})
+			summary["segments"] = segs
+		}
+	}
 	report(100, "本地识别完成", nil)
-	return provider.TaskOutput{
-		Artifacts: []provider.Artifact{{
-			Kind: "transcript", Path: rel, Format: "txt", Size: int64(len(res.Text)),
-			Meta: map[string]any{"engine": asrEngineID, "model": asrModelID, "lang": res.Lang},
-		}},
-		Summary: map[string]any{"engine": asrEngineID, "text": res.Text},
-	}, nil
+	return provider.TaskOutput{Artifacts: arts, Summary: summary}, nil
 }
 
 // ensureWav 非 wav 输入转 24kHz 单声道 pcm16 wav(wav 原样透传,sherpa 自带重采样);
