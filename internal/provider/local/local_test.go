@@ -687,6 +687,101 @@ func TestTTSVoxCPMClone(t *testing.T) {
 	}
 }
 
+// —— 配音即字幕链路:非 wav 输入自动转码 ——
+
+// TestASRTranscodesNonWav mp3 输入 → ffmpeg 转码(24k mono)→ sherpa 收转码产物;
+// 转写产物以原始输入名为基;转码临时文件用后即清。
+func TestASRTranscodesNonWav(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedEngine(t, dataDir, m, "sherpa-onnx", "sherpa-onnx-offline")
+	seedModelFile(t, dataDir, m, "sensevoice-int8", "model.int8.onnx")
+	mp3 := filepath.Join(dataDir, "in.mp3")
+	if err := os.WriteFile(mp3, []byte("FAKE_MP3"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	asr := newASRTool(dataDir, m)
+	var gotWav string
+	asr.transcodeFn = func(ctx context.Context, src, dst string) error {
+		if src != mp3 || filepath.Ext(dst) != ".wav" {
+			t.Errorf("转码参数不符: src=%q dst=%q", src, dst)
+		}
+		return os.WriteFile(dst, []byte("RIFF"), 0o644)
+	}
+	asr.transcribeFn = func(ctx context.Context, binPath, modelDir, wav, language string, itn bool) (localruntime.SherpaResult, error) {
+		gotWav = wav
+		if filepath.Ext(wav) != ".wav" {
+			t.Errorf("sherpa 应收到 wav: %q", wav)
+		}
+		if _, err := os.Stat(wav); err != nil {
+			t.Errorf("转码产物应在位: %v", err)
+		}
+		return localruntime.SherpaResult{Text: "你好"}, nil
+	}
+	out, err := asr.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"language": "zh"},
+		Files:  map[string]string{"audio": mp3},
+	}, func(p int, note string, d map[string]any) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotWav == "" || gotWav == mp3 {
+		t.Fatalf("应收到转码产物路径: %q", gotWav)
+	}
+	if !strings.HasSuffix(out.Artifacts[0].Path, "in_local.txt") {
+		t.Fatalf("转写产物应以原始输入名为基: %q", out.Artifacts[0].Path)
+	}
+	// 转码临时文件用后即清(Run 返回后)
+	if _, err := os.Stat(gotWav); !os.IsNotExist(err) {
+		t.Fatalf("转码临时文件应已清理: %v", err)
+	}
+}
+
+// TestASRWavPassthrough wav 输入原样透传,不经转码。
+func TestASRWavPassthrough(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedEngine(t, dataDir, m, "sherpa-onnx", "sherpa-onnx-offline")
+	seedModelFile(t, dataDir, m, "sensevoice-int8", "model.int8.onnx")
+	wav := filepath.Join(dataDir, "in.wav")
+	if err := os.WriteFile(wav, []byte("RIFF"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	asr := newASRTool(dataDir, m)
+	asr.transcodeFn = func(ctx context.Context, src, dst string) error {
+		t.Errorf("wav 输入不应触发转码: %q", src)
+		return nil
+	}
+	asr.transcribeFn = func(ctx context.Context, binPath, modelDir, wavPath, language string, itn bool) (localruntime.SherpaResult, error) {
+		if wavPath != wav {
+			t.Errorf("应原样透传: %q", wavPath)
+		}
+		return localruntime.SherpaResult{Text: "你好"}, nil
+	}
+	if _, err := asr.Run(context.Background(), provider.TaskInput{
+		Files: map[string]string{"audio": wav},
+	}, func(p int, note string, d map[string]any) {}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestASRTranscodeNeedsFFmpeg 非 wav 且无 ffmpeg → 直述依赖与安装指引。
+func TestASRTranscodeNeedsFFmpeg(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedEngine(t, dataDir, m, "sherpa-onnx", "sherpa-onnx-offline")
+	seedModelFile(t, dataDir, m, "sensevoice-int8", "model.int8.onnx")
+	mp3 := filepath.Join(dataDir, "in.mp3")
+	if err := os.WriteFile(mp3, []byte("FAKE_MP3"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	asr := newASRTool(dataDir, m)
+	asr.lookPath = func(string) (string, error) { return "", fmt.Errorf("not found") }
+	_, err := asr.Run(context.Background(), provider.TaskInput{
+		Files: map[string]string{"audio": mp3},
+	}, func(p int, note string, d map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "ffmpeg") {
+		t.Fatalf("缺 ffmpeg 应直述: %v", err)
+	}
+}
+
 // —— 播种 helper:绕过下载,直接构造 installed 态(Task 3 的访问器读 manifest)——
 
 func seedEngine(t *testing.T, dataDir string, m *localmodel.Manager, id, binaryName string) {

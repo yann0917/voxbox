@@ -110,8 +110,9 @@ const MI_MAX_BYTES = 7.5 * 1024 * 1024;
 const ZP_EXTS = ["mp3", "wav"];
 const ZP_MAX_BYTES = 25 * 1024 * 1024;
 
-/** 本地引擎（sherpa-onnx-offline）只吃 wav：任意采样率自动重采样；录音产物即 wav 恒可用。 */
-const LOCAL_EXTS = ["wav"];
+/** 本地引擎（sherpa-onnx-offline）原生吃 wav；mp3 等常见格式由后端 ffmpeg 自动转码
+ *  （配音即字幕链路：TTS 产物多为 mp3，转 24kHz 单声道后进识别）。 */
+const LOCAL_EXTS = ["mp3", "wav", "m4a", "flac", "ogg"];
 
 /** 本地引擎（SenseVoice）识别语种：sherpa 口径枚举，与后端 ParamSpecs 同词表；空串提交时归一 auto */
 const LOCAL_LANGUAGES: { value: string; label: string }[] = [
@@ -430,7 +431,7 @@ export default function ASRPage() {
           : isXiaomi
             ? `不支持的格式 .${ext || "未知"}：小米引擎仅支持 mp3 / wav`
             : engine === "local"
-              ? `不支持的格式 .${ext || "未知"}：本地引擎仅支持 wav（任意采样率）`
+              ? `不支持的格式 .${ext || "未知"}：本地引擎支持 mp3 / wav / m4a / flac / ogg（非 wav 自动转码）`
               : sentenceFile
                 ? `不支持的格式 .${ext || "未知"}：仅支持 mp3 / wav / ogg / pcm`
                 : `不支持的格式 .${ext || "未知"}：支持 wav / mp3 / ogg / spx / amr / aac / m4a`,
@@ -676,7 +677,7 @@ export default function ASRPage() {
                       </p>
                     ) : engine === "local" ? (
                       <p className="text-xs text-muted">
-                        SenseVoice 本地识别：中英日韩粤，自动标点与 ITN；仅支持 wav（任意采样率自动重采样），数据不出本机。
+                        SenseVoice 本地识别：中英日韩粤，自动标点与 ITN；支持 mp3 / wav / m4a / flac / ogg（非 wav 自动转码），数据不出本机。
                       </p>
                     ) : (
                       <>
@@ -780,7 +781,7 @@ export default function ASRPage() {
                                     : isZhipu
                                       ? "仅支持 mp3 / wav，25MB 内、30 秒内（multipart 直传）"
                                       : engine === "local"
-                                        ? "仅支持 wav（任意采样率，自动重采样）"
+                                        ? "支持 mp3 / wav / m4a / flac / ogg（非 wav 自动转码，任意采样率）"
                                         : "支持 wav / mp3 / ogg / spx / amr / aac / m4a；提交后自动经对象存储中转"}
                               </p>
                             </>

@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Download, MicVocal } from "lucide-react";
+import { Download, MicVocal, Speech } from "lucide-react";
 import { apiBase } from "../../lib/api";
 import type { Artifact, TaskStatus } from "../../lib/types";
 import { CardBody, ProgressBar, Skeleton, StatusBadge, WavePlayer } from "../../ui";
@@ -43,6 +43,15 @@ export function AudioRow({ a }: { a: Artifact }) {
       >
         <MicVocal size={13} strokeWidth={1.75} />
         去闪避
+      </button>
+      <button
+        type="button"
+        onClick={() => navigate(`/asr?artifact=${a.id}`)}
+        title="以该产物为输入，到语音识别页转写（配音即字幕链路）"
+        className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
+      >
+        <Speech size={13} strokeWidth={1.75} />
+        送识别
       </button>
       <a
         href={`${apiBase}/api/artifacts/${a.id}/download`}
