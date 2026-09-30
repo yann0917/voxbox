@@ -246,14 +246,22 @@ func (t *TTSRuntime) Synthesize(ctx context.Context, req SynthRequest, report fu
 	opts := map[string]any{}
 	if req.RefWav != "" {
 		inner["voice_ref"] = req.RefWav
-		if req.Family == "chatterbox" {
+		switch req.Family {
+		case "chatterbox":
 			// chatterbox 纯零样本克隆:server 只收 voice_ref,reference_text/
 			// x_vector_only_mode 是 qwen3 语义,不透传
-		} else if req.RefText != "" {
-			opts["reference_text"] = req.RefText
-			opts["x_vector_only_mode"] = false
-		} else {
-			opts["x_vector_only_mode"] = true
+		case "voxcpm2":
+			// x_vector_only_mode 是 qwen3 语义;reference_text=终极克隆参考转写,voxcpm2 消费
+			if req.RefText != "" {
+				opts["reference_text"] = req.RefText
+			}
+		default:
+			if req.RefText != "" {
+				opts["reference_text"] = req.RefText
+				opts["x_vector_only_mode"] = false
+			} else {
+				opts["x_vector_only_mode"] = true
+			}
 		}
 	}
 	if req.Speaker != "" {

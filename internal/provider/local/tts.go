@@ -32,6 +32,10 @@ var qwen3Languages = map[string]bool{"Chinese": true, "English": true, "Japanese
 // 语言仅参与发音词典预处理,不透传合成引擎。
 var kokoroLanguages = map[string]bool{"auto": true, "zh": true, "en": true}
 
+// voxcpmLanguages voxcpm2 家族的语言码(空回落 auto):模型自动处理 30 语无需标签,
+// 语言仅参与发音词典预处理,不透传合成引擎。
+var voxcpmLanguages = map[string]bool{"auto": true, "zh": true, "en": true}
+
 // chatterboxLanguages audio.cpp chatterbox 家族语言码(空回落 en;打包语言表 19 语
 // 无中文,传 zh 不会报错但产物为噪声,须在入口拦截)。
 var chatterboxLanguages = map[string]bool{
@@ -68,7 +72,7 @@ func newTTSTool(dataDir string, models *localmodel.Manager, tts *localruntime.TT
 
 func (t *ttsTool) Meta() provider.ToolMeta {
 	return provider.ToolMeta{Provider: "local", Name: "tts", Title: "本地语音合成",
-		Description: "本地合成（Qwen3-TTS / IndexTTS / Kokoro / Chatterbox）：参考音频、音色库克隆或预置音色，离线可用；IndexTTS 支持情感文本控制。", Group: "合成"}
+		Description: "本地合成（Qwen3-TTS / IndexTTS / Kokoro / Chatterbox / VoxCPM2）：参考音频、音色库克隆或预置音色，离线可用；IndexTTS 支持情感文本控制，VoxCPM2 支持多语含中文方言。", Group: "合成"}
 }
 
 func (t *ttsTool) ParamSpecs() []provider.ParamSpec {
@@ -86,6 +90,8 @@ func (t *ttsTool) ParamSpecs() []provider.ParamSpec {
 			Options: speakerOptions()},
 		{Key: "instruct", Label: "风格指令", Type: provider.ParamString, Group: "本地推理",
 			Placeholder: "如:Very happy and energetic"},
+		{Key: "style", Label: "音色描述", Type: provider.ParamString, Group: "本地推理",
+			Placeholder: "选填,VoxCPM2 直读/克隆时用自然语言描述音色,如:温柔的年轻女声"},
 		// 语言取值由所选模型家族决定(qwen3 全名 / index 小写码),前端按家族渲染下拉
 		{Key: "language", Label: "语言", Type: provider.ParamString, Group: "本地推理",
 			Placeholder: "由所选模型决定"},
@@ -128,13 +134,16 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	if !t.models.Installed(modelID) {
 		return provider.TaskOutput{}, fmt.Errorf("本地模型未安装:请到设置页「本地环境」下载 %s", e.Name)
 	}
-	// 家族与模式匹配:index_tts2 为纯克隆模型(无预置音色);kokoro 为纯预置模型
-	// (不支持克隆);chatterbox 为纯克隆模型;qwen3 家族沿用文件名变体匹配校验。
+	// 家族与模式匹配:index_tts2/chatterbox 为纯克隆模型(无预置音色);kokoro 为纯
+	// 预置模型(不支持克隆);voxcpm2 走克隆模式但参考音可留空(直读);qwen3 家族沿用
+	// 文件名变体匹配校验。
 	switch {
 	case e.Family == "index_tts2" && mode == "preset":
 		return provider.TaskOutput{}, fmt.Errorf("IndexTTS 为克隆模型,不支持预置音色")
 	case e.Family == "chatterbox" && mode == "preset":
 		return provider.TaskOutput{}, fmt.Errorf("Chatterbox 为克隆模型,不支持预置音色")
+	case e.Family == "voxcpm2" && mode == "preset":
+		return provider.TaskOutput{}, fmt.Errorf("VoxCPM2 为克隆模型,不支持预置音色")
 	case e.Family == "kokoro" && mode == "clone":
 		return provider.TaskOutput{}, fmt.Errorf("Kokoro 为预置音色模型,不支持参考音频克隆")
 	case e.Family == "qwen3_tts":
@@ -161,6 +170,13 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		}
 		if !kokoroLanguages[language] {
 			return provider.TaskOutput{}, fmt.Errorf("参数错误: Kokoro 语言仅支持 auto|zh|en,当前 %s", language)
+		}
+	case "voxcpm2":
+		if language == "" {
+			language = "auto"
+		}
+		if !voxcpmLanguages[language] {
+			return provider.TaskOutput{}, fmt.Errorf("参数错误: VoxCPM2 语言仅支持 auto|zh|en,当前 %s", language)
 		}
 	case "chatterbox":
 		if language == "" {
@@ -191,9 +207,19 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 		// 发音词典：合成前文本预处理（language 已是家族归一值，zh/Chinese/auto 等均能折叠匹配）
 		req.Text = pronunciation.Apply(text, language)
 	}
+	// voxcpm2 音色设计:风格描述拼 "(style)" 前缀——在词典预处理之后拼,风格文本不受
+	// 发音词典改写;audio.cpp 按上游约定解析 text 开头括号语法(长文本分块默认
+	// tag_aware,风格标记随块保留)。语言模型自动处理,不透传 language 键。
+	if e.Family == "voxcpm2" {
+		if style := paramString(in.Params, "style", ""); style != "" {
+			req.Text = "(" + style + ")" + req.Text
+		}
+		req.Language = ""
+	}
 	switch mode {
 	case "clone":
-		// 参考音频二选一:params.voice_id(音色库,优先)或临时上传(旧路,ffmpeg 转码)
+		// 参考音频来源:params.voice_id(音色库,优先)> 临时上传(旧路,ffmpeg 转码);
+		// voxcpm2 两者皆空=直读(模型默认音色),其余家族必填其一
 		if voiceID := paramString(in.Params, "voice_id", ""); voiceID != "" {
 			if t.voices == nil {
 				return provider.TaskOutput{}, fmt.Errorf("音色不存在或未加载: %s", voiceID)
@@ -205,11 +231,7 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 			// 库内成品已是 24kHz 单声道 pcm16,直接作参考音频,不经 convertRef 转码
 			req.RefWav = wav
 			req.RefText = paramString(in.Params, "ref_text", "")
-		} else {
-			ref := in.Files["audio"]
-			if ref == "" {
-				return provider.TaskOutput{}, fmt.Errorf("克隆模式需要参考音频:请从音色库选择,或上传/录制 3-60 秒清晰人声")
-			}
+		} else if ref := in.Files["audio"]; ref != "" {
 			converted, err := t.convertRef(ctx, ref)
 			if err != nil {
 				return provider.TaskOutput{}, err
@@ -217,6 +239,8 @@ func (t *ttsTool) Run(ctx context.Context, in provider.TaskInput, report provide
 			defer os.Remove(converted)
 			req.RefWav = converted
 			req.RefText = paramString(in.Params, "ref_text", "")
+		} else if e.Family != "voxcpm2" {
+			return provider.TaskOutput{}, fmt.Errorf("克隆模式需要参考音频:请从音色库选择,或上传/录制 3-60 秒清晰人声")
 		}
 	case "preset":
 		sp := paramString(in.Params, "speaker", "")

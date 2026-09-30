@@ -89,11 +89,12 @@ const defaultNameFromFile = (f: File) => f.name.replace(/\.[^.]+$/, "");
 /** 命名弹窗状态机:save=录制/上传完成后入库命名;rename=已入库音色改名。 */
 type NameModal = { kind: "save"; file: File } | { kind: "rename"; id: string } | null;
 
-/** 本地语音合成面板:audio.cpp 引擎 + 已安装 Qwen3-TTS / IndexTTS2.5 / Chatterbox,
+/** 本地语音合成面板:audio.cpp 引擎 + 已安装 Qwen3-TTS / IndexTTS2.5 / Chatterbox / VoxCPM2,
  *  sherpa-onnx + Kokoro。
  *  克隆走音色库(录制/上传入库 → voice_id 提交),不再用临时文件上传;
  *  家族感知:index_tts2 锁克隆 + 六语言 + 情感参数,kokoro 锁预置音色 + 无语言/风格参数,
- *  chatterbox 锁克隆 + 19 语无中文,qwen3_tts 维持预置 + 四语言。 */
+ *  chatterbox 锁克隆 + 19 语无中文,voxcpm2 锁克隆 + 参考音可留空直读 + 音色描述,
+ *  qwen3_tts 维持预置 + 四语言。 */
 export default function LocalTTSPanel() {
   const [text, setText] = useState("");
   const [model, setModel] = useState("");
@@ -101,6 +102,7 @@ export default function LocalTTSPanel() {
   const [voiceId, setVoiceId] = useState("");
   const [speaker, setSpeaker] = useState("");
   const [instruct, setInstruct] = useState("");
+  const [style, setStyle] = useState("");
   const [language, setLanguage] = useState("Chinese");
   const [emotionText, setEmotionText] = useState("");
   const [emotionAlpha, setEmotionAlpha] = useState("");
@@ -129,16 +131,18 @@ export default function LocalTTSPanel() {
   const isIndex = selectedModelItem?.family === "index_tts2";
   const isKokoro = selectedModelItem?.family === "kokoro";
   const isChatterbox = selectedModelItem?.family === "chatterbox";
-  // 家族强制:effectiveMode 决定渲染与提交,index/chatterbox 锁克隆、kokoro 锁预置,
+  const isVoxCPM = selectedModelItem?.family === "voxcpm2";
+  // 家族强制:effectiveMode 决定渲染与提交,index/chatterbox/voxcpm 锁克隆、kokoro 锁预置,
   // 切回 qwen3 时用户先前的选择自动恢复
   const effectiveMode: "clone" | "preset" = isKokoro
     ? "preset"
-    : isIndex || isChatterbox
+    : isIndex || isChatterbox || isVoxCPM
       ? "clone"
       : mode;
-  // 预置音色列表按家族拉取:kokoro 103 个内置音色,qwen3 九个 CustomVoice speaker
+  // 预置音色列表按家族拉取:kokoro 53 个内置音色,qwen3 九个 CustomVoice speaker
   const presetVoices = useLocalVoices(isKokoro ? "kokoro" : undefined);
-  // 家族切换时把语言校正到当前家族支持集内(qwen3 全名 / index、chatterbox 语言码;kokoro 不发语言)
+  // 家族切换时把语言校正到当前家族支持集内(qwen3 全名 / index、chatterbox 语言码;
+  // kokoro/voxcpm 不发语言)
   useEffect(() => {
     const langSet = (isChatterbox ? CHATTERBOX_LANGS : isIndex ? INDEX_LANGS : LANGS).map((l) => l.value);
     setLanguage((l) =>
@@ -296,14 +300,17 @@ export default function LocalTTSPanel() {
       const params: Record<string, unknown> = {
         text: text.trim(), model, mode: effectiveMode,
       };
-      // 语言仅 qwen3/index 透传(kokoro 中英混读由文本驱动,后端缺省 auto)
-      if (!isKokoro) params.language = language;
-      // 克隆:音色库 voice_id(库内成品已 24kHz 单声道,后端不经转码直用)
+      // 语言仅 qwen3/index/chatterbox 透传(kokoro/voxcpm 由文本驱动,后端缺省 auto)
+      if (!isKokoro && !isVoxCPM) params.language = language;
+      // 克隆:音色库 voice_id(库内成品已 24kHz 单声道,后端不经转码直用);
+      // voxcpm2 留空=直读(后端允许参考音缺席)
       if (effectiveMode === "clone") params.voice_id = voiceId;
       if (effectiveMode === "preset") {
         params.speaker = speaker;
         if (instruct.trim()) params.instruct = instruct.trim();
       }
+      // voxcpm2 音色描述:直读/克隆时用自然语言描述音色与语气
+      if (isVoxCPM && style.trim()) params.style = style.trim();
       // 情感参数仅 index_tts2 家族透传(后端对 qwen3 直接忽略);留空不下发
       if (isIndex) {
         if (emotionText.trim()) params.emotion_text = emotionText.trim();
@@ -356,7 +363,8 @@ export default function LocalTTSPanel() {
   const canSubmit =
     text.trim() !== "" &&
     model !== "" &&
-    (effectiveMode === "preset" ? speaker !== "" : voiceId !== "");
+    // voxcpm2 参考音可留空(直读),其余克隆家族必须选中音色
+    (effectiveMode === "preset" ? speaker !== "" : isVoxCPM || voiceId !== "");
   const artifacts = detail?.artifacts ?? [];
   const audioArtifacts = artifacts.filter((a) => a.kind === "audio");
 
@@ -417,7 +425,9 @@ export default function LocalTTSPanel() {
                     ? "Kokoro 仅支持预置音色"
                     : isChatterbox
                       ? "Chatterbox 仅支持参考音频克隆"
-                      : undefined
+                      : isVoxCPM
+                        ? "VoxCPM2 支持直读(不选音色)与音色克隆"
+                        : undefined
               }
             >
               {({ id, ...rest }) => (
@@ -428,7 +438,7 @@ export default function LocalTTSPanel() {
                   {...rest}
                 >
                   {!isKokoro && <option value="clone">参考音频克隆</option>}
-                  {!isIndex && !isChatterbox && <option value="preset">预置音色</option>}
+                  {!isIndex && !isChatterbox && !isVoxCPM && <option value="preset">预置音色</option>}
                 </Select>
               )}
             </Field>
@@ -439,7 +449,9 @@ export default function LocalTTSPanel() {
                   hint={
                     isChatterbox
                       ? "1-60 秒清晰真人人声(合成音/低质录音易致幻听),合成时作参考音频"
-                      : "1-60 秒清晰人声,合成时作参考音频"
+                      : isVoxCPM
+                        ? "选填;留空直读,选择音色则克隆(1-60 秒清晰真人录音)"
+                        : "1-60 秒清晰人声,合成时作参考音频"
                   }
                 >
                   {({ id, ...rest }) => (
@@ -448,7 +460,11 @@ export default function LocalTTSPanel() {
                         <EmptyState
                           icon={<AudioLines size={18} strokeWidth={1.75} />}
                           title="音色库还是空的"
-                          description="先在下方录制或上传一个音色，再回来选择"
+                          description={
+                            isVoxCPM
+                              ? "不选音色可直接合成(直读);录入音色后可克隆"
+                              : "先在下方录制或上传一个音色，再回来选择"
+                          }
                         />
                       ) : (
                         <div className="flex items-center gap-1.5">
@@ -571,7 +587,7 @@ export default function LocalTTSPanel() {
                 )}
               </>
             )}
-            {!isKokoro && (
+            {!isKokoro && !isVoxCPM && (
               <Field label="语言">
                 {({ id, ...rest }) => (
                   <Select id={id} value={language} onChange={(e) => setLanguage(e.target.value)} {...rest}>
@@ -579,6 +595,19 @@ export default function LocalTTSPanel() {
                       <option key={l.value} value={l.value}>{l.label}</option>
                     ))}
                   </Select>
+                )}
+              </Field>
+            )}
+            {isVoxCPM && (
+              <Field label="音色描述" hint="选填;直读或克隆时用自然语言描述音色与语气,如:温柔的年轻女声">
+                {({ id, ...rest }) => (
+                  <Input
+                    id={id}
+                    value={style}
+                    onChange={(e) => setStyle(e.target.value)}
+                    placeholder="如:温柔的年轻女声,语速平缓"
+                    {...rest}
+                  />
                 )}
               </Field>
             )}

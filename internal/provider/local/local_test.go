@@ -577,6 +577,116 @@ func TestTTSChatterboxHappyPath(t *testing.T) {
 	}
 }
 
+// —— voxcpm2 家族:克隆+直读(参考音可全空),style 前缀,语言不透传 ——
+
+// seedVoxCPM 播种 audiocpp 引擎 + voxcpm2 条目的已安装态。
+func seedVoxCPM(t *testing.T, dataDir string, m *localmodel.Manager) {
+	t.Helper()
+	seedEngine(t, dataDir, m, "audiocpp", "audiocpp_server")
+	seedModelFile(t, dataDir, m, "voxcpm2-q8", "voxcpm2-q8_0.gguf")
+}
+
+// TestTTSVoxCPMPresetRejected voxcpm2 无预置音色:preset 模式直述不支持。
+func TestTTSVoxCPMPresetRejected(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedVoxCPM(t, dataDir, m)
+	tts := newTTSTool(dataDir, m, nil, nil)
+	tts.synthesizeFn = noSynthStub(t)
+	_, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "voxcpm2-q8", "mode": "preset", "speaker": "Vivian", "text": "你好"},
+	}, func(p int, note string, d map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "VoxCPM2 为克隆模型") {
+		t.Fatalf("voxcpm2 条目 preset 应直述不支持: %v", err)
+	}
+}
+
+// TestTTSVoxCPMLanguageRuling 语言仅收 auto|zh|en。
+func TestTTSVoxCPMLanguageRuling(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedVoxCPM(t, dataDir, m)
+	tts := newTTSTool(dataDir, m, nil, nil)
+	tts.synthesizeFn = noSynthStub(t)
+	_, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "voxcpm2-q8", "mode": "clone", "language": "Korean", "text": "你好"},
+		Files:  map[string]string{},
+	}, func(p int, note string, d map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "语言") {
+		t.Fatalf("voxcpm2 应拒绝 Korean: %v", err)
+	}
+}
+
+// TestTTSVoxCPMDirectRead 直读:clone 模式无 voice_id 无上传不再报错,RefWav 空;
+// style 拼括号前缀且在词典处理之后;Language 置空不透传引擎。
+func TestTTSVoxCPMDirectRead(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedVoxCPM(t, dataDir, m)
+	tts := newTTSTool(dataDir, m, nil, nil)
+	outWav := fakeOutWav(t, dataDir)
+	var got localruntime.SynthRequest
+	tts.synthesizeFn = func(ctx context.Context, req localruntime.SynthRequest, report func(p int, note string)) (string, error) {
+		got = req
+		return outWav, nil
+	}
+	// 发音词典挂钩子会让 Apply 走真实逻辑; pronunciation 是进程单例,默认无词条=原样透传
+	out, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{
+			"model": "voxcpm2-q8", "mode": "clone", "text": "你好，世界。",
+			"style": "温柔的年轻女声",
+		},
+		Files: map[string]string{},
+	}, func(p int, note string, d map[string]any) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RefWav != "" || got.RefText != "" {
+		t.Fatalf("直读不应携带参考音频: %+v", got)
+	}
+	if got.Family != "voxcpm2" {
+		t.Fatalf("Family 应为 voxcpm2: %+v", got)
+	}
+	if got.Language != "" {
+		t.Fatalf("voxcpm2 不应透传 language: %+v", got)
+	}
+	if want := "(温柔的年轻女声)你好，世界。"; got.Text != want {
+		t.Fatalf("style 应拼括号前缀: want %q got %q", want, got.Text)
+	}
+	if out.Artifacts[0].Meta["engine"] != "audiocpp" {
+		t.Fatalf("artifact Meta engine 应为 audiocpp: %+v", out.Artifacts[0].Meta)
+	}
+}
+
+// TestTTSVoxCPMClone 克隆:voice_id 参考照常透传,ref_text 保留(终极克隆转写,
+// 不像 chatterbox 那样丢弃)。
+func TestTTSVoxCPMClone(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedVoxCPM(t, dataDir, m)
+	voices := voicelib.New(dataDir)
+	wantWav := seedVoice(t, dataDir, "abcdef12")
+	tts := newTTSTool(dataDir, m, nil, voices)
+	tts.lookPath = func(string) (string, error) { return "", fmt.Errorf("ffmpeg 不可用") }
+	outWav := fakeOutWav(t, dataDir)
+	var got localruntime.SynthRequest
+	tts.synthesizeFn = func(ctx context.Context, req localruntime.SynthRequest, report func(p int, note string)) (string, error) {
+		got = req
+		return outWav, nil
+	}
+	if _, err := tts.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{
+			"model": "voxcpm2-q8", "mode": "clone", "voice_id": "abcdef12",
+			"text": "你好", "ref_text": "参考音频的转写内容",
+		},
+		Files: map[string]string{},
+	}, func(p int, note string, d map[string]any) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got.RefWav != wantWav || got.RefText != "参考音频的转写内容" {
+		t.Fatalf("克隆应透传参考音频与转写: %+v", got)
+	}
+	if got.Language != "" {
+		t.Fatalf("voxcpm2 不应透传 language: %+v", got)
+	}
+}
+
 // —— 播种 helper:绕过下载,直接构造 installed 态(Task 3 的访问器读 manifest)——
 
 func seedEngine(t *testing.T, dataDir string, m *localmodel.Manager, id, binaryName string) {

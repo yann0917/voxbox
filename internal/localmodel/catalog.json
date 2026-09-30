@@ -182,5 +182,20 @@
     "files": ["chatterbox-q8_0.gguf"],
     "file_urls": { "chatterbox-q8_0.gguf": "https://modelscope.cn/models/HereIsMark/audio.cpp-gguf/resolve/master/Chatterbox-GGUF/chatterbox-q8_0.gguf" },
     "sha256": { "chatterbox-q8_0.gguf": "d586dd1aa59613cab8046176fb7ca5ba191c02a9b10ffa5b0d892ed22b470656" }
+  },
+  {
+    "id": "voxcpm2-q8",
+    "kind": "tts",
+    "family": "voxcpm2",
+    "name": "VoxCPM2 2B 克隆与直读(q8)",
+    "summary": "OpenBMB VoxCPM2 本地合成,30 语含 9 种中文方言,支持音色克隆与无参考直读,48kHz 输出",
+    "size_bytes": 2955000480,
+    "requirements": { "device": "metal" },
+    "license": "Apache-2.0",
+    "license_url": "https://huggingface.co/openbmb/VoxCPM2",
+    "requires_engine": "audiocpp",
+    "files": ["voxcpm2-q8_0.gguf"],
+    "file_urls": { "voxcpm2-q8_0.gguf": "https://modelscope.cn/models/HereIsMark/audio.cpp-gguf/resolve/master/VoxCPM2-GGUF/voxcpm2-q8_0.gguf" },
+    "sha256": { "voxcpm2-q8_0.gguf": "c8e01ab4416011e12a28f24ede298a1aa5ce64b43f8e8aaad53b1e2fe7c96432" }
   }
 ]

@@ -67,10 +67,10 @@ func TestParseCatalogRejects(t *testing.T) {
 }
 
 // TestParseCatalogFamilyRuling 落实 family 校验规则:
-// kind=tts 必填且 ∈{qwen3_tts, index_tts2, kokoro, chatterbox};kind∈{asr,engine} 必须为空。
+// kind=tts 必填且 ∈{qwen3_tts, index_tts2, kokoro, chatterbox, voxcpm2};kind∈{asr,engine} 必须为空。
 func TestParseCatalogFamilyRuling(t *testing.T) {
 	// tts:合法族值都通过
-	for _, family := range []string{"qwen3_tts", "index_tts2", "kokoro", "chatterbox"} {
+	for _, family := range []string{"qwen3_tts", "index_tts2", "kokoro", "chatterbox", "voxcpm2"} {
 		e := ttsEntry()
 		e.Family = family
 		if _, err := parseCatalog(withEngine(t, e)); err != nil {
@@ -118,10 +118,10 @@ func TestEmbeddedCatalog(t *testing.T) {
 	wantIDs := []string{
 		"sherpa-onnx", "audiocpp",
 		"sensevoice-int8", "qwen3-tts-base-q8", "qwen3-tts-customvoice-q8", "qwen3-tts-base-0.6b-q8",
-		"index-tts2_5-q8", "kokoro-v1.0", "chatterbox-q8",
+		"index-tts2_5-q8", "kokoro-v1.0", "chatterbox-q8", "voxcpm2-q8",
 	}
 	if len(catalog) != len(wantIDs) {
-		t.Fatalf("内嵌目录应为 %d 条(2 引擎 + 7 模型),实际 %d", len(wantIDs), len(catalog))
+		t.Fatalf("内嵌目录应为 %d 条(2 引擎 + 8 模型),实际 %d", len(wantIDs), len(catalog))
 	}
 	engineIDs := map[string]bool{}
 	for _, e := range catalog {
@@ -166,9 +166,9 @@ func TestEmbeddedCatalog(t *testing.T) {
 			// family 规则:tts 必填族值,asr 必须为空
 			if e.Kind == "tts" {
 				switch e.Family {
-				case "qwen3_tts", "index_tts2", "kokoro", "chatterbox":
+				case "qwen3_tts", "index_tts2", "kokoro", "chatterbox", "voxcpm2":
 				default:
-					t.Errorf("tts 条目 %s 的 family 必须是 qwen3_tts|index_tts2|kokoro|chatterbox: %q", e.ID, e.Family)
+					t.Errorf("tts 条目 %s 的 family 必须是 qwen3_tts|index_tts2|kokoro|chatterbox|voxcpm2: %q", e.ID, e.Family)
 				}
 			} else if e.Family != "" {
 				t.Errorf("asr 条目 %s 不应声明 family: %q", e.ID, e.Family)
@@ -451,6 +451,31 @@ func TestEmbeddedCatalogChatterbox(t *testing.T) {
 		return
 	}
 	t.Fatal("内嵌目录缺少 chatterbox-q8 条目")
+}
+
+// TestEmbeddedCatalogVoxCPM2 落实 family 规则与 voxcpm 条目实测留档:
+// VoxCPM2-GGUF/voxcpm2-q8_0.gguf 为本机 spike 下载实测,魔搭 HereIsMark 直链,Apache-2.0。
+func TestEmbeddedCatalogVoxCPM2(t *testing.T) {
+	for _, e := range catalog {
+		if e.ID != "voxcpm2-q8" {
+			continue
+		}
+		if e.Family != "voxcpm2" {
+			t.Fatalf("voxcpm2-q8 的 family 应为 voxcpm2,实际 %q", e.Family)
+		}
+		if e.RequiresEngine != "audiocpp" {
+			t.Errorf("voxcpm2-q8 的 requires_engine 应为 audiocpp,实际 %q", e.RequiresEngine)
+		}
+		if e.SizeBytes != 2955000480 {
+			t.Errorf("voxcpm2-q8 size_bytes 应为实测 2955000480,实际 %d", e.SizeBytes)
+		}
+		const want = "c8e01ab4416011e12a28f24ede298a1aa5ce64b43f8e8aaad53b1e2fe7c96432"
+		if e.SHA256["voxcpm2-q8_0.gguf"] != want {
+			t.Errorf("voxcpm2-q8 的文件 sha256 应为实测整文件哈希,实际 %q", e.SHA256["voxcpm2-q8_0.gguf"])
+		}
+		return
+	}
+	t.Fatal("内嵌目录缺少 voxcpm2-q8 条目")
 }
 
 func TestArchiveForPlatform(t *testing.T) {
