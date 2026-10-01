@@ -3,6 +3,8 @@ import { useMutation } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
+  Copy,
+  Download,
   FileText,
   Mic,
   Pencil,
@@ -19,12 +21,13 @@ import {
   CardBody,
   CardHeader,
   EmptyState,
+  IconButton,
   ProgressBar,
   Skeleton,
   StatusBadge,
   useToast,
 } from "../../ui";
-import { speakerStats, type QNSegment, type ResultView, type Run } from "./model";
+import { safeFilename, speakerStats, transcriptText, type QNSegment, type ResultView, type Run } from "./model";
 
 export interface ResultPanelProps {
   view: ResultView;
@@ -129,6 +132,28 @@ export function ResultPanel({
   // Blob 回放 = 上传流不可用时的回落，音频随页面会话失效
   const localOnlyAudio = !!playSrc && playSrc.startsWith("blob:");
   const stats = speakerStats(segments);
+  /** 文稿全文（说话人N：文本 逐行），复制与 .md 导出共用 */
+  const fullText = transcriptText(segments);
+
+  const copyTranscript = () =>
+    navigator.clipboard
+      .writeText(fullText)
+      .then(() => toast({ tone: "ok", title: "文字稿已复制" }))
+      .catch((e: Error) => toast({ tone: "error", title: "复制失败", description: e.message }));
+
+  const downloadMd = () => {
+    const md = `# ${title}\n\n${fullText}\n`;
+    const url = URL.createObjectURL(new Blob([md], { type: "text/markdown;charset=utf-8" }));
+    try {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeFilename(title)}.md`;
+      a.click();
+      toast({ tone: "ok", title: "文字稿已下载" });
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
 
   return (
     <Card className="mt-4">
@@ -174,6 +199,16 @@ export function ResultPanel({
               {segments.length > 0 && `${segments.length} 句`}
               {durationText && `${segments.length > 0 ? " · " : ""}${durationText}`}
             </span>
+            {fullText && (
+              <div className="ml-auto flex items-center gap-0.5">
+                <IconButton size="sm" label="复制全文" onClick={copyTranscript}>
+                  <Copy size={13} strokeWidth={1.75} />
+                </IconButton>
+                <IconButton size="sm" label="下载 Markdown 文稿" onClick={downloadMd}>
+                  <Download size={13} strokeWidth={1.75} />
+                </IconButton>
+              </div>
+            )}
           </div>
           {playSrc && (
             <div className="space-y-1">

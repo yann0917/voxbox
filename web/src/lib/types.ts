@@ -61,6 +61,8 @@ export interface Task {
     chapters?: { title: string; summary: string; start_time: number; end_time: number }[];
     /** 本地识别（local asr）：sherpa-onnx 只回整段文本，无分句时间戳 */
     text?: string;
+    /** 录音笔记加工结果（/api/refine 写入，同模式覆盖、跨模式共存） */
+    refined?: Refined;
   };
 }
 
@@ -79,6 +81,35 @@ export interface Artifact {
 export interface TaskDetail {
   task: Task;
   artifacts: Artifact[];
+}
+
+/** 加工待办（/api/refine todos 模式） */
+export interface RefineTodo {
+  content: string;
+  /** 负责人，未提到则空串 */
+  owner?: string;
+  /** 截止时间原文，未提到则空串 */
+  due?: string;
+}
+
+/** 加工事件（/api/refine events 模式）；end 空串 = 无结束时间 */
+export interface RefineEvent {
+  title: string;
+  /** "YYYY-MM-DD HH:mm" */
+  start: string;
+  end?: string;
+  description?: string;
+}
+
+/** 任务 Summary.refined（/api/refine 按模式合并落盘）：todos/events 在 LLM 返回
+ *  合法 JSON 时为数组、解析失败时为原文字符串（二义，渲染侧须 Array.isArray 分支）。 */
+export interface Refined {
+  summary?: string;
+  todos?: RefineTodo[] | string;
+  events?: RefineEvent[] | string;
+  custom?: string;
+  /** 最近一次加工时间（RFC3339），跨模式共用 */
+  updated_at?: string;
 }
 
 export interface Voice {

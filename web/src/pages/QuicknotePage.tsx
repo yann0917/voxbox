@@ -10,6 +10,7 @@ import { useProviderConfigured } from "../lib/useStorageEnabled";
 import { useTaskEvents } from "../lib/ws";
 import { recordingSupported, startRecording, type RecordingSession } from "../lib/recorder";
 import { Card, CardBody, CardHeader, Field, Input, PageHeader, useToast } from "../ui";
+import { RefinePanel } from "./quicknote/RefinePanel";
 import { ResultPanel } from "./quicknote/ResultPanel";
 import { loadTask, type ResultView, type Run } from "./quicknote/model";
 
@@ -335,6 +336,16 @@ export default function QuicknotePage() {
             submitError={submitError}
             onReset={resetToIdle}
           />
+
+          {/* 加工区：转写完成后出现，AI 提炼总结/待办/日程，结果持久在任务 Summary.refined。
+              done 视图必以任务详情到位为前提，回显直接从 task 派生，无需再拉 */}
+          {phase === "done" && taskId && (
+            <RefinePanel
+              taskId={taskId}
+              title={task?.task.title || "录音笔记"}
+              refined={task?.task.summary?.refined}
+            />
+          )}
         </>
       )}
     </>

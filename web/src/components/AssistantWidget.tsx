@@ -1,17 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { ArrowUp, Sparkles, Square, X } from "lucide-react";
-import { fetchJSON } from "../lib/api";
+import { useAssistantModels } from "../lib/assistant";
 import { usePlayer } from "../lib/player";
 import { useSettings } from "../lib/useStorageEnabled";
 import { IconButton, Markdown, Select, Textarea, useToast, WaveLoader } from "../ui";
-
-interface AssistantPlatform {
-  provider: string;
-  label: string;
-  enabled: boolean;
-  models: { id: string; label: string }[];
-}
 
 type ChatMsg = { role: "user" | "assistant" | "error"; content: string };
 
@@ -31,11 +23,7 @@ export default function AssistantWidget() {
   const { toast } = useToast();
   const hasTrack = usePlayer((s) => Boolean(s.track));
 
-  const { data: platforms } = useQuery({
-    queryKey: ["assistant-models"],
-    queryFn: () => fetchJSON<AssistantPlatform[]>("/api/assistant/models"),
-    staleTime: 60_000,
-  });
+  const { data: platforms } = useAssistantModels();
   const { data: settings } = useSettings();
 
   // 默认模型：设置页「AI 默认大模型」优先（平台仍可用时；与 AI 生成/润色共用一个口径），
