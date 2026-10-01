@@ -89,6 +89,15 @@ func sanitizeUploadName(name string) string {
 	return out
 }
 
+// mediaInlineExts 音/视频扩展名（小写）：stream 的 Content-Disposition 分流为
+// inline——桌面壳（WKWebView/Safari 内核）媒体元素遵守 attachment 头会转下载
+// 不播放（web 形态 Chrome 忽略之）。其余扩展名（html/svg/pdf 等可内联渲染的
+// 脚本/文档风险类型）保持 attachment 强制下载（XSS 防护面不变）。
+var mediaInlineExts = map[string]bool{
+	".wav": true, ".mp3": true, ".ogg": true, ".pcm": true, ".spx": true, ".amr": true,
+	".aac": true, ".m4a": true, ".mp4": true, ".mov": true, ".m4v": true, ".webm": true,
+}
+
 // streamUpload 处理 GET /api/uploads/:id/stream：按 id 查找上传文件并以
 // 二进制流返回（与 artifacts stream 同为二进制流端点，不套 JSON 包络，
 // 404 用真实 HTTP 404）。可见范围与任务一致：本人分桶；admin 可见全部
@@ -132,9 +141,14 @@ func (s *Server) streamUpload(c *gin.Context) {
 		return
 	}
 	c.Header("Accept-Ranges", "bytes")
-	// 同源直出二进制流的安全头：禁 MIME 嗅探 + 强制附件下载（XSS 防护面）。
+	// 同源直出二进制流的安全头：禁 MIME 嗅探 + Content-Disposition 按类型分流
+	// （音视频 inline 供桌面壳媒体元素播放；其余 attachment 强制下载，XSS 防护面）。
 	c.Header("X-Content-Type-Options", "nosniff")
-	c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(abs)+"\"")
+	disposition := "attachment"
+	if mediaInlineExts[strings.ToLower(filepath.Ext(abs))] {
+		disposition = "inline"
+	}
+	c.Header("Content-Disposition", disposition+`; filename="`+filepath.Base(abs)+`"`)
 	http.ServeFile(c.Writer, c.Request, abs)
 }
 

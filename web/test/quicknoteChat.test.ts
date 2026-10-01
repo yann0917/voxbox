@@ -58,18 +58,27 @@ describe("buildChatContext", () => {
     expect(ctx).toContain("今天是 2026-10-01");
   });
 
-  it("truncates transcripts over 24000 chars and appends the notice", () => {
-    const long = "字".repeat(24001);
+  it("truncates over-budget transcripts and keeps the assembled context within the 24000 cap", () => {
+    const long = "字".repeat(24000); // 旧「转写 24000 不截断」会组装出 24097，超服务端封顶
     const ctx = buildChatContext(long, "2026-10-01");
     expect(ctx).toContain("（转写过长，已截断）");
-    // 截断后的正文不再含完整原文（24001 字只剩 24000）
-    expect(ctx.includes("字".repeat(24001))).toBe(false);
+    // 截断后的正文不再含完整原文；总长恒 ≤24000（服务端 len([]rune) 上限）
+    expect(ctx.includes(long)).toBe(false);
+    expect(ctx.length).toBeLessThanOrEqual(24000);
   });
 
-  it("keeps a transcript of exactly 24000 chars intact", () => {
-    const exact = "字".repeat(24000);
-    expect(buildChatContext(exact, "2026-10-01")).toContain(exact);
-    expect(buildChatContext(exact, "2026-10-01")).not.toContain("已截断");
+  it("keeps an at-budget transcript intact; over budget lands exactly at the 24000 boundary", () => {
+    // 预算 = 24000 − 包装文案（空转写的组装长）− 截断提示：预算内原文完整保留
+    const budget = 24000 - buildChatContext("", "2026-10-01").length - "\n（转写过长，已截断）".length;
+    const exact = "字".repeat(budget);
+    const ctx = buildChatContext(exact, "2026-10-01");
+    expect(ctx).toContain(exact);
+    expect(ctx).not.toContain("已截断");
+    expect(ctx.length).toBeLessThanOrEqual(24000);
+    // 超预算 1 字即截断，组装总长恰好顶到 24000（服务端边界值放行）
+    const over = buildChatContext("字".repeat(budget + 1), "2026-10-01");
+    expect(over).toContain("（转写过长，已截断）");
+    expect(over.length).toBe(24000);
   });
 });
 

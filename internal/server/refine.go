@@ -144,6 +144,11 @@ func (s *Server) refine(c *gin.Context) {
 // （保住流式期间并发发生的 speaker_names 改名），同模式覆盖旧值。todos/events
 // 解析失败不报错给前端（流已正常结束）：原文存入对应键并记账 warning。
 func (s *Server) persistRefined(t *store.Task, mode, out string) error {
+	// 空白输出跳过落盘：流正常结束但模型未返回有效内容时，覆写会抹掉旧加工结果
+	// 并空刷 updated_at；SSE 照常 done（前端「没有返回内容」提示由空流渲染承担）。
+	if strings.TrimSpace(out) == "" {
+		return nil
+	}
 	latest, err := s.svc.DB().GetTask(t.ID)
 	if err != nil {
 		return err

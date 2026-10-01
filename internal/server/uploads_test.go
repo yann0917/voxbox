@@ -174,27 +174,40 @@ func TestUploadNoExtension(t *testing.T) {
 	}
 }
 
-// TestUploadStreamSecurityHeaders stream 响应必须携带 nosniff 与 attachment
-// Content-Disposition（同源直出二进制流的 XSS 防护面）。
+// TestUploadStreamSecurityHeaders stream 响应必须携带 nosniff；Content-Disposition
+// 按类型分流：音视频扩展名 inline（桌面壳 WKWebView 的媒体元素遵守 attachment 头
+// 会转下载不播放），html/svg/pdf 等风险类型保持 attachment 强制下载（XSS 防护面）。
 func TestUploadStreamSecurityHeaders(t *testing.T) {
 	ts, _, ac := newTestServer(t)
-	e := uploadMultipart(t, ac, ts.URL+"/api/uploads", "a.wav", "FAKE")
-	if e.Code != 0 {
-		t.Fatalf("upload code = %d (%s)", e.Code, e.Message)
-	}
-	data, _ := e.Data.(map[string]any)
-	fileID, _ := data["file_id"].(string)
+	for _, tc := range []struct{ filename, want string }{
+		{"a.wav", "inline"},
+		{"a.mp3", "inline"},
+		{"a.m4a", "inline"},
+		{"a.mp4", "inline"},
+		{"a.webm", "inline"},
+		{"a.html", "attachment"},
+		{"a.svg", "attachment"},
+		{"a.pdf", "attachment"},
+	} {
+		e := uploadMultipart(t, ac, ts.URL+"/api/uploads", tc.filename, "FAKE")
+		if e.Code != 0 {
+			t.Fatalf("upload %s code = %d (%s)", tc.filename, e.Code, e.Message)
+		}
+		data, _ := e.Data.(map[string]any)
+		fileID, _ := data["file_id"].(string)
 
-	resp, err := ac.Get(ts.URL + "/api/uploads/" + fileID + "/stream")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
-		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
-	}
-	cd := resp.Header.Get("Content-Disposition")
-	if !strings.HasPrefix(cd, `attachment; filename="`) || !strings.HasSuffix(cd, `.wav"`) {
-		t.Fatalf("Content-Disposition = %q, want attachment; filename=\"<uuid>.wav\"", cd)
+		resp, err := ac.Get(ts.URL + "/api/uploads/" + fileID + "/stream")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Errorf("%s: X-Content-Type-Options = %q, want nosniff", tc.filename, got)
+		}
+		cd := resp.Header.Get("Content-Disposition")
+		ext := filepath.Ext(tc.filename)
+		if !strings.HasPrefix(cd, tc.want+`; filename="`) || !strings.HasSuffix(cd, ext+`"`) {
+			t.Errorf("%s: Content-Disposition = %q, want %s; filename=\"<uuid>%s\"", tc.filename, cd, tc.want, ext)
+		}
+		resp.Body.Close()
 	}
 }

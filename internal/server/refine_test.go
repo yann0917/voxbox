@@ -6,6 +6,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -253,6 +254,55 @@ func TestRefineStreamError(t *testing.T) {
 	sum := taskSummary(t, ac, ts.URL, "rf-asr")
 	if _, exists := sum["refined"]; exists {
 		t.Errorf("出错不应落盘 refined: %v", sum["refined"])
+	}
+}
+
+// TestRefineEmptyOutputNotPersisted 流正常结束但输出为空白：不落盘（旧加工结果
+// 保留、updated_at 不被刷新），SSE 照常 done 收尾无 error（前端「没有返回内容」
+// 提示由空流渲染承担，协议不变）。旧值经 UpdateTaskSummary 直落库（时间戳固定，
+// 断言确定性）。
+func TestRefineEmptyOutputNotPersisted(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ts, s, ac := newTestServer(t)
+	refineFixture(t, s)
+	if _, e := doJSON(t, ac, http.MethodPut, ts.URL+"/api/settings/providers/qianwen",
+		`{"fields":{"api_key":"sk-refine-test"}}`); e.Code != CodeOK {
+		t.Fatalf("配置假凭证 code = %d (%s)", e.Code, e.Message)
+	}
+	const oldAt = "2026-09-28T10:00:00+08:00"
+	// 旧加工结果直落库（保留 fixture 的 segments，时间戳固定保证断言确定性）
+	tk, err := s.svc.DB().GetTask("rf-asr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seeded map[string]any
+	if err := json.Unmarshal([]byte(tk.Summary), &seeded); err != nil {
+		t.Fatal(err)
+	}
+	seeded["refined"] = map[string]any{"summary": "旧纪要", "updated_at": oldAt}
+	b, _ := json.Marshal(seeded)
+	if err := s.svc.DB().UpdateTaskSummary("rf-asr", "alice-id", string(b)); err != nil {
+		t.Fatal(err)
+	}
+
+	setRefineStream(t, func(system, user string, onDelta func(string)) error {
+		onDelta("  \n\t") // 空白输出（模型未返回有效内容）
+		return nil
+	})
+	body, _ := postRefine(t, ac, ts.URL, `{"task_id":"rf-asr","mode":"summary","provider":"qianwen","model":"qwen3.8-flash"}`)
+	if strings.Contains(body, `"error"`) || !strings.HasSuffix(strings.TrimSpace(body), `"done":true}`) {
+		t.Fatalf("空输出应照常 done 收尾且无 error: %s", body)
+	}
+	sum := taskSummary(t, ac, ts.URL, "rf-asr")
+	refined, _ := sum["refined"].(map[string]any)
+	if refined == nil {
+		t.Fatalf("refined 应保留: %v", sum)
+	}
+	if refined["summary"] != "旧纪要" {
+		t.Errorf("空输出不应覆写旧加工结果: refined.summary = %v", refined["summary"])
+	}
+	if refined["updated_at"] != oldAt {
+		t.Errorf("空输出不应刷新 updated_at: %v, want %v", refined["updated_at"], oldAt)
 	}
 }
 

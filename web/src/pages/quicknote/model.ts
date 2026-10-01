@@ -144,18 +144,26 @@ export function todayText(now: Date = new Date()): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-/** 问答上下文的转写长度上限：后端 context 原样透传不设限，超长在前端截断。 */
-const CONTEXT_TRANSCRIPT_MAX = 24000;
+/** 问答上下文（组装后）的总 rune 上限：与后端服务端封顶一致（24000，恰好放行）。
+ *  包装文案与截断提示计入总额，转写只取剩余预算——组装结果恒不超上限。 */
+const CONTEXT_MAX_RUNES = 24000;
+
+/** 转写超预算截断时附加的提示（含换行，计入总预算）。 */
+const TRUNCATED_NOTICE = "\n（转写过长，已截断）";
 
 /** 引用约定（context 末尾附给模型）：句末【分:秒】，前端解析为可点击跳播点。 */
 const CITE_RULE = "回答中引用转写内容时，请在对应句子的句末标注它在录音中的开始时间，格式为【分:秒】，如【03:21】。";
 
-/** 问答上下文：转写全文（超长截断）+ 引用约定 + 今天日期。发送时才组装，不缓存旧转写。
- *  首尾自行 trim（后端 ChatSystem 不做 TrimSpace，context 原样拼进 system）。 */
+/** 问答上下文：转写全文（超预算截断）+ 引用约定 + 今天日期。发送时才组装，不缓存旧转写。
+ *  首尾自行 trim（后端 ChatSystem 不做 TrimSpace，context 原样拼进 system）。
+ *  预算按 JS string.length（UTF-16 码元）计：增补平面字符只多算不算少，偏保守方向安全。 */
 export function buildChatContext(transcript: string, today: string): string {
+  const prefix = `以下是这段录音的文字稿，行首是每句在录音中的开始时间：\n\n`;
+  const suffix = `\n\n${CITE_RULE}\n今天是 ${today}。`;
+  const budget = CONTEXT_MAX_RUNES - prefix.length - suffix.length - TRUNCATED_NOTICE.length;
   let t = transcript.trim();
-  if (t.length > CONTEXT_TRANSCRIPT_MAX) t = `${t.slice(0, CONTEXT_TRANSCRIPT_MAX)}\n（转写过长，已截断）`;
-  return `以下是这段录音的文字稿，行首是每句在录音中的开始时间：\n\n${t}\n\n${CITE_RULE}\n今天是 ${today}。`;
+  if (t.length > budget) t = t.slice(0, budget) + TRUNCATED_NOTICE;
+  return prefix + t + suffix;
 }
 
 /** 引用标注：句末【分:秒】或【时:分:秒】（与模型的约定，前端据此渲染跳播 chip）。 */
@@ -179,7 +187,7 @@ export function linkifyCitations(text: string): string {
   });
 }
 
-const SEEK_HREF_RE = /^#seek-(\d+)$/
+const SEEK_HREF_RE = /^#seek-(\d+)$/;
 
 /** 内部跳播锚点（#seek-毫秒，linkifyCitations 的产物）→ 毫秒；非跳播锚点或
  *  异常形态返回 null。chip 分支据此判定——href 里是纯毫秒整数，勿再喂给

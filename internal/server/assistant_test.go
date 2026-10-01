@@ -183,6 +183,59 @@ func TestAssistantChatContextInjection(t *testing.T) {
 	}
 }
 
+// TestAssistantChatContextCap context 服务端封顶：超过 24000 rune（与前端截断值
+// 一致）→ 既有包络 code 2、直述「上下文过长」，底层缝不被调用；恰好 24000 的
+// 边界正常进流（delta→done），ChatSystem 拼接链路不受影响。
+func TestAssistantChatContextCap(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ts, _, ac := newTestServer(t)
+	if _, e := doJSON(t, ac, http.MethodPut, ts.URL+"/api/settings/providers/qianwen",
+		`{"fields":{"api_key":"sk-chat-test"}}`); e.Code != CodeOK {
+		t.Fatalf("配置假凭证 code = %d (%s)", e.Code, e.Message)
+	}
+	calls := setAssistantChatStream(t, func(_ string, _ []assistant.Message, onDelta func(string)) error {
+		onDelta("好的")
+		return nil
+	})
+
+	// 超限（24001 rune）：包络拒绝，非 SSE，底层不被调用
+	over := `{"provider":"qianwen","model":"qwen3.8-flash","context":"` + strings.Repeat("a", 24001) +
+		`","messages":[{"role":"user","content":"hi"}]}`
+	resp, err := ac.Post(ts.URL+"/api/assistant/chat", "application/json", strings.NewReader(over))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("超限拒绝应为 JSON 包络, Content-Type = %s", ct)
+	}
+	var e envelope
+	_ = json.NewDecoder(resp.Body).Decode(&e)
+	if e.Code != CodeBadRequest {
+		t.Fatalf("超限 code = %d (%s), want %d", e.Code, e.Message, CodeBadRequest)
+	}
+	if !strings.Contains(e.Message, "上下文过长") {
+		t.Fatalf("message = %s, want 直述「上下文过长」", e.Message)
+	}
+	if *calls != 0 {
+		t.Fatalf("超限请求不应触达底层缝, calls = %d", *calls)
+	}
+
+	// 边界（恰好 24000 rune）：照常 delta→done
+	boundary := `{"provider":"qianwen","model":"qwen3.8-flash","context":"` + strings.Repeat("a", 24000) +
+		`","messages":[{"role":"user","content":"hi"}]}`
+	body, ct := postChatSSE(t, ac, ts.URL, boundary)
+	if !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("边界请求应进流, Content-Type = %s", ct)
+	}
+	if !strings.Contains(body, `"delta"`) || !strings.HasSuffix(strings.TrimSpace(body), `"done":true}`) {
+		t.Fatalf("边界请求应 delta→done: %s", body)
+	}
+	if *calls != 1 {
+		t.Fatalf("边界请求应触达底层缝一次, calls = %d", *calls)
+	}
+}
+
 // TestAssistantChatContextPrecheckUnchanged 携带 context 不绕过预检校验链：
 // 白名单外模型仍拒绝、最后一条非 user 仍拒绝、凭证未配置仍映射业务码 4。
 func TestAssistantChatContextPrecheckUnchanged(t *testing.T) {

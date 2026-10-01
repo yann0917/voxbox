@@ -22,6 +22,9 @@ import (
 const (
 	assistantMaxMessages = 40   // 历史超出只保留最近 40 条上下文
 	assistantMaxRunes    = 8000 // 单条消息 rune 上限
+	// assistantMaxContextRunes context（如转写全文）rune 上限：与前端问答上下文的
+	// 转写截断值一致（web/src/pages/quicknote/model.ts CONTEXT_TRANSCRIPT_MAX）。
+	assistantMaxContextRunes = 24000
 )
 
 // assistantModels 模型目录（后端单一事实来源）：前端按 Enabled 禁用未配置平台的模型组。
@@ -51,6 +54,12 @@ func (s *Server) assistantChat(c *gin.Context) {
 	p := assistant.Provider(req.Provider)
 	if !assistant.KnownProvider(p) {
 		fail(c, CodeBadRequest, "参数错误：未知平台 "+req.Provider)
+		return
+	}
+	// context 服务端封顶：原样透传给 ChatSystem 拼接，不设限则绕开单条消息的
+	// rune 上限（任意登录用户可塞数 MB），与前端截断值一致。
+	if len([]rune(req.Context)) > assistantMaxContextRunes {
+		fail(c, CodeBadRequest, "上下文过长")
 		return
 	}
 	// 消息整备：剥离 system（系统提示服务端注入，客户端不可伪造），空内容丢弃，
