@@ -82,6 +82,26 @@ func TestBuildChatRequest(t *testing.T) {
 	}
 }
 
+func TestChatSystem(t *testing.T) {
+	// 不带 context：与 Stream 注入的常量逐字节一致（/api/assistant/chat 现状不变）
+	if got := ChatSystem(""); got != systemPrompt {
+		t.Fatalf("ChatSystem(\"\") = %q, want 与默认提示逐字节一致", got)
+	}
+	// 带 context：默认提示 + 空行 + 上下文
+	ctxText := "以下是本次录音的转写全文：大家好。"
+	if got, want := ChatSystem(ctxText), systemPrompt+"\n\n"+ctxText; got != want {
+		t.Fatalf("ChatSystem(ctx) = %q, want %q", got, want)
+	}
+	// 底层 wire：system 位于首条消息且包含上下文（buildChatRequest 既有机械）
+	req := buildChatRequest(ProviderQianwen, "qwen3.8-flash", ChatSystem(ctxText), []Message{{Role: "user", Content: "总结一下"}})
+	if req.Messages[0].Role != "system" || !strings.Contains(req.Messages[0].Content, ctxText) {
+		t.Fatalf("底层 system 消息应包含 context: %+v", req.Messages[0])
+	}
+	if n := len(req.Messages); n != 2 {
+		t.Fatalf("context 不应进入 messages: %d 条", n)
+	}
+}
+
 func TestResolveDefault(t *testing.T) {
 	// 全未配置：报哨兵错误（failErr 映射业务码 4）
 	if _, _, err := ResolveDefault(&config.Config{}); err == nil {

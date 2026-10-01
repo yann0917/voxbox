@@ -29,10 +29,17 @@ func (s *Server) assistantModels(c *gin.Context) {
 	ok(c, assistant.CatalogWith(s.svc.Config()))
 }
 
+// assistantChatStream 流式底层测试缝：生产即 assistant.StreamCompose（system 参数化
+// 导出入口，system 由 assistant.ChatSystem 组装——不带 context 时与原 Stream 注入的
+// 常量逐字节一致）；server 包测试替换为假实现离线断言下发内容（refineStream 同款）。
+var assistantChatStream = assistant.StreamCompose
+
 type assistantChatReq struct {
 	Provider string              `json:"provider"`
 	Model    string              `json:"model"`
 	Messages []assistant.Message `json:"messages"`
+	// Context 额外上下文（如单条录音的转写全文）：非空时以空行追加在默认系统提示之后。
+	Context string `json:"context,omitempty"`
 }
 
 func (s *Server) assistantChat(c *gin.Context) {
@@ -93,7 +100,7 @@ func (s *Server) assistantChat(c *gin.Context) {
 		w.Flush()
 		return true
 	}
-	err := assistant.Stream(c.Request.Context(), cfg, p, req.Model, msgs, func(delta string) {
+	err := assistantChatStream(c.Request.Context(), cfg, p, req.Model, assistant.ChatSystem(req.Context), msgs, func(delta string) {
 		// 客户端断开后写事件失败不中断循环：请求上下文取消会让上游读取尽快退出
 		_ = writeEvent(gin.H{"delta": delta})
 	})

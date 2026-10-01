@@ -186,6 +186,16 @@ const systemPrompt = "你是 voxbox 的内置 AI 助手。voxbox 是一个多引
 	"人声分离、播客生成、音频后期、音频剪辑、机器翻译、语音妙记、字幕工坊等工具，已接入火山引擎、千问、小米、智谱平台。" +
 	"回答默认使用简体中文，简洁直接；涉及 voxbox 使用的问题给出具体页面路径；不确定的功能不要编造。"
 
+// ChatSystem /api/assistant/chat 下发的系统提示：默认助手提示；extra 非空时以空行
+// 追加在其后（单条录音问答经请求的 context 字段注入转写全文）。extra 为空时与
+// Stream 注入的常量逐字节一致，chat 不带 context 行为不变。
+func ChatSystem(extra string) string {
+	if extra == "" {
+		return systemPrompt
+	}
+	return systemPrompt + "\n\n" + extra
+}
+
 // Message 对话消息（客户端只允许 user/assistant 两种角色，system 由服务端注入）。
 type Message struct {
 	Role    string `json:"role"`
@@ -234,8 +244,8 @@ func Stream(ctx context.Context, cfg *config.Config, p Provider, model string, m
 	return streamChat(ctx, cfg, p, model, systemPrompt, messages, onDelta)
 }
 
-// StreamCompose 文本生成/润色专用的流式调用：system 提示由调用方给定（提示词库条目），
-// 不注入助手角色提示。其余语义与 Stream 完全一致。
+// StreamCompose system 参数化的流式调用：提示由调用方给定（提示词库条目；助手
+// chat 传 ChatSystem 组装结果），在此不自动注入助手角色提示。其余语义与 Stream 完全一致。
 func StreamCompose(ctx context.Context, cfg *config.Config, p Provider, model, system string, messages []Message, onDelta func(string)) error {
 	return streamChat(ctx, cfg, p, model, system, messages, onDelta)
 }
