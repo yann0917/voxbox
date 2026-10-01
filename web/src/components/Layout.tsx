@@ -49,6 +49,7 @@ const nav = [
   { to: "/gsgc", label: "格式工厂", desc: "音视频/图片在线转换与压缩", icon: Wrench },
   { to: "/translate", label: "机器翻译", desc: "32 语种互译与术语定制", icon: Languages },
   { to: "/minutes", label: "语音妙记", desc: "音视频转结构化纪要", icon: NotebookPen },
+  { to: "/quicknote", label: "录音笔记", desc: "录完即出文字稿，AI 提炼要点与待办", icon: Mic },
   { to: "/subtitles", label: "字幕工坊", desc: "字幕样式与 SRT/ASS 导出", icon: Captions },
   { to: "/prompts", label: "提示词库", desc: "AI 写作主题与自定义提示词", icon: LibraryBig },
   { to: "/history", label: "历史", desc: "全部任务与产物", icon: History },
