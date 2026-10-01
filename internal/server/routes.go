@@ -7,7 +7,8 @@ import (
 )
 
 // Handler 组装全部 HTTP 路由，只做注册不写业务逻辑；handler 按领域各归其文件：
-// auth.go（登录/会话/token）、uploads.go、tasks.go（任务 CRUD/重跑）、artifacts.go
+// auth.go（登录/会话/token）、uploads.go、tasks.go（任务 CRUD/重跑）、speakers.go
+// （说话人改名）、artifacts.go
 // （产物流/下载与路径、越权防御）、settings.go（凭证/存储/连通性）、pronunciation.go、
 // subtitles.go、search.go（转写全文搜索）、lookups.go（工具/音色/词典清单）、
 // mvsep.go、minutes_export.go、local.go、models.go、voicelib.go、assistant.go、
@@ -56,6 +57,8 @@ func (s *Server) Handler() http.Handler {
 		tasks.DELETE("/:id", s.deleteTask)
 		tasks.POST("/:id/cancel", s.cancelTask)
 		tasks.POST("/:id/rerun", s.rerunTask)
+		// 说话人改名（录音笔记本地覆盖层）：写 Summary.speaker_names，详见 speakers.go
+		tasks.PATCH("/:id/speakers", s.renameTaskSpeakers)
 	}
 
 	artifacts := api.Group("/artifacts")

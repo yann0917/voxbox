@@ -21,6 +21,22 @@ func (d *DB) UpdateTask(t *Task) error {
 	return d.gorm.Save(t).Error
 }
 
+// UpdateTaskSummary 只改 summary 列（id+user_id 双条件：handler 已过属主校验，
+// 行内条件是竞态窗口的二次把关——被删/易主则 0 行受影响报 ErrNotFound）。
+// 说话人改名端点与后续加工层共用；不走 Save 全列覆写，避免踩掉并发的进展更新。
+func (d *DB) UpdateTaskSummary(taskID, userID, summaryJSON string) error {
+	res := d.gorm.Model(&Task{}).
+		Where("id = ? AND user_id = ?", taskID, userID).
+		Updates(map[string]any{"summary": summaryJSON, "updated_at": time.Now()})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (d *DB) GetTask(id string) (*Task, error) {
 	var t Task
 	if err := d.gorm.First(&t, "id = ?", id).Error; err != nil {
