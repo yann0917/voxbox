@@ -129,6 +129,9 @@ func (t *ASRTool) ParamSpecs() []provider.ParamSpec {
 		{Key: "language", Label: "语言", Type: provider.ParamEnum, Default: "", Group: "输入",
 			Options:     asrLanguages,
 			Placeholder: "留空自动识别（中文/英文/常见方言）"},
+		{Key: "speaker", Label: "说话人分离", Type: provider.ParamBool, Default: false, Group: "识别"},
+		{Key: "lid", Label: "语种/方言识别", Type: provider.ParamBool, Default: false, Group: "识别"},
+		{Key: "emotion", Label: "情绪标签", Type: provider.ParamBool, Default: false, Group: "识别"},
 		{Key: "srt", Label: "生成 SRT 字幕", Type: provider.ParamBool,
 			Default: true, Group: "输出"},
 	}
@@ -189,6 +192,10 @@ func (t *ASRTool) Run(ctx context.Context, in provider.TaskInput, report provide
 			Format:   format,
 			Language: paramString(in.Params, "language"),
 			Hotwords: paramString(in.Params, "hotwords"),
+			// 录音笔记参数面：说话人分离/中英方言/情绪标签；SSDVersion 不传（决策门已证实不需要）。
+			SpeakerInfo: paramBool(in.Params, "speaker"),
+			LID:         paramBool(in.Params, "lid"),
+			Emotion:     paramBool(in.Params, "emotion"),
 		})
 		if err != nil {
 			return provider.TaskOutput{}, err
@@ -315,7 +322,8 @@ func (t *ASRTool) pollAUC(ctx context.Context, taskID string, p aucPoller) (ASRN
 }
 
 // saveArtifacts 落盘转写文本（asr/<uuid>.txt）与 SRT 字幕（asr/<uuid>.srt，
-// srt 参数默认开启且分句非空时生成），并按 M2 契约处理 _out 重定向。
+// srt 参数默认开启且分句非空时生成），并按 M2 契约处理 _out 重定向；
+// Summary 产出 segments（含可选 speaker）/duration_ms/source/version 与去重 speakers_count。
 func (t *ASRTool) saveArtifacts(in provider.TaskInput, resp ASRNostreamResp, source, version string) (provider.TaskOutput, error) {
 	srtContent := ""
 	if asrSRTEnabled(in.Params) && len(resp.Segments) > 0 {
@@ -363,16 +371,31 @@ func (t *ASRTool) saveArtifacts(in provider.TaskInput, resp ASRNostreamResp, sou
 
 	segs := make([]map[string]any, 0, len(resp.Segments))
 	for _, s := range resp.Segments {
-		segs = append(segs, map[string]any{"text": s.Text, "start_ms": s.StartMS, "end_ms": s.EndMS})
+		seg := map[string]any{"text": s.Text, "start_ms": s.StartMS, "end_ms": s.EndMS}
+		if s.Speaker != "" {
+			seg["speaker"] = s.Speaker
+		}
+		segs = append(segs, seg)
+	}
+	summary := map[string]any{
+		"segments":    segs,
+		"duration_ms": resp.DurationMS,
+		"source":      source,
+		"version":     version,
+	}
+	// speakers_count：去重说话人数；未启用或全空则省略该键（前端按存在性渲染说话人徽标）。
+	seen := map[string]int{}
+	for _, s := range resp.Segments {
+		if s.Speaker != "" {
+			seen[s.Speaker]++
+		}
+	}
+	if len(seen) > 0 {
+		summary["speakers_count"] = len(seen)
 	}
 	return provider.TaskOutput{
 		Artifacts: arts,
-		Summary: map[string]any{
-			"segments":    segs,
-			"duration_ms": resp.DurationMS,
-			"source":      source,
-			"version":     version,
-		},
+		Summary:   summary,
 	}, nil
 }
 

@@ -551,6 +551,171 @@ func TestASRToolSentenceAcceptsExtendedFormats(t *testing.T) {
 	}
 }
 
+// TestASRToolParamSpecsRecordingNoteParams 录音笔记参数面：speaker/lid/emotion 三个 ParamBool
+// 默认 false、Group「识别」；既有参数（version/url/hotwords/language/srt）保持不回退。
+func TestASRToolParamSpecsRecordingNoteParams(t *testing.T) {
+	tool := NewASRTool(SpeechCred{APIKey: "key-1"}, t.TempDir())
+	byKey := map[string]provider.ParamSpec{}
+	for _, s := range tool.ParamSpecs() {
+		byKey[s.Key] = s
+	}
+	for _, key := range []string{"speaker", "lid", "emotion"} {
+		s, ok := byKey[key]
+		if !ok {
+			t.Fatalf("ParamSpecs 缺少 %s: %+v", key, tool.ParamSpecs())
+		}
+		if s.Type != provider.ParamBool {
+			t.Errorf("%s.Type = %v, 期望 ParamBool", key, s.Type)
+		}
+		if s.Default != false {
+			t.Errorf("%s.Default = %v, 期望 false", key, s.Default)
+		}
+		if s.Group != "识别" {
+			t.Errorf("%s.Group = %q, 期望 识别", key, s.Group)
+		}
+	}
+	for _, key := range []string{"version", "url", "hotwords", "language", "srt"} {
+		if _, ok := byKey[key]; !ok {
+			t.Errorf("ParamSpecs 缺少既有参数 %s", key)
+		}
+	}
+}
+
+// TestASRToolSentencePassesRecordingNoteParams sentence 分支参数透传：speaker/lid/emotion
+// 经 Recognize 落到 request 段 enable_speaker_info/enable_lid/enable_emotion_detection；
+// SSDVersion 不传（决策门已证实不需要，omitempty 缺席）。默认参数四键全缺席。
+func TestASRToolSentencePassesRecordingNoteParams(t *testing.T) {
+	newParamKeys := []string{"enable_speaker_info", "enable_lid", "enable_emotion_detection", "ssd_version"}
+	tests := []struct {
+		name        string
+		params      map[string]any
+		wantRequest map[string]any // request 段期望出现的 key→值
+	}{
+		{
+			name:   "默认不透传新参数",
+			params: map[string]any{},
+		},
+		{
+			name:        "三开关全开",
+			params:      map[string]any{"speaker": true, "lid": true, "emotion": true},
+			wantRequest: map[string]any{"enable_speaker_info": true, "enable_lid": true, "enable_emotion_detection": true},
+		},
+	}
+	testAudio := make([]byte, 40*1024) // 2 片：mock 要求首包正 seq、末包负 seq
+	for i := range testAudio {
+		testAudio[i] = byte(i % 251)
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotRequest map[string]any
+			wsURL := newMockASRServer(t, nil, func(t *testing.T, conn *websocket.Conn) {
+				_, frame, err := conn.ReadMessage() // full client request
+				if err != nil {
+					t.Errorf("读 full request 失败: %v", err)
+					return
+				}
+				_, _, payload := parseClientFrame(t, frame)
+				var full struct {
+					Request map[string]any `json:"request"`
+				}
+				if err := json.Unmarshal(payload, &full); err != nil {
+					t.Errorf("解析 full request JSON 失败: %v", err)
+					return
+				}
+				gotRequest = full.Request
+				if err := conn.WriteMessage(websocket.BinaryMessage, serverAckFrame()); err != nil {
+					t.Errorf("写 ack 失败: %v", err)
+					return
+				}
+				for { // 排空音频分片直到最后一包（负 seq）
+					if _, frame, err := conn.ReadMessage(); err != nil || frame[1]&0x0f&0x02 != 0 {
+						break
+					}
+				}
+				if err := conn.WriteMessage(websocket.BinaryMessage, serverLastResponseFrame(mockFinalPayloadJSON)); err != nil {
+					t.Errorf("写最终响应失败: %v", err)
+				}
+				_, _, _ = conn.ReadMessage() // 等待客户端关闭
+			})
+
+			cred := SpeechCred{APIKey: "key-1"}
+			tool := &ASRTool{
+				ws:     NewASRClientWithURL(cred, wsURL),
+				auc:    NewASRAUCClientWithBaseURL(cred, "http://127.0.0.1:1"),
+				cred:   cred,
+				outDir: t.TempDir(),
+			}
+			audioFile := writeTestAudio(t, t.TempDir(), "sample.mp3", testAudio)
+			if _, err := tool.Run(context.Background(), provider.TaskInput{
+				Files:  map[string]string{"audio": audioFile},
+				Params: tt.params,
+			}, nopReport); err != nil {
+				t.Fatalf("Run() err = %v", err)
+			}
+			for _, k := range newParamKeys {
+				want, inWant := tt.wantRequest[k]
+				got, ok := gotRequest[k]
+				if inWant && (!ok || fmt.Sprint(got) != fmt.Sprint(want)) {
+					t.Errorf("request.%s = %v (present=%v), 期望 %v", k, got, ok, want)
+				}
+				if !inWant && ok {
+					t.Errorf("request.%s = %v, 期望缺省(omitempty)", k, got)
+				}
+			}
+		})
+	}
+}
+
+// TestASRToolSaveArtifactsSpeakersCount speakers_count 产出契约：带 Speaker 的 segments
+// 去重计数产出 summary.speakers_count，分句元素含 speaker 键（原始编号字符串）；
+// 无 Speaker（未启用/全空）时不出该键、元素无 speaker 键；既有 summary 四键不回退。
+func TestASRToolSaveArtifactsSpeakersCount(t *testing.T) {
+	tool := NewASRTool(SpeechCred{APIKey: "key-1"}, t.TempDir())
+
+	// 两个说话人（"0"×2 + "1"×1）→ speakers_count=2。
+	withSpk, err := tool.saveArtifacts(provider.TaskInput{Params: map[string]any{}}, ASRNostreamResp{
+		Text: "你好。好的。再见。",
+		Segments: []ASRSegment{
+			{Text: "你好。", StartMS: 0, EndMS: 1000, Speaker: "0"},
+			{Text: "好的。", StartMS: 1000, EndMS: 2000, Speaker: "1"},
+			{Text: "再见。", StartMS: 2000, EndMS: 3000, Speaker: "0"},
+		},
+	}, "file", "sentence")
+	if err != nil {
+		t.Fatalf("saveArtifacts() err = %v", err)
+	}
+	if got, ok := withSpk.Summary["speakers_count"].(int); !ok || got != 2 {
+		t.Errorf("speakers_count = %v, 期望 int 2", withSpk.Summary["speakers_count"])
+	}
+	segs, _ := withSpk.Summary["segments"].([]map[string]any)
+	if len(segs) != 3 || segs[0]["speaker"] != "0" || segs[1]["speaker"] != "1" || segs[2]["speaker"] != "0" {
+		t.Errorf("segments 形状 = %v, 期望元素含 speaker 键", segs)
+	}
+	for _, k := range []string{"segments", "duration_ms", "source", "version"} {
+		if _, ok := withSpk.Summary[k]; !ok {
+			t.Errorf("summary 缺少既有键 %s", k)
+		}
+	}
+
+	// 无 Speaker：不出 speakers_count 键，元素无 speaker 键。
+	noSpk, err := tool.saveArtifacts(provider.TaskInput{Params: map[string]any{}}, ASRNostreamResp{
+		Text:     "你好。",
+		Segments: []ASRSegment{{Text: "你好。", StartMS: 0, EndMS: 1000}},
+	}, "file", "sentence")
+	if err != nil {
+		t.Fatalf("saveArtifacts() err = %v", err)
+	}
+	if v, ok := noSpk.Summary["speakers_count"]; ok {
+		t.Errorf("无 Speaker 时不应产出 speakers_count, got %v", v)
+	}
+	segs, _ = noSpk.Summary["segments"].([]map[string]any)
+	for i, s := range segs {
+		if _, ok := s["speaker"]; ok {
+			t.Errorf("无 Speaker 时分句元素不应含 speaker 键: segs[%d] = %v", i, s)
+		}
+	}
+}
+
 func TestASRToolOutRedirect(t *testing.T) {
 	testAudio := make([]byte, 100*1024)
 	for i := range testAudio {
