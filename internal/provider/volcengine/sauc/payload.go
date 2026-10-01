@@ -3,7 +3,10 @@
 //   - 包名 protocol → sauc；
 //   - 序列化由 bytedance/sonic 改为标准库 encoding/json（避免为本包引入额外依赖）；
 //   - AudioMeta 增加 Language 字段（`json:"language,omitempty"`，协议文档 6561/1354869 支持 audio.language，官方结构体未收录）；
-//   - 修正 UserMeta.Platform struct tag 末尾多余空格（官方源码笔误，无语义影响）。
+//   - 修正 UserMeta.Platform struct tag 末尾多余空格（官方源码笔误，无语义影响）；
+//   - RequestMeta 增加 EnableSpeakerInfo/EnableLID/EnableEmotion/SSDVersion 字段
+//     （`enable_speaker_info`/`enable_lid`/`enable_emotion_detection`/`ssd_version`，均 omitempty，
+//     录音笔记 nostream 说话人分离/方言/情绪扩展参数，官方结构体未收录）。
 package sauc
 
 import (
@@ -36,13 +39,17 @@ type CorpusMeta struct {
 }
 
 type RequestMeta struct {
-	ModelName       string     `json:"model_name,omitempty"`
-	EnableITN       bool       `json:"enable_itn,omitempty"`
-	EnablePUNC      bool       `json:"enable_punc,omitempty"`
-	EnableDDC       bool       `json:"enable_ddc,omitempty"`
-	ShowUtterances  bool       `json:"show_utterances"`
-	EnableNonstream bool       `json:"enable_nonstream"`
-	Corpus          CorpusMeta `json:"corpus,omitempty"`
+	ModelName         string     `json:"model_name,omitempty"`
+	EnableITN         bool       `json:"enable_itn,omitempty"`
+	EnablePUNC        bool       `json:"enable_punc,omitempty"`
+	EnableDDC         bool       `json:"enable_ddc,omitempty"`
+	EnableSpeakerInfo bool       `json:"enable_speaker_info,omitempty"`
+	EnableLID         bool       `json:"enable_lid,omitempty"`
+	EnableEmotion     bool       `json:"enable_emotion_detection,omitempty"`
+	SSDVersion        string     `json:"ssd_version,omitempty"`
+	ShowUtterances    bool       `json:"show_utterances"`
+	EnableNonstream   bool       `json:"enable_nonstream"`
+	Corpus            CorpusMeta `json:"corpus,omitempty"`
 }
 
 type AsrRequestPayload struct {

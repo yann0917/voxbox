@@ -1,6 +1,8 @@
 // 火山引擎官方 sauc_go demo 协议实现（来源：https://www.volcengine.com/docs/6561/2628951，sauc_go.zip protocol 包）。
 // 本项目做了以下最小改造：
-//   - 包名 protocol → sauc（其余内容官方原样）。
+//   - 包名 protocol → sauc（其余内容官方原样）；
+//   - AsrResponsePayload.Result 增加 Additions（`additions`）、utterances 元素增加 SpeakerID
+//     （`speaker_id`）解析，录音笔记 nostream 说话人分离需要，官方结构体未收录。
 package sauc
 
 import (
@@ -13,12 +15,14 @@ type AsrResponsePayload struct {
 		Duration int `json:"duration"`
 	} `json:"audio_info"`
 	Result struct {
-		Text       string `json:"text"`
+		Text       string         `json:"text"`
+		Additions  map[string]any `json:"additions,omitempty"`
 		Utterances []struct {
 			Definite  bool   `json:"definite"`
 			EndTime   int    `json:"end_time"`
 			StartTime int    `json:"start_time"`
 			Text      string `json:"text"`
+			SpeakerID string `json:"speaker_id,omitempty"`
 			Words     []struct {
 				EndTime   int    `json:"end_time"`
 				StartTime int    `json:"start_time"`
