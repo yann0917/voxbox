@@ -12,7 +12,8 @@ import (
 // （产物流/下载与路径、越权防御）、settings.go（凭证/存储/连通性）、pronunciation.go、
 // subtitles.go、search.go（转写全文搜索）、lookups.go（工具/音色/词典清单）、
 // mvsep.go、minutes_export.go、local.go、models.go、voicelib.go、assistant.go、
-// prompts.go（提示词库+AI 写作）、mediaenv.go（gsgcHealth）、hub.go（wsProgress）。
+// prompts.go（提示词库+AI 写作）、refine.go（录音笔记加工）、mediaenv.go（gsgcHealth）、
+// hub.go（wsProgress）。
 func (s *Server) Handler() http.Handler {
 	r := gin.Default()
 	gin.SetMode(gin.ReleaseMode)
@@ -143,6 +144,10 @@ func (s *Server) Handler() http.Handler {
 		assistantRoutes.GET("/models", s.assistantModels)
 		assistantRoutes.POST("/chat", s.assistantChat)
 	}
+
+	// 录音笔记加工层：asr/minutes 成功任务的转写二次加工（纪要/待办/日程/自定义），
+	// SSE 同助手协议，结果合并落任务 Summary.refined（详见 refine.go）
+	api.POST("/refine", s.refine)
 
 	// 提示词库（内置+用户自定义）：条目按登录用户隔离，AI 写作流式同助手协议
 	promptRoutes := api.Group("/prompts")
