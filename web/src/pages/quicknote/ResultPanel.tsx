@@ -13,8 +13,7 @@ import {
 import { fetchJSON } from "../../lib/api";
 import { formatTime } from "../../lib/player";
 import { TranscriptList } from "../../components/TranscriptList";
-import { useTranscriptSync, type SyncSegment } from "../../lib/useTranscriptSync";
-import { WavePlayer } from "../../ui/WavePlayer";
+import type { SyncSegment } from "../../lib/useTranscriptSync";
 import {
   Button,
   Card,
@@ -27,6 +26,7 @@ import {
   StatusBadge,
   useToast,
 } from "../../ui";
+import { WavePlayer } from "../../ui/WavePlayer";
 import { safeFilename, speakerStats, transcriptText, type QNSegment, type ResultView, type Run } from "./model";
 
 export interface ResultPanelProps {
@@ -39,15 +39,18 @@ export interface ResultPanelProps {
   durationMs?: number;
   /** 音频回放地址：服务端上传流优先，回落录音 Blob（仅本次会话可回放） */
   playSrc: string | null;
-  /** 改名初值来自任务 Summary（父级以 taskId+详情已加载作 key，详情异步到达时重挂载生效） */
-  initialNames: Record<string, string>;
+  /** 说话人改名（父级持有：问答区的上下文组装要拿到改名后的称呼） */
+  speakerNames: Record<string, string>;
+  onSpeakerNamesChange: (update: (cur: Record<string, string>) => Record<string, string>) => void;
+  /** 分句跟读的当前句（-1=未在播）与跳播（音频-文稿同步由父级持有，问答区复用） */
+  activeIdx: number;
+  seekTo: (ms: number, track?: { title: string; sub?: string }) => void;
   submitError: string;
   onReset: () => void;
 }
 
 /** 结果区：进度与终态——波形回放 + 分句跟读 + 说话人改名与发言统计。
- *  父级以 taskId+「详情已加载」作 key 重挂载本组件：新任务重置改名/编辑态，
- *  异步到达的任务详情（含 speaker_names 初值）随之生效。 */
+ *  父级以 taskId+「详情已加载」作 key 重挂载本组件：新任务重置编辑态。 */
 export function ResultPanel({
   view,
   run,
@@ -56,15 +59,16 @@ export function ResultPanel({
   segments,
   durationMs,
   playSrc,
-  initialNames,
+  speakerNames,
+  onSpeakerNamesChange,
+  activeIdx,
+  seekTo,
   submitError,
   onReset,
 }: ResultPanelProps) {
   const { toast } = useToast();
-  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>(initialNames);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const { activeIdx, seekTo } = useTranscriptSync(segments, playSrc);
 
   /** 展示名：改名覆盖优先，否则「说话人{编号}」（编号原样展示，不 +1，避免与后端编号错位） */
   const speakerLabel = useCallback(
@@ -91,7 +95,7 @@ export function ResultPanel({
     const prevName = speakerNames[id]; // 该 id 的旧值（可能 undefined = 无覆盖）
     setEditingId(null);
     if (name === (prevName ?? "")) return;
-    setSpeakerNames((cur) => {
+    onSpeakerNamesChange((cur) => {
       const next = { ...cur };
       if (name) next[id] = name;
       else delete next[id];
@@ -103,7 +107,7 @@ export function ResultPanel({
     else delete body[id];
     rename.mutate(body, {
       onError: (e: Error) => {
-        setSpeakerNames((cur) => {
+        onSpeakerNamesChange((cur) => {
           const next = { ...cur };
           if (prevName === undefined) delete next[id];
           else next[id] = prevName;

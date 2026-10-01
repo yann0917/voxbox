@@ -122,3 +122,59 @@ export function refinedAtText(rfc3339: string | undefined): string {
 export function safeFilename(name: string): string {
   return name.replace(/[/\\:*?"<>|]/g, "-").trim() || "录音笔记";
 }
+
+/* ---------- 问答区（/api/assistant/chat + context）：上下文组装与时间戳引用 ---------- */
+
+/** 毫秒时间码 → HH:MM:SS（与后端 clockMS 同规则，超一小时自然进位）。 */
+export function clockText(ms: number): string {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(Math.floor(sec / 3600))}:${pad(Math.floor(sec / 60) % 60)}:${pad(sec % 60)}`;
+}
+
+/** 带时间戳的转写全文：「HH:MM:SS 说话人N：文本」逐行（说话人展示名含改名覆盖），
+ *  与加工区后端 transcriptFromSummary 同格式，供问答上下文。 */
+export function timedTranscript(segs: QNSegment[], speakerLabel: (id: string) => string): string {
+  return segs.map((s) => `${clockText(s.start_ms)} ${s.speaker ? `${speakerLabel(s.speaker)}：` : ""}${s.text}`).join("\n");
+}
+
+/** 本地日期「YYYY-MM-DD」（context 里的「今天」）。 */
+export function todayText(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** 问答上下文的转写长度上限：后端 context 原样透传不设限，超长在前端截断。 */
+const CONTEXT_TRANSCRIPT_MAX = 24000;
+
+/** 引用约定（context 末尾附给模型）：句末【分:秒】，前端解析为可点击跳播点。 */
+const CITE_RULE = "回答中引用转写内容时，请在对应句子的句末标注它在录音中的开始时间，格式为【分:秒】，如【03:21】。";
+
+/** 问答上下文：转写全文（超长截断）+ 引用约定 + 今天日期。发送时才组装，不缓存旧转写。
+ *  首尾自行 trim（后端 ChatSystem 不做 TrimSpace，context 原样拼进 system）。 */
+export function buildChatContext(transcript: string, today: string): string {
+  let t = transcript.trim();
+  if (t.length > CONTEXT_TRANSCRIPT_MAX) t = `${t.slice(0, CONTEXT_TRANSCRIPT_MAX)}\n（转写过长，已截断）`;
+  return `以下是这段录音的文字稿，行首是每句在录音中的开始时间：\n\n${t}\n\n${CITE_RULE}\n今天是 ${today}。`;
+}
+
+/** 引用标注：句末【分:秒】或【时:分:秒】（与模型的约定，前端据此渲染跳播 chip）。 */
+const CITE_RE = /【(\d{1,2}:\d{2}(?::\d{2})?)】/g;
+
+/** 引用时间戳 → 毫秒：「03:21」→ 201000，「01:02:03」→ 3723000；异常形态返回 null。 */
+export function citeToMs(stamp: string): number | null {
+  const parts = stamp.split(":").map((n) => Number(n));
+  if (parts.some((n) => !Number.isInteger(n) || n < 0)) return null;
+  if (parts.length === 2) return (parts[0] * 60 + parts[1]) * 1000;
+  if (parts.length === 3) return (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
+  return null;
+}
+
+/** 助手回答里的【mm:ss】替换为内部锚点链接（#seek-毫秒），经 Markdown 的链接
+ *  定制渲染成可点击 chip——保持正文一段连续的 markdown 流，chip 落在行内。 */
+export function linkifyCitations(text: string): string {
+  return text.replace(CITE_RE, (m, stamp: string) => {
+    const ms = citeToMs(stamp);
+    return ms === null ? m : `[${stamp}](#seek-${ms})`;
+  });
+}

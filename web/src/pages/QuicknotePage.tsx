@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Mic, SlidersHorizontal, Square } from "lucide-react";
@@ -9,7 +9,9 @@ import type { TaskDetail } from "../lib/types";
 import { useProviderConfigured } from "../lib/useStorageEnabled";
 import { useTaskEvents } from "../lib/ws";
 import { recordingSupported, startRecording, type RecordingSession } from "../lib/recorder";
+import { useTranscriptSync } from "../lib/useTranscriptSync";
 import { Card, CardBody, CardHeader, Field, Input, PageHeader, useToast } from "../ui";
+import { ChatPanel } from "./quicknote/ChatPanel";
 import { RefinePanel } from "./quicknote/RefinePanel";
 import { ResultPanel } from "./quicknote/ResultPanel";
 import { loadTask, type ResultView, type Run } from "./quicknote/model";
@@ -29,6 +31,8 @@ export default function QuicknotePage() {
   const [recUrl, setRecUrl] = useState<string | null>(null); // 录音 Blob 回放地址（上传流不可用时的回落）
   const [recFileId, setRecFileId] = useState<string | null>(null); // 上传拿到的 file_id（服务端回放流）
   const [elapsedMs, setElapsedMs] = useState(0);
+  // 说话人改名（父级持有）：结果区的改名即时生效，问答区的上下文组装同源取称呼
+  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
 
   // 桌面形态标记：麦克风授权走系统设置而非浏览器地址栏，被拒后的指引文案据此分流
   const { data: me } = useMe();
@@ -60,6 +64,7 @@ export default function QuicknotePage() {
             error: d.task.error,
           });
           setTask(d);
+          setSpeakerNames(d.task.summary?.speaker_names ?? {});
           if (d.task.status === "succeeded") {
             setPhase("done");
           } else {
@@ -120,6 +125,7 @@ export default function QuicknotePage() {
       setRecFileId(d.file_id);
       setRun({ status: "pending", progress: 0, note: "已提交" });
       setTask(null);
+      setSpeakerNames({});
       setSubmitError("");
       setPhase("running");
       void qc.invalidateQueries({ queryKey: ["tasks"] });
@@ -183,6 +189,7 @@ export default function QuicknotePage() {
     setTaskId(null);
     setRun(null);
     setTask(null);
+    setSpeakerNames({});
     setSubmitError("");
     setPhase("idle");
   };
@@ -193,6 +200,10 @@ export default function QuicknotePage() {
   const durationMs = task?.task.summary?.duration_ms;
   /** 音频回放源：服务端上传流优先（刷新后仍可按 file_id 回放），回落本地 Blob */
   const playSrc = recFileId ? `${apiBase}/api/uploads/${recFileId}/stream` : recUrl;
+  /** 分句跟读与跳播：父级持有，结果区的分句列表与问答区的引用 chip 共用 */
+  const { activeIdx, seekTo } = useTranscriptSync(segments, playSrc);
+  /** 展示名：改名覆盖优先，否则「说话人{编号}」（编号原样展示，不 +1，避免与后端编号错位） */
+  const speakerLabel = useCallback((id: string) => speakerNames[id] ?? `说话人${id}`, [speakerNames]);
   /** 结果区视图：提交中 → 有运行态按状态分流 → 提交/录音失败且尚无运行态也进错误视图 */
   const resultView: ResultView =
     phase === "submitting"
@@ -206,6 +217,8 @@ export default function QuicknotePage() {
             : run.status === "running" || run.status === "pending"
               ? "progress"
               : "error";
+  const docTitle = task?.task.title || "录音笔记";
+  const durationText = durationMs ? `${(durationMs / 60000).toFixed(1)} 分钟` : undefined;
 
   return (
     <>
@@ -321,18 +334,21 @@ export default function QuicknotePage() {
 
           {/* 结果区：进度与终态（波形回放 + 分句跟读 + 说话人改名与统计）。
               key 带「详情已加载」标记：任务详情在 WS 收尾后经 loadTask 异步到达，
-              到达时重挂载，speakerNames 才能以 summary.speaker_names 为初值
-              （组件挂载于提交时刻，彼时 task 尚为空） */}
+              到达时重挂载以重置改名草稿等编辑态（speakerNames 持久在父级，
+              详情到达时由 loadTask 回调写入） */}
           <ResultPanel
             key={`${taskId ?? "none"}${task ? "-loaded" : ""}`}
             view={resultView}
             run={run}
             taskId={taskId}
-            title={task?.task.title || "录音笔记"}
+            title={docTitle}
             segments={segments}
             durationMs={durationMs}
             playSrc={playSrc}
-            initialNames={task?.task.summary?.speaker_names ?? {}}
+            speakerNames={speakerNames}
+            onSpeakerNamesChange={setSpeakerNames}
+            activeIdx={activeIdx}
+            seekTo={seekTo}
             submitError={submitError}
             onReset={resetToIdle}
           />
@@ -340,10 +356,16 @@ export default function QuicknotePage() {
           {/* 加工区：转写完成后出现，AI 提炼总结/待办/日程，结果持久在任务 Summary.refined。
               done 视图必以任务详情到位为前提，回显直接从 task 派生，无需再拉 */}
           {phase === "done" && taskId && (
-            <RefinePanel
-              taskId={taskId}
-              title={task?.task.title || "录音笔记"}
-              refined={task?.task.summary?.refined}
+            <RefinePanel taskId={taskId} title={docTitle} refined={task?.task.summary?.refined} />
+          )}
+
+          {/* 问答区：与加工区平级——就这段录音追问，回答里的【分:秒】可点击跳播
+              （与分句跟读共用同一跳播与轨信息） */}
+          {phase === "done" && taskId && segments.length > 0 && (
+            <ChatPanel
+              segments={segments}
+              speakerLabel={speakerLabel}
+              onSeek={(ms) => seekTo(ms, { title: docTitle, sub: durationText })}
             />
           )}
         </>
