@@ -4,6 +4,7 @@ import {
   citeToMs,
   clockText,
   linkifyCitations,
+  seekHrefToMs,
   timedTranscript,
   todayText,
   type QNSegment,
@@ -100,5 +101,26 @@ describe("linkifyCitations", () => {
 
   it("keeps partial brackets like an unclosed stamp as plain text", () => {
     expect(linkifyCitations("流式半截【03:2")).toBe("流式半截【03:2");
+  });
+});
+
+describe("seekHrefToMs", () => {
+  it("round-trips linkified citations back to the same milliseconds", () => {
+    // 组合回归（审查点名的盲区）：ChatPanel 拿到的是 linkifyCitations 产出的
+    // href（纯毫秒整数形态），必须解析回与 citeToMs 一致的跳播点
+    for (const stamp of ["0:00", "03:21", "59:59", "01:02:03"]) {
+      const md = linkifyCitations(`回答里引用【${stamp}】`);
+      const href = /\]\((#seek-\d+)\)/.exec(md)?.[1];
+      expect(href, `linkify 应为 ${stamp} 产出 seek 锚点`).toBeTruthy();
+      expect(seekHrefToMs(href)).toBe(citeToMs(stamp));
+    }
+  });
+
+  it("rejects non-seek or malformed hrefs (fallback to plain link)", () => {
+    expect(seekHrefToMs(undefined)).toBeNull();
+    expect(seekHrefToMs("https://example.com")).toBeNull();
+    expect(seekHrefToMs("#seek-")).toBeNull();
+    expect(seekHrefToMs("#seek-abc")).toBeNull();
+    expect(seekHrefToMs("#seek-12x34")).toBeNull();
   });
 });

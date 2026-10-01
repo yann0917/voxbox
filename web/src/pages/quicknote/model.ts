@@ -178,3 +178,13 @@ export function linkifyCitations(text: string): string {
     return ms === null ? m : `[${stamp}](#seek-${ms})`;
   });
 }
+
+const SEEK_HREF_RE = /^#seek-(\d+)$/
+
+/** 内部跳播锚点（#seek-毫秒，linkifyCitations 的产物）→ 毫秒；非跳播锚点或
+ *  异常形态返回 null。chip 分支据此判定——href 里是纯毫秒整数，勿再喂给
+ *  citeToMs（那按 mm:ss 解析，必返 null）。 */
+export function seekHrefToMs(href: string | undefined): number | null {
+  const m = SEEK_HREF_RE.exec(href ?? "");
+  return m ? Number(m[1]) : null;
+}

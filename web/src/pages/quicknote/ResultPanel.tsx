@@ -42,6 +42,10 @@ export interface ResultPanelProps {
   /** 说话人改名（父级持有：问答区的上下文组装要拿到改名后的称呼） */
   speakerNames: Record<string, string>;
   onSpeakerNamesChange: (update: (cur: Record<string, string>) => Record<string, string>) => void;
+  /** 说话人展示名（改名覆盖优先，否则「说话人N」；与问答区同源，公式只在页面一份） */
+  speakerLabel: (id: string) => string;
+  /** 录音时长文案（「X.X 分钟」；页面与问答区同源） */
+  durationText?: string;
   /** 分句跟读的当前句（-1=未在播）与跳播（音频-文稿同步由父级持有，问答区复用） */
   activeIdx: number;
   seekTo: (ms: number, track?: { title: string; sub?: string }) => void;
@@ -61,6 +65,8 @@ export function ResultPanel({
   playSrc,
   speakerNames,
   onSpeakerNamesChange,
+  speakerLabel,
+  durationText,
   activeIdx,
   seekTo,
   submitError,
@@ -69,12 +75,6 @@ export function ResultPanel({
   const { toast } = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-
-  /** 展示名：改名覆盖优先，否则「说话人{编号}」（编号原样展示，不 +1，避免与后端编号错位） */
-  const speakerLabel = useCallback(
-    (id: string) => speakerNames[id] ?? `说话人${id}`,
-    [speakerNames],
-  );
 
   const rename = useMutation({
     mutationFn: async (names: Record<string, string>) => {
@@ -132,7 +132,6 @@ export function ResultPanel({
     [speakerLabel],
   );
 
-  const durationText = durationMs ? `${(durationMs / 60000).toFixed(1)} 分钟` : undefined;
   // Blob 回放 = 上传流不可用时的回落，音频随页面会话失效
   const localOnlyAudio = !!playSrc && playSrc.startsWith("blob:");
   const stats = speakerStats(segments);

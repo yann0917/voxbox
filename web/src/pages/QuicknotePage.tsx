@@ -347,6 +347,8 @@ export default function QuicknotePage() {
             playSrc={playSrc}
             speakerNames={speakerNames}
             onSpeakerNamesChange={setSpeakerNames}
+            speakerLabel={speakerLabel}
+            durationText={durationText}
             activeIdx={activeIdx}
             seekTo={seekTo}
             submitError={submitError}

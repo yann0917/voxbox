@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowUp, MessageCircle, Play, Square } from "lucide-react";
 import type { Components } from "react-markdown";
 import { useDefaultAssistantModel } from "../../lib/assistant";
 import { streamPostSSE } from "../../lib/sse";
 import { Card, CardBody, CardHeader, IconButton, Markdown, Textarea, WaveLoader } from "../../ui";
-import { buildChatContext, citeToMs, linkifyCitations, timedTranscript, todayText, type QNSegment } from "./model";
+import { buildChatContext, linkifyCitations, seekHrefToMs, timedTranscript, todayText, type QNSegment } from "./model";
 
 type ChatMsg = { role: "user" | "assistant" | "error"; content: string };
 
@@ -102,32 +102,35 @@ export function ChatPanel({ segments, speakerLabel, onSeek }: ChatPanelProps) {
   };
 
   /** 内部锚点链接（#seek-毫秒）→ 跳播 chip（点击不产生地址栏跳转）；其余链接
-   *  保持默认外链样式。chip 不透传锚点属性（锚点的 type/onClick 与按钮类型相斥）。 */
-  const citeComponents: Components = {
-    a: ({ href, children }) => {
-      const ms = href?.startsWith("#seek-") ? citeToMs(href.slice("#seek-".length)) : null;
-      if (ms !== null) {
+   *  保持默认外链样式。chip 不透传锚点属性（锚点的 type/onClick 与按钮类型相斥）。
+   *  useMemo 稳定引用：键入改写 input 不再击穿 Markdown 的 memo 全量重渲气泡。 */
+  const citeComponents = useMemo<Components>(() => {
+    return {
+      a: ({ href, children }) => {
+        const ms = seekHrefToMs(href);
+        if (ms !== null) {
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                onSeek(ms);
+              }}
+              className="inline-flex cursor-pointer items-center gap-0.5 rounded-full border border-line bg-inset px-1.5 align-baseline font-mono text-[11px] tabular-nums leading-4 text-accent transition-colors duration-150 hover:border-accent"
+            >
+              <Play size={9} strokeWidth={2} />
+              {children}
+            </button>
+          );
+        }
         return (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              onSeek(ms);
-            }}
-            className="inline-flex cursor-pointer items-center gap-0.5 rounded-full border border-line bg-inset px-1.5 align-baseline font-mono text-[11px] tabular-nums leading-4 text-accent transition-colors duration-150 hover:border-accent"
-          >
-            <Play size={9} strokeWidth={2} />
+          <a className="text-accent underline decoration-line-strong underline-offset-2 hover:text-accent-hi" target="_blank" rel="noreferrer" href={href}>
             {children}
-          </button>
+          </a>
         );
-      }
-      return (
-        <a className="text-accent underline decoration-line-strong underline-offset-2 hover:text-accent-hi" target="_blank" rel="noreferrer" href={href}>
-          {children}
-        </a>
-      );
-    },
-  };
+      },
+    };
+  }, [onSeek]);
 
   return (
     <Card className="mt-4">
