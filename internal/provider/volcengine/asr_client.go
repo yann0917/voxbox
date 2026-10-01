@@ -37,6 +37,13 @@ type ASRNostreamReq struct {
 	Format   string // mp3|wav|ogg|pcm（未知扩展名由 Tool 层拦截；wav 原样发）
 	Language string // 默认 zh-CN，空则不传
 	Hotwords string // 可选，直传（Request.Corpus.Context，官方结构 jsonstring）
+	// 录音笔记扩展参数（透传 nostream request 段，均 omitempty）：
+	// SpeakerInfo 说话人分离（官方生效条件：language 为空或 zh-CN）；LID 中英方言识别；
+	// Emotion 情绪识别；SSDVersion 说话人分离版本，默认空串，冒烟回退才传（如 "200"）。
+	SpeakerInfo bool
+	LID         bool
+	Emotion     bool
+	SSDVersion  string
 }
 
 // ASRSegment 分句时间戳。json tag 与前端/CLI 契约一致（summary.segments 小写下划线）：
@@ -45,6 +52,7 @@ type ASRSegment struct {
 	Text    string `json:"text"`
 	StartMS int64  `json:"start_ms"`
 	EndMS   int64  `json:"end_ms"`
+	Speaker string `json:"speaker,omitempty"` // 说话人 ID，空=未启用说话人分离
 }
 
 // ASRNostreamResp 识别结果。
@@ -122,7 +130,15 @@ func (c *ASRClient) Recognize(ctx context.Context, req ASRNostreamReq) (ASRNostr
 			Channel:  1,
 			Language: req.Language,
 		},
-		Request: sauc.RequestMeta{ModelName: "bigmodel", EnableITN: true, ShowUtterances: true},
+		Request: sauc.RequestMeta{
+			ModelName:         "bigmodel",
+			EnableITN:         true,
+			ShowUtterances:    true,
+			EnableSpeakerInfo: req.SpeakerInfo, // 生效条件：language 为空或 zh-CN
+			EnableLID:         req.LID,
+			EnableEmotion:     req.Emotion,
+			SSDVersion:        req.SSDVersion, // 默认空串，冒烟第二尝试才传 "200"
+		},
 	}
 	if req.Hotwords != "" {
 		payload.Request.Corpus.Context = req.Hotwords
@@ -181,15 +197,27 @@ func (c *ASRClient) Recognize(ctx context.Context, req ASRNostreamReq) (ASRNostr
 			Text:       resp.PayloadMsg.Result.Text,
 			DurationMS: int64(resp.PayloadMsg.AudioInfo.Duration),
 		}
-		for _, u := range resp.PayloadMsg.Result.Utterances {
-			out.Segments = append(out.Segments, ASRSegment{
-				Text:    u.Text,
-				StartMS: int64(u.StartTime),
-				EndMS:   int64(u.EndTime),
-			})
-		}
+		out.Segments = utteranceToSegments(resp.PayloadMsg.Result.Utterances)
 		return out, nil
 	}
+}
+
+// utteranceToSegments utterances→segments 映射：Text/StartMS/EndMS 恒拷贝；
+// speaker_id 非空才携带 Speaker（空=未启用说话人分离，序列化时 omitempty 缺席）。
+// 真机实测（2026-10）nostream 最终帧的说话人位于 utterances[].additions.speaker_id（"0"/"1"...），
+// 顶层 speaker_id 字段保留兜底。原为 Recognize 接收循环内的内联代码，提为包内函数供映射契约测试（行为不变）。
+func utteranceToSegments(us []sauc.UtteranceLike) []ASRSegment {
+	segs := make([]ASRSegment, 0, len(us))
+	for _, u := range us {
+		seg := ASRSegment{Text: u.Text, StartMS: int64(u.StartTime), EndMS: int64(u.EndTime)}
+		if u.SpeakerID != "" {
+			seg.Speaker = u.SpeakerID
+		} else if s, ok := u.Additions["speaker_id"].(string); ok {
+			seg.Speaker = s
+		}
+		segs = append(segs, seg)
+	}
+	return segs
 }
 
 // prepareAudio 返回待发送音频与分片大小：wav 按 ReadWavInfo 算每 200ms 字节数（声道×位宽×采样率×200/1000），

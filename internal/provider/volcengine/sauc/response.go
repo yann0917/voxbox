@@ -2,7 +2,9 @@
 // 本项目做了以下最小改造：
 //   - 包名 protocol → sauc（其余内容官方原样）；
 //   - AsrResponsePayload.Result 增加 Additions（`additions`）、utterances 元素增加 SpeakerID
-//     （`speaker_id`）解析，录音笔记 nostream 说话人分离需要，官方结构体未收录。
+//     （`speaker_id`）解析，录音笔记 nostream 说话人分离需要，官方结构体未收录；
+//   - utterances 元素由匿名结构体提为具名类型 UtteranceLike，供 volcengine.utteranceToSegments
+//     做包内映射测试（JSON 行为不变）。
 package sauc
 
 import (
@@ -15,22 +17,29 @@ type AsrResponsePayload struct {
 		Duration int `json:"duration"`
 	} `json:"audio_info"`
 	Result struct {
-		Text       string         `json:"text"`
-		Additions  map[string]any `json:"additions,omitempty"`
-		Utterances []struct {
-			Definite  bool   `json:"definite"`
-			EndTime   int    `json:"end_time"`
-			StartTime int    `json:"start_time"`
-			Text      string `json:"text"`
-			SpeakerID string `json:"speaker_id,omitempty"`
-			Words     []struct {
-				EndTime   int    `json:"end_time"`
-				StartTime int    `json:"start_time"`
-				Text      string `json:"text"`
-			} `json:"words"`
-		} `json:"utterances,omitempty"`
+		Text       string          `json:"text"`
+		Additions  map[string]any  `json:"additions,omitempty"`
+		Utterances []UtteranceLike `json:"utterances,omitempty"`
 	} `json:"result"`
 	Error string `json:"error,omitempty"`
+}
+
+// UtteranceLike 分句元素。Additions（`additions`）与 SpeakerID（`speaker_id`）为录音笔记
+// nostream 说话人分离扩展解析，官方结构体未收录；真机实测 speaker_id 位于
+// additions 内（顶层 speaker_id 保留兜底）。原为匿名元素，提为具名类型供
+// volcengine.utteranceToSegments 做包内映射测试（JSON 行为不变）。
+type UtteranceLike struct {
+	Definite  bool           `json:"definite"`
+	EndTime   int            `json:"end_time"`
+	StartTime int            `json:"start_time"`
+	Text      string         `json:"text"`
+	SpeakerID string         `json:"speaker_id,omitempty"`
+	Additions map[string]any `json:"additions,omitempty"`
+	Words     []struct {
+		EndTime   int    `json:"end_time"`
+		StartTime int    `json:"start_time"`
+		Text      string `json:"text"`
+	} `json:"words"`
 }
 
 type AsrResponse struct {

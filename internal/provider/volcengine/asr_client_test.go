@@ -9,11 +9,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gorilla/websocket"
 
+	"github.com/yann0917/voxbox/internal/config"
 	"github.com/yann0917/voxbox/internal/provider/volcengine/sauc"
 )
 
@@ -322,4 +326,270 @@ func TestASRWavChunking(t *testing.T) {
 	if resp.DurationMS != 3696 || resp.Text != "这是字节跳动，今日头条母公司。" {
 		t.Errorf("resp = %+v", resp)
 	}
+}
+
+// TestASRRecognizeNostreamSpeakerParams table-driven 断言：选项置 true 时 full request 的
+// request 段 JSON 含对应 key；未置的 key 因 omitempty 缺席（默认请求不透传新参数）。
+// enable_speaker_info 官方生效条件为 language 为空或 zh-CN，一并断言 language 透传行为。
+func TestASRRecognizeNostreamSpeakerParams(t *testing.T) {
+	// nostream 新参数全集：wantRequest 未收录的 key 必须在 payload 中缺席。
+	newParamKeys := []string{"enable_speaker_info", "enable_lid", "enable_emotion_detection", "ssd_version"}
+	tests := []struct {
+		name        string
+		req         ASRNostreamReq
+		wantRequest map[string]any // request 段期望出现的 key→值
+	}{
+		{
+			name: "默认不透传新参数",
+			req:  ASRNostreamReq{Audio: []byte("audio"), Format: "mp3"},
+		},
+		{
+			name:        "仅说话人分离",
+			req:         ASRNostreamReq{Audio: []byte("audio"), Format: "mp3", SpeakerInfo: true},
+			wantRequest: map[string]any{"enable_speaker_info": true},
+		},
+		{
+			name:        "全量新参数含 ssd_version",
+			req:         ASRNostreamReq{Audio: []byte("audio"), Format: "mp3", SpeakerInfo: true, LID: true, Emotion: true, SSDVersion: "200"},
+			wantRequest: map[string]any{"enable_speaker_info": true, "enable_lid": true, "enable_emotion_detection": true, "ssd_version": "200"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var (
+				gotRequest map[string]any
+				gotAudio   map[string]any
+			)
+			wsURL := newMockASRServer(t, nil, func(t *testing.T, conn *websocket.Conn) {
+				_, frame, err := conn.ReadMessage() // full client request
+				if err != nil {
+					t.Errorf("读 full request 失败: %v", err)
+					return
+				}
+				_, _, payload := parseClientFrame(t, frame)
+				var full struct {
+					Audio   map[string]any `json:"audio"`
+					Request map[string]any `json:"request"`
+				}
+				if err := json.Unmarshal(payload, &full); err != nil {
+					t.Errorf("解析 full request JSON 失败: %v", err)
+					return
+				}
+				gotRequest, gotAudio = full.Request, full.Audio
+				if err := conn.WriteMessage(websocket.BinaryMessage, serverAckFrame()); err != nil {
+					t.Errorf("写 ack 失败: %v", err)
+					return
+				}
+				// 排空音频分片直到最后一包（负 seq），再回最终识别结果帧。
+				for {
+					if _, frame, err := conn.ReadMessage(); err != nil || frame[1]&0x0f&0x02 != 0 {
+						break
+					}
+				}
+				if err := conn.WriteMessage(websocket.BinaryMessage, serverLastResponseFrame(mockFinalPayloadJSON)); err != nil {
+					t.Errorf("写最终响应失败: %v", err)
+				}
+				_, _, _ = conn.ReadMessage() // 等待客户端关闭
+			})
+
+			client := NewASRClientWithURL(SpeechCred{APIKey: "key-1"}, wsURL)
+			_, err := client.Recognize(context.Background(), tt.req)
+			if err != nil {
+				t.Fatalf("Recognize() err = %v", err)
+			}
+			for _, k := range newParamKeys {
+				want, inWant := tt.wantRequest[k]
+				got, ok := gotRequest[k]
+				if inWant && (!ok || fmt.Sprint(got) != fmt.Sprint(want)) {
+					t.Errorf("request.%s = %v (present=%v), 期望 %v", k, got, ok, want)
+				}
+				if !inWant && ok {
+					t.Errorf("request.%s = %v, 期望缺省(omitempty)", k, got)
+				}
+			}
+			// 说话人分离生效条件：language 留空则 audio.language 必须缺席。
+			if tt.req.Language == "" {
+				if l, ok := gotAudio["language"]; ok {
+					t.Errorf("audio.language = %v, 期望缺省（enable_speaker_info 生效条件）", l)
+				}
+			}
+		})
+	}
+}
+
+// TestUtteranceToSegments 映射函数：Text/StartMS/EndMS 恒拷贝；speaker_id 非空才携带 Speaker，
+// 序列化契约 speaker 仅非空出现（空=未启用说话人分离，前端/Task 3 依赖此形状）。
+// 说话人有两个来源：顶层 speaker_id（兜底）与 utterances[].additions.speaker_id（真机实测主来源）。
+func TestUtteranceToSegments(t *testing.T) {
+	us := []sauc.UtteranceLike{
+		{Definite: true, StartTime: 0, EndTime: 2100, Text: "我们下周三下午三点开会。",
+			Additions: map[string]any{"source": "stream", "speaker_id": "0"}},
+		{Definite: true, StartTime: 2200, EndTime: 3600, Text: "好的我记一下。",
+			Additions: map[string]any{"source": "stream", "speaker_id": "1"}},
+		{Definite: true, StartTime: 3700, EndTime: 4200, Text: "无说话人信息。"},
+		{Definite: true, StartTime: 4300, EndTime: 4800, Text: "顶层兜底。", SpeakerID: "2"},
+		{Definite: true, StartTime: 4900, EndTime: 5400, Text: "顶层优先于additions。", SpeakerID: "3",
+			Additions: map[string]any{"speaker_id": "9"}},
+	}
+	segs := utteranceToSegments(us)
+	if len(segs) != len(us) {
+		t.Fatalf("segments 共 %d 句, 期望 %d", len(segs), len(us))
+	}
+	if segs[0].Text != "我们下周三下午三点开会。" || segs[0].StartMS != 0 || segs[0].EndMS != 2100 {
+		t.Errorf("Segments[0] = %+v", segs[0])
+	}
+	if segs[0].Speaker != "0" || segs[1].Speaker != "1" {
+		t.Errorf("additions.speaker_id 未映射: %q / %q", segs[0].Speaker, segs[1].Speaker)
+	}
+	if segs[2].Speaker != "" {
+		t.Errorf("无 speaker_id 的分句 Speaker 应为空, got %q", segs[2].Speaker)
+	}
+	if segs[3].Speaker != "2" {
+		t.Errorf("顶层 speaker_id 兜底未生效: %q", segs[3].Speaker)
+	}
+	if segs[4].Speaker != "3" {
+		t.Errorf("顶层 speaker_id 应优先于 additions: %q", segs[4].Speaker)
+	}
+	raw, err := json.Marshal(segs)
+	if err != nil {
+		t.Fatalf("序列化 segments 失败: %v", err)
+	}
+	if strings.Contains(string(raw), `"speaker":""`) {
+		t.Errorf("空 speaker 不应序列化: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"speaker":"0"`) {
+		t.Errorf("非空 speaker 应序列化为 speaker 键: %s", raw)
+	}
+}
+
+// TestASRRecognizeNostreamSpeakerFromAdditions 端到端回归：真机实测响应形状
+// （说话人在 utterances[].additions.speaker_id，非顶层字段）经 mock 全链路后 segments 携带 Speaker。
+func TestASRRecognizeNostreamSpeakerFromAdditions(t *testing.T) {
+	finalPayloadJSON := `{"audio_info":{"duration":5476},"result":{"additions":{"log_id":"smoke"},` +
+		`"text":"我们下周三下午3点开会。好的，我记下，到时候提醒你。",` +
+		`"utterances":[` +
+		`{"additions":{"fixed_prefix_result":"","source":"stream","speaker_id":"0"},"definite":true,` +
+		`"end_time":2360,"start_time":200,"text":"我们下周三下午3点开会。"},` +
+		`{"additions":{"fixed_prefix_result":"","source":"stream","speaker_id":"1"},"definite":true,` +
+		`"end_time":5360,"start_time":3080,"text":"好的，我记下，到时候提醒你。"}]}}`
+	wsURL := newMockASRServer(t, nil, func(t *testing.T, conn *websocket.Conn) {
+		if _, _, err := conn.ReadMessage(); err != nil { // 消费 full request
+			t.Errorf("读 full request 失败: %v", err)
+			return
+		}
+		if err := conn.WriteMessage(websocket.BinaryMessage, serverAckFrame()); err != nil {
+			t.Errorf("写 ack 失败: %v", err)
+			return
+		}
+		for { // 排空音频分片直到最后一包（负 seq）
+			if _, frame, err := conn.ReadMessage(); err != nil || frame[1]&0x0f&0x02 != 0 {
+				break
+			}
+		}
+		if err := conn.WriteMessage(websocket.BinaryMessage, serverLastResponseFrame(finalPayloadJSON)); err != nil {
+			t.Errorf("写最终响应失败: %v", err)
+		}
+		_, _, _ = conn.ReadMessage() // 等待客户端关闭
+	})
+
+	client := NewASRClientWithURL(SpeechCred{APIKey: "key-1"}, wsURL)
+	resp, err := client.Recognize(context.Background(), ASRNostreamReq{Audio: []byte("audio"), Format: "mp3", SpeakerInfo: true})
+	if err != nil {
+		t.Fatalf("Recognize() err = %v", err)
+	}
+	if len(resp.Segments) != 2 {
+		t.Fatalf("Segments 共 %d 句, 期望 2", len(resp.Segments))
+	}
+	if resp.Segments[0].Speaker != "0" || resp.Segments[1].Speaker != "1" {
+		t.Errorf("Speaker = %q / %q, 期望 %q / %q", resp.Segments[0].Speaker, resp.Segments[1].Speaker, "0", "1")
+	}
+}
+
+// TestSmokeNostreamSpeaker 真机冒烟（录音笔记决策门）：需本机 ~/.voxbox/config.yaml 配置
+// 火山语音凭据，无凭据（或无 ffmpeg 且无缓存样本）自动跳过，不进 CI。
+// 双人样本用火山 TTS 两个音色各合成一句含时间语义的中文短句后 ffmpeg concat 拼接（缓存 /tmp 复用）。
+// 说话人分离分两次尝试：先只发 enable_speaker_info+show_utterances（language 留空，官方生效条件）；
+// 返回无 speaker_id 再补 ssd_version=200；两次均无 → 决策门判改道 AUC（由控制者裁定，此处显式跳过并留证据日志）。
+func TestSmokeNostreamSpeaker(t *testing.T) {
+	cfg, err := config.Load()
+	if err != nil {
+		t.Skipf("读取本机配置失败，跳过真机冒烟: %v", err)
+	}
+	cred := SpeechCred{AppID: cfg.Volc.Speech.AppID, AccessToken: cfg.Volc.Speech.AccessToken, APIKey: cfg.Volc.Speech.APIKey}
+	if cred.APIKey == "" && (cred.AppID == "" || cred.AccessToken == "") {
+		t.Skip("未配置火山语音凭据，跳过真机冒烟")
+	}
+	audio, err := smokeDuoSample(t, cred)
+	if err != nil {
+		t.Skipf("生成双人样本失败，跳过真机冒烟: %v", err)
+	}
+
+	attempts := []struct {
+		name string
+		req  ASRNostreamReq
+	}{
+		{"第一次: enable_speaker_info+show_utterances(language 留空)", ASRNostreamReq{Audio: audio, Format: "wav", SpeakerInfo: true}},
+		{"第二次: 补 ssd_version=200", ASRNostreamReq{Audio: audio, Format: "wav", SpeakerInfo: true, SSDVersion: "200"}},
+	}
+	for i, a := range attempts {
+		resp, err := NewASRClient(cred).Recognize(context.Background(), a.req)
+		if err != nil {
+			t.Fatalf("%s 失败: %v", a.name, err)
+		}
+		speakers := map[string]int{}
+		for _, s := range resp.Segments {
+			if s.Speaker != "" {
+				speakers[s.Speaker]++
+			}
+		}
+		t.Logf("%s: code=0 text=%q duration_ms=%d segments=%d speakers=%v", a.name, resp.Text, resp.DurationMS, len(resp.Segments), speakers)
+		if len(resp.Segments) == 0 {
+			t.Fatalf("%s: segments 为空", a.name)
+		}
+		if len(speakers) > 0 {
+			if i > 0 {
+				t.Logf("决策门：第二次尝试生效（补 ssd_version=200），分离出 %d 个说话人", len(speakers))
+			} else {
+				t.Logf("决策门：第一次尝试生效（仅 enable_speaker_info），分离出 %d 个说话人", len(speakers))
+			}
+			return // 验收线 ≥1 个非空 Speaker；实际分离人数记录在案
+		}
+		t.Logf("%s: 未返回任何 speaker_id", a.name)
+	}
+	t.Skipf("决策门不通过：两次尝试均未返回 speaker_id（请求参数与响应要点见上方日志），按简报判改道 AUC，待控制者裁定")
+}
+
+// smokeDuoSample 双人冒烟样本：火山 TTS 两音色各合成一句 wav，ffmpeg concat 拼接；
+// 结果缓存 /tmp/voxbox-duo-smoke.wav 复用（省 TTS 配额，样本不入库）。
+func smokeDuoSample(t *testing.T, cred SpeechCred) ([]byte, error) {
+	t.Helper()
+	const cache = "/tmp/voxbox-duo-smoke.wav"
+	if b, err := os.ReadFile(cache); err == nil && len(b) > 44 {
+		return b, nil
+	}
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return nil, fmt.Errorf("本机无 ffmpeg，无法拼接双人样本")
+	}
+	clips := [][2]string{
+		{"zh_female_cancan_mars_bigtts", "我们下周三下午三点开会。"},
+		{"zh_male_lengkugege_emo_v2_mars_bigtts", "好的我记一下，到时候提醒你。"},
+	}
+	var paths []string
+	for i, c := range clips {
+		resp, err := NewTTSClient(cred).Synthesize(context.Background(),
+			TTSSynthesizeReq{Text: c[1], VoiceType: c[0], Format: "wav"})
+		if err != nil {
+			return nil, fmt.Errorf("TTS 合成样本 %d(%s) 失败: %w", i, c[0], err)
+		}
+		p := filepath.Join(t.TempDir(), fmt.Sprintf("clip%d.wav", i))
+		if err := os.WriteFile(p, resp.Audio, 0o600); err != nil {
+			return nil, err
+		}
+		paths = append(paths, p)
+	}
+	cmd := exec.Command("ffmpeg", "-y", "-i", paths[0], "-i", paths[1], "-filter_complex", "concat=n=2:v=0:a=1", cache)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("ffmpeg 拼接失败: %v: %s", err, out)
+	}
+	return os.ReadFile(cache)
 }
