@@ -23,7 +23,10 @@ export interface Task {
   };
   /** 仅任务详情接口返回：provider.TaskOutput.Summary 的 JSON */
   summary?: {
-    segments?: { text: string; start_ms: number; end_ms: number }[];
+    /** 语音识别（asr）：speaker 为上游说话人编号（"0"/"1"… 字符串，未启用分离时缺省） */
+    segments?: { text: string; start_ms: number; end_ms: number; speaker?: string }[];
+    /** 说话人改名覆盖层（PATCH /api/tasks/:id/speakers 写入，speaker 编号→展示名） */
+    speaker_names?: Record<string, string>;
     rounds?: number;
     duration_s?: number;
     duration_ms?: number;

@@ -11,6 +11,8 @@ interface TranscriptListProps {
   onSeek?: (ms: number) => void;
   /** 时间码格式：默认 mm:ss.d；长音频可传 h:mm:ss */
   formatTimecode?: (ms: number) => string;
+  /** 行首说话人胶囊：返回展示名则渲染，返回 undefined 不渲染（不传无此列，行为不变） */
+  speakerOf?: (seg: SyncSegment) => string | undefined;
   /** 列表可视高度上限（px），超出内部滚动 */
   maxHeight?: number;
   className?: string;
@@ -25,16 +27,24 @@ function SegmentRow({
   active,
   onSeek,
   formatTimecode,
+  speakerLabel,
   bordered,
 }: {
   seg: SyncSegment;
   active: boolean;
   onSeek?: (ms: number) => void;
   formatTimecode: (ms: number) => string;
+  /** 说话人展示名：undefined 不渲染胶囊 */
+  speakerLabel?: string;
   bordered: boolean;
 }) {
   const inner = (
     <>
+      {speakerLabel && (
+        <span className="shrink-0 rounded-full border border-line bg-raise-2 px-1.5 py-px text-[10px] leading-4 text-muted">
+          {speakerLabel}
+        </span>
+      )}
       <span
         className={`shrink-0 font-mono text-[11px] tabular-nums ${active ? "text-accent" : "text-muted"}`}
       >
@@ -68,6 +78,7 @@ export function TranscriptList({
   activeIdx = -1,
   onSeek,
   formatTimecode = (ms) => formatTime(ms / 1000),
+  speakerOf,
   maxHeight = 384,
   className = "",
 }: TranscriptListProps) {
@@ -97,6 +108,7 @@ export function TranscriptList({
                 active={i === activeIdx}
                 onSeek={onSeek}
                 formatTimecode={formatTimecode}
+                speakerLabel={speakerOf?.(seg)}
                 bordered={false}
               />
             </li>
@@ -120,6 +132,7 @@ export function TranscriptList({
             active={i === activeIdx}
             onSeek={onSeek}
             formatTimecode={formatTimecode}
+            speakerLabel={speakerOf?.(seg)}
             bordered={i < segments.length - 1}
           />
         )}

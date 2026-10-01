@@ -1,52 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  FileText,
-  Mic,
-  RefreshCw,
-  SlidersHorizontal,
-  Square,
-} from "lucide-react";
-import { fetchJSON } from "../lib/api";
+import { AlertTriangle, Mic, SlidersHorizontal, Square } from "lucide-react";
+import { apiBase, fetchJSON } from "../lib/api";
 import { useMe } from "../lib/auth";
 import { formatTime } from "../lib/player";
-import type { TaskDetail, TaskStatus } from "../lib/types";
+import type { TaskDetail } from "../lib/types";
 import { useProviderConfigured } from "../lib/useStorageEnabled";
 import { useTaskEvents } from "../lib/ws";
 import { recordingSupported, startRecording, type RecordingSession } from "../lib/recorder";
-import {
-  Button,
-  Card,
-  CardBody,
-  CardHeader,
-  EmptyState,
-  Field,
-  Input,
-  PageHeader,
-  ProgressBar,
-  Skeleton,
-  StatusBadge,
-  useToast,
-} from "../ui";
-
-/** 终态回读：进度通道收到收尾事件后拉任务详情（分句文字稿在 task.summary.segments，后续展示层在此基础上展开） */
-function loadTask(id: string): Promise<TaskDetail> {
-  return fetchJSON<TaskDetail>(`/api/tasks/${id}`);
-}
+import { Card, CardBody, CardHeader, Field, Input, PageHeader, useToast } from "../ui";
+import { ResultPanel } from "./quicknote/ResultPanel";
+import { loadTask, type ResultView, type Run } from "./quicknote/model";
 
 /** 页面状态机：待录 → 录音中 → 提交中 → 转写中 → 完成 | 出错（录音停止即自动提交） */
 type Phase = "idle" | "recording" | "submitting" | "running" | "done" | "error";
-
-/** 任务运行态：只保留界面需要的字段，不伪造完整 Task DTO（与语音识别/妙记页同一结构） */
-interface Run {
-  status: TaskStatus;
-  progress: number;
-  note: string;
-  error?: string;
-}
 
 export default function QuicknotePage() {
   const [phase, setPhase] = useState<Phase>("idle");
@@ -57,7 +25,8 @@ export default function QuicknotePage() {
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [submitError, setSubmitError] = useState("");
   const [recError, setRecError] = useState("");
-  const [recUrl, setRecUrl] = useState<string | null>(null); // 录音回放地址（回放播放器后续接入）
+  const [recUrl, setRecUrl] = useState<string | null>(null); // 录音 Blob 回放地址（上传流不可用时的回落）
+  const [recFileId, setRecFileId] = useState<string | null>(null); // 上传拿到的 file_id（服务端回放流）
   const [elapsedMs, setElapsedMs] = useState(0);
 
   // 桌面形态标记：麦克风授权走系统设置而非浏览器地址栏，被拒后的指引文案据此分流
@@ -105,6 +74,9 @@ export default function QuicknotePage() {
     }
   }, [ev, taskId, toast]);
 
+  /* 卸载即停录：离开页面不遗留活跃的麦克风会话 */
+  useEffect(() => () => recSessionRef.current?.cancel(), []);
+
   /* 录音计时与电平条：计时走 state（低频），电平走 rAF 直改 DOM（不走 React 渲染） */
   useEffect(() => {
     if (phase !== "recording") return;
@@ -136,13 +108,15 @@ export default function QuicknotePage() {
       // 一句话转写：语种自动识别，说话人与中英方言识别默认开启；热词选填
       const params: Record<string, unknown> = { version: "sentence", srt: true, speaker: true, lid: true };
       if (hotwords.trim()) params.hotwords = hotwords.trim();
-      return fetchJSON<{ task_id: string }>("/api/tasks", {
+      const d = await fetchJSON<{ task_id: string }>("/api/tasks", {
         method: "POST",
         body: JSON.stringify({ provider: "volcengine", tool: "asr", params, file_ids: [up.file_id] }),
       });
+      return { task_id: d.task_id, file_id: up.file_id };
     },
     onSuccess: (d) => {
       setTaskId(d.task_id);
+      setRecFileId(d.file_id);
       setRun({ status: "pending", progress: 0, note: "已提交" });
       setTask(null);
       setSubmitError("");
@@ -204,6 +178,7 @@ export default function QuicknotePage() {
     if (recUrl) URL.revokeObjectURL(recUrl);
     setRecUrl(null);
     recFileRef.current = null;
+    setRecFileId(null);
     setTaskId(null);
     setRun(null);
     setTask(null);
@@ -215,8 +190,10 @@ export default function QuicknotePage() {
   const micBusy = phase === "submitting" || phase === "running";
   const segments = task?.task.summary?.segments ?? [];
   const durationMs = task?.task.summary?.duration_ms;
+  /** 音频回放源：服务端上传流优先（刷新后仍可按 file_id 回放），回落本地 Blob */
+  const playSrc = recFileId ? `${apiBase}/api/uploads/${recFileId}/stream` : recUrl;
   /** 结果区视图：提交中 → 有运行态按状态分流 → 提交/录音失败且尚无运行态也进错误视图 */
-  const resultView =
+  const resultView: ResultView =
     phase === "submitting"
       ? "submitting"
       : phase === "error" && run === null
@@ -341,71 +318,21 @@ export default function QuicknotePage() {
             </Card>
           </div>
 
-          {/* 结果区：进度与终态（文字稿/纪要展示层在此基础上扩展） */}
-          <Card className="mt-4">
-            <CardHeader
-              title="文字稿"
-              icon={<FileText size={15} strokeWidth={1.75} />}
-              aside={run ? <StatusBadge status={run.status} /> : undefined}
-            />
-            {resultView === "empty" && (
-              <EmptyState
-                icon={<Mic size={18} strokeWidth={1.75} />}
-                title="还没有录音笔记"
-                description="点击上方麦克风说一段话，停止后自动转写，文字稿会显示在这里。"
-              />
-            )}
-            {resultView === "submitting" && (
-              <CardBody className="space-y-3">
-                <span className="text-xs text-muted">正在提交录音…</span>
-                <ProgressBar value={6} active />
-                <Skeleton className="h-9 w-full" />
-              </CardBody>
-            )}
-            {resultView === "progress" && run && (
-              <CardBody className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs text-muted">{run.note || "处理中"}</span>
-                  <span className="font-mono text-[11px] tabular-nums text-muted">{run.progress}%</span>
-                </div>
-                <ProgressBar value={run.progress} active={run.status === "running" || run.status === "pending"} />
-                {[0, 1, 2].map((i) => (
-                  <Skeleton key={i} className="h-9 w-full" />
-                ))}
-              </CardBody>
-            )}
-            {resultView === "done" && (
-              <CardBody className="space-y-2">
-                <p className="flex items-center gap-2 text-sm text-fg">
-                  <CheckCircle2 size={15} strokeWidth={1.75} className="shrink-0 text-meter" />
-                  识别完成
-                </p>
-                <p className="font-mono text-[11px] tabular-nums text-muted">
-                  {segments.length > 0 && `${segments.length} 句`}
-                  {durationMs ? `${segments.length > 0 ? " · " : ""}${(durationMs / 60000).toFixed(1)} 分钟` : ""}
-                </p>
-              </CardBody>
-            )}
-            {resultView === "error" && (
-              <CardBody className="space-y-3">
-                <p className="flex items-start gap-2 text-sm text-danger">
-                  <AlertTriangle size={15} strokeWidth={1.75} className="mt-0.5 shrink-0" />
-                  <span className="min-w-0 break-words">{submitError || run?.error || "转写失败，请重试"}</span>
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    icon={<RefreshCw size={13} strokeWidth={1.75} />}
-                    onClick={resetToIdle}
-                  >
-                    重新录一段
-                  </Button>
-                  <span className="font-mono text-[11px] text-muted">{taskId?.slice(0, 8)}</span>
-                </div>
-              </CardBody>
-            )}
-          </Card>
+          {/* 结果区：进度与终态（波形回放 + 分句跟读 + 说话人改名与统计）。
+              以 taskId 作 key：新任务重挂载，改名/编辑态自动复位 */}
+          <ResultPanel
+            key={taskId ?? "none"}
+            view={resultView}
+            run={run}
+            taskId={taskId}
+            title={task?.task.title || "录音笔记"}
+            segments={segments}
+            durationMs={durationMs}
+            playSrc={playSrc}
+            initialNames={task?.task.summary?.speaker_names ?? {}}
+            submitError={submitError}
+            onReset={resetToIdle}
+          />
         </>
       )}
     </>
