@@ -191,6 +191,19 @@ export const PRICE_ASR_IDLE: PriceItem = {
   note: "闲时算力执行，任务 24h 内完成",
 };
 
+/* ---------------- 录音笔记（大模型流式语音识别·小时版，按小时） ---------------- */
+
+/** 录音笔记条目：sauc 大模型流式语音识别小时版，按语音时长折算小时计费。
+ *  控制台小时版口径不可得，单价按大模型录音文件识别（标准版）同价占位（待核对，以账单为准）。 */
+export const PRICE_QUICKNOTE_SAUC: PriceItem = {
+  label: "录音笔记（大模型流式语音识别·小时版）",
+  unit: "小时",
+  postpaid: PRICE_ASR_STANDARD.postpaid, // 同价占位：待核对
+  packs: [], // 资源包档位未单列，待核对
+  trial: "以控制台为准",
+  note: "单价待核对：暂按大模型录音文件识别（标准版）同价占位",
+};
+
 /* ---------------- 播客（豆包语音播客大模型，按 token） ---------------- */
 
 export const PODCAST_PRICES = {

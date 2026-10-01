@@ -5,6 +5,7 @@ import { AlertTriangle, Mic, SlidersHorizontal, Square } from "lucide-react";
 import { apiBase, fetchJSON } from "../lib/api";
 import { useMe } from "../lib/auth";
 import { formatTime } from "../lib/player";
+import { PRICE_QUICKNOTE_SAUC, PRICE_SNAPSHOT_DATE } from "../lib/pricing";
 import type { TaskDetail } from "../lib/types";
 import { useProviderConfigured } from "../lib/useStorageEnabled";
 import { useTaskEvents } from "../lib/ws";
@@ -327,6 +328,10 @@ export default function QuicknotePage() {
                 </Field>
                 <p className="text-[11px] leading-relaxed text-muted">
                   点击麦克风开始录音，停止后自动提交转写；语种自动识别，说话人与方言识别已开启，文字稿显示在下方。
+                </p>
+                <p className="text-[11px] leading-relaxed text-muted">
+                  计费：按语音时长 {PRICE_QUICKNOTE_SAUC.postpaid[0].price} 元/小时（占价待核对），刊例快照{" "}
+                  {PRICE_SNAPSHOT_DATE}，以账单为准。
                 </p>
               </CardBody>
             </Card>
