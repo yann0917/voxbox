@@ -319,9 +319,11 @@ export default function QuicknotePage() {
           </div>
 
           {/* 结果区：进度与终态（波形回放 + 分句跟读 + 说话人改名与统计）。
-              以 taskId 作 key：新任务重挂载，改名/编辑态自动复位 */}
+              key 带「详情已加载」标记：任务详情在 WS 收尾后经 loadTask 异步到达，
+              到达时重挂载，speakerNames 才能以 summary.speaker_names 为初值
+              （组件挂载于提交时刻，彼时 task 尚为空） */}
           <ResultPanel
-            key={taskId ?? "none"}
+            key={`${taskId ?? "none"}${task ? "-loaded" : ""}`}
             view={resultView}
             run={run}
             taskId={taskId}

@@ -36,14 +36,15 @@ export interface ResultPanelProps {
   durationMs?: number;
   /** 音频回放地址：服务端上传流优先，回落录音 Blob（仅本次会话可回放） */
   playSrc: string | null;
-  /** 改名初值来自任务 Summary（父级按 taskId 换 key 重挂载，无需同步 effect） */
+  /** 改名初值来自任务 Summary（父级以 taskId+详情已加载作 key，详情异步到达时重挂载生效） */
   initialNames: Record<string, string>;
   submitError: string;
   onReset: () => void;
 }
 
 /** 结果区：进度与终态——波形回放 + 分句跟读 + 说话人改名与发言统计。
- *  父级以 taskId 作 key 重挂载本组件：新任务自动重置改名/编辑态。 */
+ *  父级以 taskId+「详情已加载」作 key 重挂载本组件：新任务重置改名/编辑态，
+ *  异步到达的任务详情（含 speaker_names 初值）随之生效。 */
 export function ResultPanel({
   view,
   run,
@@ -79,22 +80,32 @@ export function ResultPanel({
     },
   });
 
-  /** 提交单个改名：乐观更新，失败回滚；清空输入 = 移除覆盖（恢复默认称呼） */
+  /** 提交单个改名：乐观更新与失败回滚都走函数式按 id 操作——回滚只拨回该 id 的
+   *  旧值，不整体拨快照，避免在途的另一笔并发改名被连带抹掉；
+   *  清空输入 = 移除覆盖（恢复默认称呼） */
   const commitRename = (id: string) => {
-    const prev = speakerNames;
     const name = draft.trim();
-    if (name === (prev[id] ?? "")) {
-      setEditingId(null);
-      return;
-    }
-    const next = { ...prev };
-    if (name) next[id] = name;
-    else delete next[id];
+    const prevName = speakerNames[id]; // 该 id 的旧值（可能 undefined = 无覆盖）
     setEditingId(null);
-    setSpeakerNames(next);
-    rename.mutate(next, {
+    if (name === (prevName ?? "")) return;
+    setSpeakerNames((cur) => {
+      const next = { ...cur };
+      if (name) next[id] = name;
+      else delete next[id];
+      return next;
+    });
+    // PATCH 整体覆盖式：body 基于提交时刻的全量 map（含其他在途改名的乐观值）
+    const body = { ...speakerNames };
+    if (name) body[id] = name;
+    else delete body[id];
+    rename.mutate(body, {
       onError: (e: Error) => {
-        setSpeakerNames(prev);
+        setSpeakerNames((cur) => {
+          const next = { ...cur };
+          if (prevName === undefined) delete next[id];
+          else next[id] = prevName;
+          return next;
+        });
         toast({ tone: "error", title: "改名失败", description: e.message });
       },
     });
