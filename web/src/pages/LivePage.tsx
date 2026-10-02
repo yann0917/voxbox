@@ -304,9 +304,38 @@ export default function LivePage() {
         </Card>
       ) : null}
 
-      {/* 会话控制条：动作一行排开（开始/停止靠右），字幕流全宽铺开——控制先于内容，动线自上而下 */}
+      {/* 会话控制条：开始/停止圆钮在动线起点（左上），配置项随其后，字幕流全宽铺开 */}
       <Card className="mb-4">
         <CardBody className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <div className="flex shrink-0 items-center gap-3">
+            <button
+              type="button"
+              aria-label={live ? "停止" : "开始"}
+              disabled={waitingFinal || (engine === "local" && !r2t2Installed)}
+              onClick={() => void (live ? stopSession() : startSession())}
+              className={`flex size-11 cursor-pointer items-center justify-center rounded-full border transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
+                live
+                  ? "border-danger bg-danger/10 text-danger"
+                  : "border-line-strong bg-raise-2 text-accent hover:border-accent"
+              }`}
+            >
+              {live ? (
+                <Square size={18} strokeWidth={1.75} fill="currentColor" />
+              ) : (
+                <Mic size={18} strokeWidth={1.75} />
+              )}
+            </button>
+            {phase === "connecting" && <span className="text-[11px] text-muted">正在连接…</span>}
+            {phase === "finishing" && <span className="text-[11px] text-muted">正在整理本次内容…</span>}
+            {live && (
+              <div className="h-1 w-24 overflow-hidden rounded-full bg-line">
+                <div ref={levelRef} className="h-full rounded-full bg-accent" style={{ width: "0%" }} />
+              </div>
+            )}
+            {engine === "volcengine" && phase === "idle" && (
+              <span className="text-[11px] text-muted">约 1 元/小时</span>
+            )}
+          </div>
           <div
             className={`flex min-w-0 flex-1 flex-wrap items-center gap-x-5 gap-y-3 ${
               locked ? "pointer-events-none opacity-50" : ""
@@ -333,35 +362,6 @@ export default function LivePage() {
                 识别在本机完成，数据不出本机；语种自动检测。长会话在后台无缝衔接，字幕连续输出。
               </p>
             )}
-          </div>
-          <div className="flex shrink-0 items-center gap-3">
-            {engine === "volcengine" && phase === "idle" && (
-              <span className="text-[11px] text-muted">约 1 元/小时</span>
-            )}
-            {phase === "connecting" && <span className="text-[11px] text-muted">正在连接…</span>}
-            {phase === "finishing" && <span className="text-[11px] text-muted">正在整理本次内容…</span>}
-            {live && (
-              <div className="h-1 w-24 overflow-hidden rounded-full bg-line">
-                <div ref={levelRef} className="h-full rounded-full bg-accent" style={{ width: "0%" }} />
-              </div>
-            )}
-            <button
-              type="button"
-              aria-label={live ? "停止" : "开始"}
-              disabled={waitingFinal || (engine === "local" && !r2t2Installed)}
-              onClick={() => void (live ? stopSession() : startSession())}
-              className={`flex size-11 cursor-pointer items-center justify-center rounded-full border transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
-                live
-                  ? "border-danger bg-danger/10 text-danger"
-                  : "border-line-strong bg-raise-2 text-accent hover:border-accent"
-              }`}
-            >
-              {live ? (
-                <Square size={18} strokeWidth={1.75} fill="currentColor" />
-              ) : (
-                <Mic size={18} strokeWidth={1.75} />
-              )}
-            </button>
           </div>
         </CardBody>
       </Card>
@@ -420,7 +420,7 @@ export default function LivePage() {
                   <EmptyState
                     icon={<Mic size={18} strokeWidth={1.75} />}
                     title="还没有字幕"
-                    description="点击上方「开始」使用麦克风说话，识别内容会实时显示在这里。"
+                    description="点击「开始」使用麦克风说话，识别内容会实时显示在这里。"
                   />
                 )
               ) : speakerMode ? (
