@@ -59,6 +59,13 @@ type ModelState struct {
 	DownloadedBytes int64  `json:"downloaded_bytes"`
 	TotalBytes      int64  `json:"total_bytes"`
 	Error           string `json:"error,omitempty"`
+
+	// UpdateAvailable 目录换版检测:status=idle 且盘面 manifest 与条目 id 一致而 revision
+	// 不一致(旧安装仍在盘)时为 true,设置页渲染「可更新」+「更新」按钮。不进 states
+	// 内存态,在 ModelView 构造处(List/View)统一读盘计算,天然覆盖 states 的全部写入路径。
+	UpdateAvailable bool `json:"update_available"`
+	// InstalledRevision update_available=true 时盘面旧安装的 revision(前端展示「已装 x → 新版 y」)。
+	InstalledRevision string `json:"installed_revision,omitempty"`
 }
 
 // ModelView GET /api/models 的 items 元素:目录条目 + 实时状态(内嵌 Entry + ModelState,
@@ -174,7 +181,7 @@ func (m *Manager) List() []ModelView {
 	defer m.mu.Unlock()
 	out := make([]ModelView, 0, len(m.entries))
 	for _, e := range m.entries {
-		out = append(out, ModelView{Entry: e, ModelState: *m.states[e.ID]})
+		out = append(out, m.modelView(e, *m.states[e.ID]))
 	}
 	return out
 }
@@ -187,7 +194,20 @@ func (m *Manager) View(id string) (ModelView, bool) {
 	if !ok {
 		return ModelView{}, false
 	}
-	return ModelView{Entry: e, ModelState: *m.states[id]}, true
+	return m.modelView(e, *m.states[id]), true
+}
+
+// modelView ModelView 构造:状态快照 + 可更新检测统一在此计算——无论 states 里那份
+// 状态来自 restore、下载终态还是 Delete 重置,出口只有一个,默认值路径天然覆盖。
+// 仅 idle 态读盘(每条目一次小文件读取),其余状态零开销。
+func (m *Manager) modelView(e Entry, st ModelState) ModelView {
+	if st.Status == StatusIdle {
+		if mf, ok := m.manifestOnDisk(e); ok && mf.Revision != e.Revision {
+			st.UpdateAvailable = true
+			st.InstalledRevision = mf.Revision
+		}
+	}
+	return ModelView{Entry: e, ModelState: st}
 }
 
 // installedManifest 盘面安装裁定(engine 与模型同口径):manifest 可解析且 id/revision
@@ -196,6 +216,17 @@ func (m *Manager) View(id string) (ModelView, bool) {
 func (m *Manager) installedManifest(e Entry) (*manifest, bool) {
 	mf, err := readManifest(m.modelDir(e.ID))
 	if err != nil || mf.ID != e.ID || mf.Revision != e.Revision {
+		return nil, false
+	}
+	return mf, true
+}
+
+// manifestOnDisk 盘面 manifest 读取(installedManifest 的宽松变体):仅要求可解析且 id
+// 与条目一致,不校验 revision——revision 不一致时 installedManifest 会丢弃 manifest,
+// 这里保留它供「已装旧版」检测(UpdateAvailable/InstalledRevision)上报。
+func (m *Manager) manifestOnDisk(e Entry) (*manifest, bool) {
+	mf, err := readManifest(m.modelDir(e.ID))
+	if err != nil || mf.ID != e.ID {
 		return nil, false
 	}
 	return mf, true

@@ -47,6 +47,8 @@ function statusMeta(m: ModelItem): { label: string; tone: string; pulse: boolean
     case "failed":
       return { label: "失败", tone: "danger", pulse: false };
     default:
+      // 目录换版(盘上是旧版)优先于「未下载/可续传」:这是用户可感知的升级入口
+      if (m.update_available) return { label: "可更新", tone: "accent", pulse: false };
       return m.has_partial
         ? { label: "可续传", tone: "muted", pulse: false }
         : { label: "未下载", tone: "muted", pulse: false };
@@ -117,15 +119,39 @@ function ModelRow({
         <td className="py-2 align-top">
           <div className="flex items-center gap-1.5">
             {m.status === "idle" && (
-              <Button
-                size="sm"
-                variant="primary"
-                disabled={busy}
-                onClick={() => onStart(m.id)}
-                icon={<Download size={13} strokeWidth={1.75} />}
-              >
-                {m.has_partial ? "继续下载" : "下载"}
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  disabled={busy}
+                  onClick={() => onStart(m.id)}
+                  icon={<Download size={13} strokeWidth={1.75} />}
+                >
+                  {m.update_available
+                    ? m.has_partial
+                      ? "继续更新"
+                      : "更新"
+                    : m.has_partial
+                      ? "继续下载"
+                      : "下载"}
+                </Button>
+                {m.update_available && (
+                  <span className="whitespace-nowrap font-mono text-[11px] text-muted">
+                    已装 {m.installed_revision || "未知"} → 新版 {m.revision}
+                  </span>
+                )}
+                {m.update_available && (
+                  // 可不更新直接删旧版
+                  <IconButton
+                    label={`删除 ${m.name}`}
+                    size="sm"
+                    className="hover:text-danger"
+                    onClick={() => onAskDelete(m)}
+                  >
+                    <Trash2 size={14} strokeWidth={1.75} />
+                  </IconButton>
+                )}
+              </>
             )}
             {m.status === "downloading" && (
               <Button

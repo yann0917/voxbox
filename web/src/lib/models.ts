@@ -30,6 +30,10 @@ export interface ModelItem {
   downloaded_bytes: number;
   total_bytes: number;
   error?: string;
+  /** 目录换版检测:盘面 manifest 与条目 revision 不一致(旧安装仍在盘)→ 可一键更新。 */
+  update_available: boolean;
+  /** update_available=true 时盘面旧安装的 revision(展示「已装 x → 新版 y」)。 */
+  installed_revision?: string;
 }
 
 export const listModels = () => fetchJSON<{ items: ModelItem[] }>("/api/models");

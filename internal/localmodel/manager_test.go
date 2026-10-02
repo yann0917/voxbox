@@ -111,6 +111,9 @@ func TestRestoreInstalled(t *testing.T) {
 	if v.DownloadedBytes != 300 || v.TotalBytes != 300 {
 		t.Fatalf("installed 字节数应为 300/300,实际 %d/%d", v.DownloadedBytes, v.TotalBytes)
 	}
+	if v.UpdateAvailable || v.InstalledRevision != "" {
+		t.Fatalf("已安装态不应标注可更新: %+v", v)
+	}
 }
 
 func TestRestorePartial(t *testing.T) {
@@ -189,6 +192,109 @@ func TestRestoreManifestRevisionMismatch(t *testing.T) {
 	v := viewOrFatal(t, m, "asr-small")
 	if v.Status != StatusIdle {
 		t.Fatalf("manifest revision 不匹配应按未安装处理,实际 %+v", v)
+	}
+}
+
+// seedManifest 在 dir 落一份指定 revision 的安装 manifest(可更新检测的盘面播种)。
+func seedManifest(t *testing.T, dir, revision string, files ...manifestFile) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mf := manifest{ID: filepath.Base(dir), Repo: "org/" + filepath.Base(dir), Revision: revision, Files: files, CompletedAt: "2026-01-01T00:00:00Z"}
+	raw, _ := json.Marshal(mf)
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUpdateAvailableDetection(t *testing.T) {
+	// 目录换版(条目 revision 前进,盘上是旧版 manifest):status 仍为 idle(restore 语义
+	// 不变,revision 一致才算已安装),但 ModelView 构造处统一标注可更新 + 旧版 revision。
+	// 模型与引擎同口径(引擎安装根在 enginesDir)。
+	entries := append(testEntries(), engineTestEntry("https://example.com/e.tar.gz", 3, strings.Repeat("a", 64)))
+	m, _, _ := newTestManager(t, entries, func(base, engines string) {
+		seedManifest(t, filepath.Join(base, "asr-small"), "v0.8.2",
+			manifestFile{Path: "a.bin", Size: 100})
+		seedManifest(t, filepath.Join(engines, "eng-test"), "v0.7.1")
+	})
+	v := viewOrFatal(t, m, "asr-small")
+	if v.Status != StatusIdle || !v.UpdateAvailable || v.InstalledRevision != "v0.8.2" {
+		t.Fatalf("旧 revision manifest 应标注可更新: %+v", v)
+	}
+	// List 与 View 同口径(HTTP 视图走 List);ID 双方内嵌都有,显式 Entry.ID
+	for _, item := range m.List() {
+		if item.Entry.ID == "asr-small" && (!item.UpdateAvailable || item.InstalledRevision != "v0.8.2") {
+			t.Fatalf("List 应与 View 同口径标注可更新: %+v", item)
+		}
+	}
+	// 盘面无 manifest 的条目不标注
+	idle := viewOrFatal(t, m, "tts-small")
+	if idle.Status != StatusIdle || idle.UpdateAvailable || idle.InstalledRevision != "" {
+		t.Fatalf("无 manifest 不应标注可更新: %+v", idle)
+	}
+	// 引擎条目同样从 enginesDir 检出可更新
+	eng := viewOrFatal(t, m, "eng-test")
+	if eng.Status != StatusIdle || !eng.UpdateAvailable || eng.InstalledRevision != "v0.7.1" {
+		t.Fatalf("引擎旧 revision 安装应标注可更新: %+v", eng)
+	}
+}
+
+func TestUpdateAvailableRevisionMatch(t *testing.T) {
+	// revision 一致 → 已安装,不标注可更新(restore 后已安装态不受影响)。
+	m, _, _ := newTestManager(t, testEntries(), func(base, _ string) {
+		seedManifest(t, filepath.Join(base, "asr-small"), "master",
+			manifestFile{Path: "a.bin", Size: 100}, manifestFile{Path: "b.bin", Size: 200})
+	})
+	v := waitFor(t, m, "asr-small", StatusInstalled)
+	if v.UpdateAvailable || v.InstalledRevision != "" {
+		t.Fatalf("revision 一致(已安装)不应标注可更新: %+v", v)
+	}
+}
+
+func TestUpdateFlowConverges(t *testing.T) {
+	// 一键更新全链路:旧版在盘(可更新)→ Start 走真实下载管线 → installed,
+	// 可更新标注收敛为 false,manifest 收敛到新 revision。
+	content := bytes.Repeat([]byte("x"), 256)
+	f := newFakeScope(t, fileMap("a.bin", content, "b.bin", []byte("hello world")))
+	entries := testEntries()
+	m, base, _ := newTestManager(t, entries, func(baseDir, _ string) {
+		dir := filepath.Join(baseDir, "asr-small")
+		seedManifest(t, dir, "v0.8.2", manifestFile{Path: "a.bin", Size: 100})
+		if err := os.WriteFile(filepath.Join(dir, "a.bin"), content[:100], 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	m.baseURL = f.srv.URL
+	if v := viewOrFatal(t, m, "asr-small"); !v.UpdateAvailable || !v.HasPartial {
+		t.Fatalf("更新前应标注可更新+旧文件可复用: %+v", v)
+	}
+	if err := m.Start("asr-small"); err != nil {
+		t.Fatal(err)
+	}
+	v := waitFor(t, m, "asr-small", StatusInstalled)
+	if v.UpdateAvailable || v.InstalledRevision != "" {
+		t.Fatalf("更新完成后可更新标注应收敛: %+v", v)
+	}
+	mf, err := readManifest(filepath.Join(base, "asr-small"))
+	if err != nil || mf.Revision != "master" {
+		t.Fatalf("更新后 manifest 应收敛到新 revision: %+v err=%v", mf, err)
+	}
+}
+
+func TestModelViewJSONContract(t *testing.T) {
+	// 前端平铺契约:update_available 恒在;installed_revision 为空时省略。
+	m, _, _ := newTestManager(t, testEntries())
+	v := viewOrFatal(t, m, "asr-small")
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"update_available":false`) {
+		t.Fatalf("update_available 应恒序列化: %s", raw)
+	}
+	if strings.Contains(string(raw), "installed_revision") {
+		t.Fatalf("installed_revision 为空时应省略: %s", raw)
 	}
 }
 
