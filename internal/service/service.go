@@ -178,6 +178,9 @@ func (s *Service) Config() *config.Config       { return s.cfg.Load() }
 // LocalModels 本地语音模型管理器(设置页模型区与 /api/models 消费)。
 func (s *Service) LocalModels() *localmodel.Manager { return s.models }
 
+// TTSRuntime 本地推理引擎生命周期管理(实时字幕 live 中转消费:模型解析与会话建立)。
+func (s *Service) TTSRuntime() *localruntime.TTSRuntime { return s.ttsRuntime }
+
 // VoiceLibrary 音色库(参考音频管理,音色库端点与克隆配音类工具消费)。
 func (s *Service) VoiceLibrary() *voicelib.Library { return s.voices }
 

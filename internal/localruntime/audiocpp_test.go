@@ -320,6 +320,23 @@ func TestServerConfigIncludesASREntry(t *testing.T) {
 	if p, _ := asr["path"].(string); !strings.HasSuffix(p, filepath.Join("models", "r2t2-q8_0", "r2t2-q8_0.gguf")) {
 		t.Fatalf("asr 条目 path 应指向已安装 gguf,实际 %v", asr["path"])
 	}
+	// streaming 声明:confucius4_r2t2 条目增补 <id>-stream(mode=streaming,同一 gguf),
+	// /v1/audio/transcriptions/live 只认 streaming 声明(真机实测)。
+	var stream map[string]any
+	for _, mm := range cfg.Models {
+		if mm["id"] == "r2t2-q8_0-stream" {
+			stream = mm
+		}
+	}
+	if stream == nil {
+		t.Fatalf("server.json 应为 r2t2 增补 streaming 声明 r2t2-q8_0-stream: %v", cfg.Models)
+	}
+	if stream["family"] != "confucius4_r2t2" || stream["task"] != "asr" || stream["mode"] != "streaming" {
+		t.Fatalf("streaming 声明字段不符: %v", stream)
+	}
+	if p, _ := stream["path"].(string); p != asr["path"] {
+		t.Fatalf("streaming 声明应与离线条目同 gguf: %v vs %v", stream["path"], asr["path"])
+	}
 }
 
 // startFakeOnConfigPort 从 cmd 参数解析 --config 的 server.json,按其中 host/port 起真

@@ -42,6 +42,8 @@ func (s *Server) Handler() http.Handler {
 		api.GET("/local/ready", s.localReady)
 		// WS 进度通道：登录后浏览器带 Cookie 升级；快照按用户过滤（admin 收全量）。
 		api.GET("/ws", s.wsProgress)
+		// 实时字幕双向 WS：控制消息=文本 JSON 帧、音频=二进制 PCM 帧（协议见 live.go 头注）。
+		api.GET("/ws/live", s.wsLive)
 	}
 
 	uploads := api.Group("/uploads")

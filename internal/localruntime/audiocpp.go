@@ -203,6 +203,14 @@ func (t *TTSRuntime) startLocked() (string, error) {
 			task = "clon"
 		}
 		serverModels = append(serverModels, serverModel{ID: e.Entry.ID, Family: family, Path: p, Task: task, Mode: "offline"})
+		// confucius4_r2t2 支持 streaming 模式(目录 modes 含 streaming):增补一条
+		// mode:"streaming" 声明(id 加 -stream 后缀,与离线声明并存不冲突,同一 gguf)。
+		// /v1/audio/transcriptions/live 实时识别只认 streaming 声明(真机实测)。
+		if e.Entry.Kind == "asr" && family == "confucius4_r2t2" {
+			serverModels = append(serverModels, serverModel{
+				ID: streamingASRModelID(e.Entry.ID), Family: family, Path: p, Task: task, Mode: "streaming",
+			})
+		}
 	}
 	if len(serverModels) == 0 {
 		return "", fmt.Errorf("没有已安装的本地语音模型:请到设置页下载(ASR / TTS)")

@@ -16,12 +16,16 @@ type Server struct {
 	hub        *Hub
 	desktop    bool         // 桌面形态（VOXBOX_DESKTOP=1）：未登录请求注入库内 admin 免登录直达
 	mcpHandler http.Handler // MCP Streamable HTTP 端点（serve 装配时可选挂载，须在 Handler() 之前）
+
+	// newLiveEngine 实时字幕引擎构造缝（live.go：生产按 engine 参数分派，单测注入 mock）。
+	newLiveEngine newLiveEngineFn
 }
 
 func New(svc *service.Service) *Server {
 	s := &Server{svc: svc, hub: NewHub(), desktop: os.Getenv("VOXBOX_DESKTOP") == "1"}
 	// 模型状态机 → WS:下载进度/状态迁移经 Hub 推送,前端 /api/models 免轮询
 	svc.LocalModels().SetNotifier(s.hub.NotifyModel)
+	s.newLiveEngine = s.defaultNewLiveEngine
 	return s
 }
 
