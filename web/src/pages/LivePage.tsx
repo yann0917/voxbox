@@ -363,30 +363,25 @@ export default function LivePage() {
                 </label>
               </>
             ) : (
-              <>
-                <Select
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  disabled={locked}
-                  aria-label="识别语种"
-                  className="w-40 shrink-0"
-                >
-                  <option value="">语种自动检测</option>
-                  <option value="zh">中文</option>
-                  <option value="en">英语</option>
-                  <option value="ja">日语</option>
-                  <option value="ko">韩语</option>
-                  <option value="fr">法语</option>
-                  <option value="de">德语</option>
-                  <option value="it">意大利语</option>
-                  <option value="es">西班牙语</option>
-                  <option value="pt">葡萄牙语</option>
-                  <option value="ru">俄语</option>
-                </Select>
-                <p className="min-w-0 flex-1 text-xs text-muted">
-                  识别在本机完成，数据不出本机；数字、短句这类内容建议固定语种。长会话在后台无缝衔接，字幕连续输出。
-                </p>
-              </>
+              <Select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                disabled={locked}
+                aria-label="识别语种"
+                className="w-40 shrink-0"
+              >
+                <option value="">语种自动检测</option>
+                <option value="zh">中文</option>
+                <option value="en">英语</option>
+                <option value="ja">日语</option>
+                <option value="ko">韩语</option>
+                <option value="fr">法语</option>
+                <option value="de">德语</option>
+                <option value="it">意大利语</option>
+                <option value="es">西班牙语</option>
+                <option value="pt">葡萄牙语</option>
+                <option value="ru">俄语</option>
+              </Select>
             )}
           </div>
         </CardBody>
