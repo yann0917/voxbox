@@ -848,8 +848,9 @@ func seedEngine(t *testing.T, dataDir string, m *localmodel.Manager, id, binaryN
 	t.Helper()
 	// 目录布局(NewManager(dataDir)):引擎安装根为 <dataDir>/engines,条目目录
 	// engines/<id>,发布包整体解到 engines/<id>/pkg/。播种 = 假二进制 + manifest
-	// (id/revision 与目录条目一致——catalog 缺省 revision 被规整为 "master",
-	// binary 指向已存在的假二进制)。播完即断言 Installed,布局漂移当场暴露。
+	// (id/revision 与目录条目一致——revision 取目录条目实值:catalog 缺省规整为
+	// "master",audiocpp 自 v0.9.0 起显式记 revision;binary 指向已存在的假二进制)。
+	// 播完即断言 Installed,布局漂移当场暴露。
 	pkgDir := filepath.Join(dataDir, "engines", id, "pkg")
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -857,9 +858,13 @@ func seedEngine(t *testing.T, dataDir string, m *localmodel.Manager, id, binaryN
 	if err := os.WriteFile(filepath.Join(pkgDir, binaryName), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	rev := "master"
+	if e, ok := m.GetEntry(id); ok && e.Revision != "" {
+		rev = e.Revision
+	}
 	mf := map[string]any{
 		"id":           id,
-		"revision":     "master",
+		"revision":     rev,
 		"binary":       "pkg/" + binaryName,
 		"completed_at": "2026-01-01T00:00:00Z",
 	}

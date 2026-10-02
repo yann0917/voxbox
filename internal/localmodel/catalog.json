@@ -43,34 +43,35 @@
     "id": "audiocpp",
     "kind": "engine",
     "name": "audio.cpp 引擎",
-    "summary": "Qwen3-TTS GGUF 本地合成运行时(macOS Metal / CPU)",
-    "size_bytes": 28446530,
+    "summary": "Qwen3-TTS 本地合成与 R2T2 本地识别运行时(macOS Metal / CPU)",
+    "revision": "v0.9.0",
+    "size_bytes": 29162796,
     "requirements": { "device": "metal" },
     "license": "MIT",
     "license_url": "https://github.com/0xShug0/audio.cpp",
     "archive": "tar.gz",
-    "archive_sha256": "d33db13695fbf3ba73ea85a8b59575b98a66f7b6ff89bbb59599c75b4689f9a5",
+    "archive_sha256": "7cea9219d5f06475011c5d225d71d988cecef633ff7d098ee8a4c7b08583b1b4",
     "binaries": ["audiocpp_server", "audiocpp_cli"],
     "assets": {
       "darwin/arm64": {
-        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.8.2/audio-v0.8.2-bin-macos-arm64-metal.tar.gz",
-        "size_bytes": 28446530,
-        "sha256": "d33db13695fbf3ba73ea85a8b59575b98a66f7b6ff89bbb59599c75b4689f9a5"
+        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/audio-v0.9.0-bin-macos-arm64-metal.tar.gz",
+        "size_bytes": 29162796,
+        "sha256": "7cea9219d5f06475011c5d225d71d988cecef633ff7d098ee8a4c7b08583b1b4"
       },
       "darwin/amd64": {
-        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.8.2/audio-v0.8.2-bin-macos-x64-metal.tar.gz",
-        "size_bytes": 30120475,
-        "sha256": "6edcf84ea530f782c465fb9b37c7f3c1e8ac1e8ded865a9a59ebacc5140d8b67"
+        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/audio-v0.9.0-bin-macos-x64-metal.tar.gz",
+        "size_bytes": 30897245,
+        "sha256": "f6e50c776bfe3b23cb5e420f1dd31b11661ed3dc01207cf05cf780dfdadca1c9"
       },
       "windows/amd64": {
-        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.8.2/audio-v0.8.2-bin-windows-x64-cpu-portable.zip",
-        "size_bytes": 25129726,
-        "sha256": "aa83a7992ddf9a520d16839bbd3c8999155e2cc46845860627ee689c5bcd40cd"
+        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/audio-v0.9.0-bin-windows-x64-cpu-portable.zip",
+        "size_bytes": 25803809,
+        "sha256": "3ee19466a1a2b5366364ca8447a4794391dd89671e655ffd01aa421ac1668bfa"
       },
       "linux/amd64": {
-        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.8.2/audio-v0.8.2-bin-ubuntu-x64-cpu.tar.gz",
-        "size_bytes": 48426161,
-        "sha256": "4df88cd0182d6bbff674ce413f1852b361d422e01e4743d1a19c24476e4dffdc"
+        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/audio-v0.9.0-bin-ubuntu-x64-cpu.tar.gz",
+        "size_bytes": 49587362,
+        "sha256": "d0f0db4ab13bd3de1c15b6d60256e615d2bac65892fdd4fccc9a2b678db47635"
       }
     }
   },
@@ -89,6 +90,21 @@
     "archive_size": 163002883,
     "archive_sha256": "7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e",
     "extract_files": ["model.int8.onnx", "tokens.txt"]
+  },
+  {
+    "id": "r2t2-q8_0",
+    "kind": "asr",
+    "family": "confucius4_r2t2",
+    "name": "Confucius4-R2T2 识别(q8)",
+    "summary": "网易有道 Confucius4-R2T2 本地语音识别,30 语自动检测,支持热词上下文,无时间戳",
+    "size_bytes": 2477512064,
+    "requirements": { "device": "metal" },
+    "license": "NetEase Youdao Model Use License",
+    "license_url": "https://huggingface.co/davidxifeng/Confucius4-R2T2-gguf",
+    "requires_engine": "audiocpp",
+    "files": ["r2t2-q8_0.gguf"],
+    "file_urls": { "r2t2-q8_0.gguf": "https://huggingface.co/davidxifeng/Confucius4-R2T2-gguf/resolve/main/r2t2-q8_0.gguf" },
+    "sha256": { "r2t2-q8_0.gguf": "19f5ccd624484bcb5d44301437de41560b0ecc40c430e8850dfeefefbe82ccf5" }
   },
   {
     "id": "qwen3-tts-base-q8",

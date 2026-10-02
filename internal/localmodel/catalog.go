@@ -54,7 +54,7 @@ type Entry struct {
 	Assets         map[string]Asset  `json:"assets,omitempty"`         // engine:键 "goos/goarch"
 	FileURLs       map[string]string `json:"file_urls,omitempty"`      // file → 直链;Repo 非空时可省
 	RequiresEngine string            `json:"requires_engine,omitempty"`
-	Family         string            `json:"family,omitempty"` // tts 模型族:qwen3_tts | index_tts2 | kokoro;asr/engine 必须为空
+	Family         string            `json:"family,omitempty"` // 模型族:tts 必填(qwen3_tts|index_tts2|kokoro|chatterbox|voxcpm2);asr 可空(sherpa)或 confucius4_r2t2;engine 必须为空
 }
 
 // ArchiveFor 按 GOOS/GOARCH 取引擎平台资产;未声明平台返回 false(该平台不展示此引擎)。
@@ -119,15 +119,23 @@ func parseCatalog(data []byte) ([]Entry, error) {
 			return nil, fmt.Errorf("条目 %s 的 kind 必须是 asr|tts|engine", e.ID)
 		}
 		// family 规则:tts 必填且 ∈{qwen3_tts, index_tts2, kokoro, chatterbox, voxcpm2};
-		// asr/engine 必须为空。下游按 family 区分合成引擎调用链(qwen3 走预置音色/克隆参数,
-		// index/chatterbox 走 audiocpp 克隆,index 另有情感控制,kokoro 走 sherpa 子进程
-		// 预置音色,voxcpm2 走 audiocpp 克隆/直读)。
+		// asr 可空(sensevoice 走 sherpa 默认路径)或 confucius4_r2t2(挂 audiocpp 引擎的
+		// R2T2 识别,server.json 以 family 定位模型规格);engine 必须为空。下游按 family
+		// 区分调用链(qwen3 走预置音色/克隆参数,index/chatterbox 走 audiocpp 克隆,
+		// index 另有情感控制,kokoro 走 sherpa 子进程预置音色,voxcpm2 走 audiocpp 克隆/直读,
+		// confucius4_r2t2 走 audiocpp server 转写端点)。
 		switch e.Kind {
 		case "tts":
 			switch e.Family {
 			case "qwen3_tts", "index_tts2", "kokoro", "chatterbox", "voxcpm2":
 			default:
 				return nil, fmt.Errorf("条目 %s 的 family 必须是 qwen3_tts|index_tts2|kokoro|chatterbox|voxcpm2", e.ID)
+			}
+		case "asr":
+			switch e.Family {
+			case "", "confucius4_r2t2":
+			default:
+				return nil, fmt.Errorf("条目 %s 的 family 必须为空(sherpa 默认)或 confucius4_r2t2", e.ID)
 			}
 		default:
 			if e.Family != "" {

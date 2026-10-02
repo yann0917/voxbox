@@ -170,7 +170,8 @@ func (t *TTSRuntime) startLocked() (string, error) {
 			backend = "cpu"
 		}
 	}
-	// models[]:已安装的 tts 条目逐个注册(family 取目录条目:index_tts2/qwen3_tts)
+	// models[]:已安装的 tts/asr 条目逐个注册(family 取目录条目:index_tts2/qwen3_tts/
+	// confucius4_r2t2)。R2T2 识别与 TTS 同机制并列声明,v0.9.0 server 按 task 路由。
 	type serverModel struct {
 		ID     string `json:"id"`
 		Family string `json:"family"`
@@ -181,7 +182,7 @@ func (t *TTSRuntime) startLocked() (string, error) {
 	var serverModels []serverModel
 	for _, e := range t.models.List() {
 		// ModelView 同时内嵌 Entry 与 ModelState(二者都有 ID),选择器需显式 Entry
-		if e.Entry.Kind != "tts" || !t.models.Installed(e.Entry.ID) {
+		if (e.Entry.Kind != "tts" && e.Entry.Kind != "asr") || !t.models.Installed(e.Entry.ID) {
 			continue
 		}
 		p, err := t.models.InstalledModelFile(e.Entry.ID)
@@ -189,18 +190,22 @@ func (t *TTSRuntime) startLocked() (string, error) {
 			continue // 已安装但文件异常:跳过,Run 时会再校验
 		}
 		family := e.Entry.Family
-		if family == "" {
+		if family == "" && e.Entry.Kind == "tts" {
 			family = "qwen3_tts" // 防御:目录已强制 tts 必填 family,空值回落 qwen3
 		}
-		// task 按家族路由:chatterbox 家族 server 只收 clon/vc,其余走 tts
+		// task 按家族/kind 路由:asr 条目走转写端点;chatterbox 家族 server 只收
+		// clon/vc;其余 tts 走 tts
 		task := "tts"
-		if family == "chatterbox" {
+		switch {
+		case e.Entry.Kind == "asr":
+			task = "asr"
+		case family == "chatterbox":
 			task = "clon"
 		}
 		serverModels = append(serverModels, serverModel{ID: e.Entry.ID, Family: family, Path: p, Task: task, Mode: "offline"})
 	}
 	if len(serverModels) == 0 {
-		return "", fmt.Errorf("没有已安装的本地 TTS 模型:请到设置页下载(Qwen3-TTS / IndexTTS)")
+		return "", fmt.Errorf("没有已安装的本地语音模型:请到设置页下载(ASR / TTS)")
 	}
 	cfg := map[string]any{
 		"host": "127.0.0.1", "port": port, "backend": backend, "device": 0,

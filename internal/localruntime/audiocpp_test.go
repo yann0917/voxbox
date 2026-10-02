@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -187,7 +188,7 @@ func seedTTSManager(t *testing.T, dir string) *localmodel.Manager {
 		if err := os.MkdirAll(dirPath, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		raw := fmt.Sprintf(`{"id":%q,"repo":"org/%s","revision":"master"%s,"files":[{"path":"f","size":1}]}`, id, id, extra)
+		raw := fmt.Sprintf(`{"id":%q,"repo":"org/%s","revision":%q%s,"files":[{"path":"f","size":1}]}`, id, id, engineRevision(id), extra)
 		if err := os.WriteFile(filepath.Join(dirPath, "manifest.json"), []byte(raw), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -195,6 +196,15 @@ func seedTTSManager(t *testing.T, dir string) *localmodel.Manager {
 	writeManifest(filepath.Join(dir, "engines", "audiocpp"), "audiocpp", `,"binary":"pkg/bin/audiocpp_server"`)
 	writeManifest(filepath.Join(dir, "models", "qwen3-tts-base-q8"), "qwen3-tts-base-q8", "")
 	return localmodel.NewManager(dir)
+}
+
+// engineRevision 播种 manifest 的 revision:与内嵌目录条目一致(磁盘即真相的判定键
+// 是 id+revision 双匹配,audiocpp 引擎自 v0.9.0 起显式记 revision)。
+func engineRevision(id string) string {
+	if id == "audiocpp" {
+		return "v0.9.0"
+	}
+	return "master"
 }
 
 // seedInstalledModel 播种一个内置目录(catalog)已有 tts 条目的已安装盘面:
@@ -266,6 +276,49 @@ func TestServerConfigFamilyPerEntry(t *testing.T) {
 	}
 	if famByID["index-tts2_5-q8"] != "index_tts2" {
 		t.Fatalf("index 条目 family 应为 index_tts2: %v", famByID)
+	}
+}
+
+// TestServerConfigIncludesASREntry server.json 的 models[] 同时注册已安装的 asr 条目:
+// r2t2 条目按目录声明 family=confucius4_r2t2,task 路由为 asr,mode=offline,与 TTS 条目并列。
+func TestServerConfigIncludesASREntry(t *testing.T) {
+	dir := t.TempDir()
+	m := seedTTSManager(t, dir)
+	seedInstalledModel(t, dir, m, "r2t2-q8_0", "r2t2-q8_0.gguf")
+	rt := NewTTSRuntime(dir, m)
+	rt.healthInterval = 5 * time.Millisecond
+	rt.procAttr = func(cmd *exec.Cmd) error { return startFakeOnConfigPort(t, cmd) }
+	defer rt.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := rt.ensureHealth(ctx); err != nil {
+		t.Fatalf("拉起假 server 应就绪: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "engines", "audiocpp-server.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	var asr map[string]any
+	for _, mm := range cfg.Models {
+		if mm["id"] == "r2t2-q8_0" {
+			asr = mm
+		}
+	}
+	if asr == nil {
+		t.Fatalf("server.json 应注册 r2t2-q8_0 asr 条目: %v", cfg.Models)
+	}
+	if asr["family"] != "confucius4_r2t2" || asr["task"] != "asr" || asr["mode"] != "offline" {
+		t.Fatalf("asr 条目字段不符: %v", asr)
+	}
+	if p, _ := asr["path"].(string); !strings.HasSuffix(p, filepath.Join("models", "r2t2-q8_0", "r2t2-q8_0.gguf")) {
+		t.Fatalf("asr 条目 path 应指向已安装 gguf,实际 %v", asr["path"])
 	}
 }
 

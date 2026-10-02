@@ -67,7 +67,8 @@ func TestParseCatalogRejects(t *testing.T) {
 }
 
 // TestParseCatalogFamilyRuling 落实 family 校验规则:
-// kind=tts 必填且 ∈{qwen3_tts, index_tts2, kokoro, chatterbox, voxcpm2};kind∈{asr,engine} 必须为空。
+// kind=tts 必填且 ∈{qwen3_tts, index_tts2, kokoro, chatterbox, voxcpm2};
+// kind=asr 可空(sherpa 默认)或 confucius4_r2t2(audiocpp ASR);kind=engine 必须为空。
 func TestParseCatalogFamilyRuling(t *testing.T) {
 	// tts:合法族值都通过
 	for _, family := range []string{"qwen3_tts", "index_tts2", "kokoro", "chatterbox", "voxcpm2"} {
@@ -89,11 +90,17 @@ func TestParseCatalogFamilyRuling(t *testing.T) {
 	if _, err := parseCatalog(withEngine(t, e)); err == nil {
 		t.Error("tts 条目 family 非法值应被拒")
 	}
-	// asr:声明 family → 拒
+	// asr:声明 confucius4_r2t2 → 通过(R2T2 走 audiocpp 引擎)
+	e = validEntry()
+	e.Family = "confucius4_r2t2"
+	if _, err := parseCatalog(withEngine(t, e)); err != nil {
+		t.Fatalf("asr 条目声明 confucius4_r2t2 应通过: %v", err)
+	}
+	// asr:声明 tts 族值 → 拒
 	e = validEntry()
 	e.Family = "qwen3_tts"
 	if _, err := parseCatalog(withEngine(t, e)); err == nil {
-		t.Error("asr 条目声明 family 应被拒")
+		t.Error("asr 条目声明 tts 族应被拒")
 	}
 	// engine:声明 family → 拒
 	eng := engineEntry()
@@ -110,18 +117,18 @@ func TestParseCatalogBadJSON(t *testing.T) {
 }
 
 // 内嵌目录自检:随二进制发布的静态资产,损坏必须在首次加载时暴露。
-// 断言口径(裁定 2):二期目录为 2 引擎 + 5 模型;license_url 不再统一指向魔搭模型页——
+// 断言口径(裁定 2):二期目录为 2 引擎 + 9 模型;license_url 不再统一指向魔搭模型页——
 // 引擎条目指向其上游 GitHub 仓库(audiocpp / sherpa-onnx),模型条目指向魔搭模型页
 // 或上游 releases/tag 页(sensevoice 指向 sherpa-onnx 的 asr-models tag 页,
-// 同为 https://github.com/ 前缀),故按 kind 分支断言前缀,统一只要求非空 https。
+// r2t2 指向 HF gguf 仓库页,同为 https:// 前缀),故按 kind 分支断言前缀,统一只要求非空 https。
 func TestEmbeddedCatalog(t *testing.T) {
 	wantIDs := []string{
 		"sherpa-onnx", "audiocpp",
-		"sensevoice-int8", "qwen3-tts-base-q8", "qwen3-tts-customvoice-q8", "qwen3-tts-base-0.6b-q8",
+		"sensevoice-int8", "r2t2-q8_0", "qwen3-tts-base-q8", "qwen3-tts-customvoice-q8", "qwen3-tts-base-0.6b-q8",
 		"index-tts2_5-q8", "kokoro-v1.0", "chatterbox-q8", "voxcpm2-q8",
 	}
 	if len(catalog) != len(wantIDs) {
-		t.Fatalf("内嵌目录应为 %d 条(2 引擎 + 8 模型),实际 %d", len(wantIDs), len(catalog))
+		t.Fatalf("内嵌目录应为 %d 条(2 引擎 + 9 模型),实际 %d", len(wantIDs), len(catalog))
 	}
 	engineIDs := map[string]bool{}
 	for _, e := range catalog {
@@ -163,15 +170,15 @@ func TestEmbeddedCatalog(t *testing.T) {
 			if e.RequiresEngine == "" || !engineIDs[e.RequiresEngine] {
 				t.Errorf("模型条目 %s 的 requires_engine 必须指向已声明引擎: %q", e.ID, e.RequiresEngine)
 			}
-			// family 规则:tts 必填族值,asr 必须为空
+			// family 规则:tts 必填族值;asr 可空(sherpa)或 confucius4_r2t2
 			if e.Kind == "tts" {
 				switch e.Family {
 				case "qwen3_tts", "index_tts2", "kokoro", "chatterbox", "voxcpm2":
 				default:
 					t.Errorf("tts 条目 %s 的 family 必须是 qwen3_tts|index_tts2|kokoro|chatterbox|voxcpm2: %q", e.ID, e.Family)
 				}
-			} else if e.Family != "" {
-				t.Errorf("asr 条目 %s 不应声明 family: %q", e.ID, e.Family)
+			} else if e.Kind == "asr" && e.Family != "" && e.Family != "confucius4_r2t2" {
+				t.Errorf("asr 条目 %s 的 family 必须为空或 confucius4_r2t2: %q", e.ID, e.Family)
 			}
 		}
 	}
@@ -476,6 +483,96 @@ func TestEmbeddedCatalogVoxCPM2(t *testing.T) {
 		return
 	}
 	t.Fatal("内嵌目录缺少 voxcpm2-q8 条目")
+}
+
+// TestEmbeddedCatalogR2T2 落实 R2T2 条目实测留档(Task 1):
+// kind=asr + family=confucius4_r2t2 + requires_engine=audiocpp;直链指向 HF
+// davidxifeng/Confucius4-R2T2-gguf(网易有道模型许可,直链下载非再分发),
+// size_bytes 与逐文件 sha256 为本机对整文件实测(2477512064B),runFile 据此校验。
+func TestEmbeddedCatalogR2T2(t *testing.T) {
+	for _, e := range catalog {
+		if e.ID != "r2t2-q8_0" {
+			continue
+		}
+		if e.Kind != "asr" {
+			t.Errorf("r2t2-q8_0 的 kind 应为 asr,实际 %q", e.Kind)
+		}
+		if e.Family != "confucius4_r2t2" {
+			t.Errorf("r2t2-q8_0 的 family 应为 confucius4_r2t2,实际 %q", e.Family)
+		}
+		if e.RequiresEngine != "audiocpp" {
+			t.Errorf("r2t2-q8_0 的 requires_engine 应为 audiocpp,实际 %q", e.RequiresEngine)
+		}
+		if e.SizeBytes != 2477512064 {
+			t.Errorf("r2t2-q8_0 size_bytes 应为实测 2477512064,实际 %d", e.SizeBytes)
+		}
+		const want = "19f5ccd624484bcb5d44301437de41560b0ecc40c430e8850dfeefefbe82ccf5"
+		if e.SHA256["r2t2-q8_0.gguf"] != want {
+			t.Errorf("r2t2-q8_0 的文件 sha256 应为实测整文件哈希,实际 %q", e.SHA256["r2t2-q8_0.gguf"])
+		}
+		wantURL := "https://huggingface.co/davidxifeng/Confucius4-R2T2-gguf/resolve/main/r2t2-q8_0.gguf"
+		if e.FileURLs["r2t2-q8_0.gguf"] != wantURL {
+			t.Errorf("r2t2-q8_0 的直链应为 HF 官方 gguf 仓库,实际 %q", e.FileURLs["r2t2-q8_0.gguf"])
+		}
+		return
+	}
+	t.Fatal("内嵌目录缺少 r2t2-q8_0 条目")
+}
+
+// TestEmbeddedCatalogAudiocppV090 落实引擎提版留档(Task 1):audiocpp 引擎 revision
+// 显式记为 v0.9.0(v0.8.2 时代条目无 revision 缺省 master,提版不带 revision 会让
+// 已装旧二进制的安装永远匹配 manifest 而不触发重装;显式 revision 让旧安装判为
+// 未安装并引导重下 29MB),资产 URL 指向 v0.9.0 release,四平台资产(与 v0.8.2
+// 条目选型一致)sha256 均为本机对整包实测;binaries 与 v0.9.0 解包布局一致(server/cli 在包根)。
+func TestEmbeddedCatalogAudiocppV090(t *testing.T) {
+	for _, e := range catalog {
+		if e.ID != "audiocpp" || e.Kind != "engine" {
+			continue
+		}
+		if e.Revision != "v0.9.0" {
+			t.Errorf("audiocpp 引擎 revision 应为 v0.9.0(提版驱动旧安装重装),实际 %q", e.Revision)
+		}
+		if len(e.Assets) != 4 {
+			t.Fatalf("audiocpp 应声明 4 个平台资产(darwin arm64/amd64 + windows amd64 + linux amd64),实际 %d", len(e.Assets))
+		}
+		want := map[string]struct {
+			url  string
+			size int64
+			sha  string
+		}{
+			"darwin/arm64": {
+				"https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/audio-v0.9.0-bin-macos-arm64-metal.tar.gz",
+				29162796, "7cea9219d5f06475011c5d225d71d988cecef633ff7d098ee8a4c7b08583b1b4",
+			},
+			"darwin/amd64": {
+				"https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/audio-v0.9.0-bin-macos-x64-metal.tar.gz",
+				30897245, "f6e50c776bfe3b23cb5e420f1dd31b11661ed3dc01207cf05cf780dfdadca1c9",
+			},
+			"windows/amd64": {
+				"https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/audio-v0.9.0-bin-windows-x64-cpu-portable.zip",
+				25803809, "3ee19466a1a2b5366364ca8447a4794391dd89671e655ffd01aa421ac1668bfa",
+			},
+			"linux/amd64": {
+				"https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/audio-v0.9.0-bin-ubuntu-x64-cpu.tar.gz",
+				49587362, "d0f0db4ab13bd3de1c15b6d60256e615d2bac65892fdd4fccc9a2b678db47635",
+			},
+		}
+		for plat, w := range want {
+			a, ok := e.Assets[plat]
+			if !ok {
+				t.Errorf("audiocpp 缺少平台资产 %s", plat)
+				continue
+			}
+			if a.URL != w.url || a.SizeBytes != w.size || a.SHA256 != w.sha {
+				t.Errorf("audiocpp 平台 %s 资产与实测不符: %+v", plat, a)
+			}
+		}
+		if e.SizeBytes != 29162796 {
+			t.Errorf("audiocpp size_bytes 应为本机平台(darwin/arm64)资产实测 29162796,实际 %d", e.SizeBytes)
+		}
+		return
+	}
+	t.Fatal("内嵌目录缺少 audiocpp 引擎条目")
 }
 
 func TestArchiveForPlatform(t *testing.T) {
