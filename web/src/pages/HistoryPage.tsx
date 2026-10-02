@@ -19,7 +19,7 @@ import {
   StatusBadge,
   useToast,
 } from "../ui";
-import { toolLabel } from "../lib/toolNames";
+import { taskLabel, toolLabel } from "../lib/toolNames";
 
 const filters = [
   { value: "", label: "全部" },
@@ -271,7 +271,7 @@ export default function HistoryPage() {
                     onClick={() => selectTask(selected === t.id ? null : t.id)}
                     className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
                   >
-                    <span className="w-20 shrink-0 text-fg-2">{toolLabel(t.tool)}</span>
+                    <span className="w-20 shrink-0 text-fg-2">{taskLabel(t.tool, t.params)}</span>
                     {t.title && (
                       <span className="hidden min-w-0 max-w-48 shrink truncate text-sm sm:inline">{t.title}</span>
                     )}
@@ -352,7 +352,7 @@ export default function HistoryPage() {
         open={Boolean(pendingDelete)}
         title="删除任务"
         description={`将删除「${
-          pendingDelete ? toolLabel(pendingDelete.tool) : ""
+          pendingDelete ? taskLabel(pendingDelete.tool, pendingDelete.params) : ""
         }」任务记录及其产物文件，且不可恢复。`}
         confirmLabel="删除"
         loading={del.isPending}

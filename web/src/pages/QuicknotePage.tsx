@@ -172,7 +172,8 @@ export default function QuicknotePage() {
       fd.append("file", file);
       const up = await fetchJSON<{ file_id: string }>("/api/uploads", { method: "POST", body: fd, headers: {} });
       // 一句话转写：语种自动识别，说话人与中英方言识别默认开启；热词选填
-      const params: Record<string, unknown> = { version: "sentence", srt: true, speaker: true, lid: true };
+      // scene 为入口标记（工具无此参数，透传存档），历史页/工作台据此把任务显示为「录音笔记」
+      const params: Record<string, unknown> = { version: "sentence", srt: true, speaker: true, lid: true, scene: "quicknote" };
       if (hotwords.trim()) params.hotwords = hotwords.trim();
       const d = await fetchJSON<{ task_id: string }>("/api/tasks", {
         method: "POST",

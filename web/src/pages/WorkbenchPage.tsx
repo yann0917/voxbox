@@ -1,19 +1,29 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, AudioLines, Clock, Languages, Mic, NotebookPen, Podcast, Waves, Scissors } from "lucide-react";
+import { ArrowUpRight, AudioLines, Clock, Languages, Mic, NotebookPen, PenLine, Podcast, Waves, Scissors } from "lucide-react";
 import { fetchJSON } from "../lib/api";
 import type { Task } from "../lib/types";
 import { toolLabel } from "../lib/toolNames";
 import { Card, CardHeader, EmptyState, PageHeader, Skeleton, StatusBadge } from "../ui";
 
+const ttsFamily = ["tts", "tts_long", "tts_stream"];
+
+/** 工具入口卡：match 决定该卡认领哪些任务（计数与最近任务归属）；asr 双入口按 scene 标记拆分。 */
 const tools = [
-  { to: "/tts", name: "语音合成", desc: "同步/流式/长文本三通道，按费用选", icon: AudioLines, tool: "tts" },
-  { to: "/asr", name: "语音识别", desc: "音频转文字，分句时间戳与字幕", icon: Mic, tool: "asr" },
-  { to: "/podcast", name: "播客工坊", desc: "生成双人对话播客", icon: Podcast, tool: "podcast" },
-  { to: "/separate", name: "人声分离", desc: "人声与背景音分轨输出", icon: Waves, tool: "separate" },
-  { to: "/audio-edit", name: "音频剪辑", desc: "切割/合并/变调/调BPM查询", icon: Scissors, tool: "trim" },
-  { to: "/translate", name: "机器翻译", desc: "32 语种互译，术语定制", icon: Languages, tool: "translate" },
-  { to: "/minutes", name: "语音妙记", desc: "音视频转纪要：总结/待办/章节", icon: NotebookPen, tool: "minutes" },
+  {
+    to: "/quicknote",
+    name: "录音笔记",
+    desc: "录完即出文字稿，AI 提炼要点与待办",
+    icon: PenLine,
+    match: (t: Task) => t.tool === "asr" && t.params?.scene === "quicknote",
+  },
+  { to: "/tts", name: "语音合成", desc: "同步/流式/长文本三通道，按费用选", icon: AudioLines, match: (t: Task) => ttsFamily.includes(t.tool) },
+  { to: "/asr", name: "语音识别", desc: "音频转文字，分句时间戳与字幕", icon: Mic, match: (t: Task) => t.tool === "asr" && t.params?.scene !== "quicknote" },
+  { to: "/podcast", name: "播客工坊", desc: "生成双人对话播客", icon: Podcast, match: (t: Task) => t.tool === "podcast" },
+  { to: "/separate", name: "人声分离", desc: "人声与背景音分轨输出", icon: Waves, match: (t: Task) => t.tool === "separate" },
+  { to: "/audio-edit", name: "音频剪辑", desc: "切割/合并/变调/调BPM查询", icon: Scissors, match: (t: Task) => ["trim", "merge", "pitch", "analyze", "equalizer", "volume", "fade", "reverse"].includes(t.tool) },
+  { to: "/translate", name: "机器翻译", desc: "32 语种互译，术语定制", icon: Languages, match: (t: Task) => t.tool === "translate" },
+  { to: "/minutes", name: "语音妙记", desc: "音视频转纪要：总结/待办/章节", icon: NotebookPen, match: (t: Task) => t.tool === "minutes" },
 ];
 
 function StatTile({ label, value, hint, loading }: { label: string; value: string; hint?: string; loading?: boolean }) {
@@ -53,7 +63,7 @@ function RecentTasks({ items, loading }: { items: Task[]; loading: boolean }) {
     <ul className="divide-y divide-line">
       {items.map((t) => (
         <li key={t.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-          <span className="w-20 shrink-0 text-fg-2">{tools.find((x) => x.tool === t.tool)?.name ?? toolLabel(t.tool)}</span>
+          <span className="w-20 shrink-0 text-fg-2">{tools.find((x) => x.match(t))?.name ?? toolLabel(t.tool)}</span>
           <StatusBadge status={t.status} />
           {t.title && <span className="hidden min-w-0 max-w-40 shrink truncate text-xs sm:inline">{t.title}</span>}
           <span className="min-w-0 flex-1 truncate text-xs text-muted">{t.progress_note || t.error || "—"}</span>
@@ -113,11 +123,8 @@ export default function WorkbenchPage() {
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        {tools.map(({ to, name, desc, icon: Icon, tool }) => {
-          const ttsFamily = ["tts", "tts_long", "tts_stream"];
-          const count = items.filter((t) =>
-            tool === "tts" ? ttsFamily.includes(t.tool) : t.tool === tool,
-          ).length;
+        {tools.map(({ to, name, desc, icon: Icon, match }) => {
+          const count = items.filter(match).length;
           return (
             <Link
               key={to}

@@ -1,7 +1,7 @@
 import { RotateCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button, MicroLabel, WavePlayer } from "../ui";
-import { toolLabel, toolRoute } from "../lib/toolNames";
+import { taskLabel, toolRoute } from "../lib/toolNames";
 import { formatTime } from "../lib/player";
 import { resolvePlaySrc } from "../lib/playback";
 import { useTranscriptSync } from "../lib/useTranscriptSync";
@@ -43,9 +43,13 @@ export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelPro
   const segments = task.summary?.segments ?? [];
   const playSrc = resolvePlaySrc(task, artifacts);
   const { activeIdx, seekTo } = useTranscriptSync(segments, playSrc);
-  const params = Object.entries(task.params ?? {});
+  // scene 是录音笔记的入口标记（非用户参数），参数回显里滤掉
+  const params = Object.entries(task.params ?? {}).filter(([k]) => k !== "scene");
   const timecode = pickTimecode(segments);
-  const track = { title: `${toolLabel(task.tool)} 回放`, sub: task.id.slice(0, 8) };
+  const track = { title: `${taskLabel(task.tool, task.params)} 回放`, sub: task.id.slice(0, 8) };
+  // 录音笔记任务的「工具页」是纪要视图本身（深链恢复），其余任务回各自工具页
+  const openRoute =
+    task.tool === "asr" && task.params?.scene === "quicknote" ? `/quicknote?task=${task.id}` : toolRoute[task.tool];
 
   return (
     <div className="space-y-3">
@@ -104,9 +108,9 @@ export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelPro
         <Button variant="secondary" size="sm" icon={<RotateCw size={13} strokeWidth={1.75} />} loading={rerunPending} onClick={onRerun}>
           重跑
         </Button>
-        {toolRoute[task.tool] && (
+        {openRoute && (
           <Link
-            to={toolRoute[task.tool]}
+            to={openRoute}
             className="inline-flex items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
           >
             打开工具页
