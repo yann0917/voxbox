@@ -337,6 +337,11 @@ func TestServerConfigIncludesASREntry(t *testing.T) {
 	if p, _ := stream["path"].(string); p != asr["path"] {
 		t.Fatalf("streaming 声明应与离线条目同 gguf: %v vs %v", stream["path"], asr["path"])
 	}
+	// 未定尾窗=官方 demo 值:默认 5 会把句尾文字扣到下一句顶出,最后一句只在停止时出现
+	so, ok := stream["session_options"].(map[string]any)
+	if !ok || so["confucius4_r2t2.unfixed_token_num"] != float64(1) {
+		t.Fatalf("streaming 声明 session_options 应固定 unfixed_token_num=1: %v", stream["session_options"])
+	}
 }
 
 // startFakeOnConfigPort 从 cmd 参数解析 --config 的 server.json,按其中 host/port 起真

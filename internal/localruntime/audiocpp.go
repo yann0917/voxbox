@@ -173,11 +173,12 @@ func (t *TTSRuntime) startLocked() (string, error) {
 	// models[]:已安装的 tts/asr 条目逐个注册(family 取目录条目:index_tts2/qwen3_tts/
 	// confucius4_r2t2)。R2T2 识别与 TTS 同机制并列声明,v0.9.0 server 按 task 路由。
 	type serverModel struct {
-		ID     string `json:"id"`
-		Family string `json:"family"`
-		Path   string `json:"path"`
-		Task   string `json:"task"`
-		Mode   string `json:"mode"`
+		ID             string         `json:"id"`
+		Family         string         `json:"family"`
+		Path           string         `json:"path"`
+		Task           string         `json:"task"`
+		Mode           string         `json:"mode"`
+		SessionOptions map[string]any `json:"session_options,omitempty"`
 	}
 	var serverModels []serverModel
 	for _, e := range t.models.List() {
@@ -206,9 +207,12 @@ func (t *TTSRuntime) startLocked() (string, error) {
 		// confucius4_r2t2 支持 streaming 模式(目录 modes 含 streaming):增补一条
 		// mode:"streaming" 声明(id 加 -stream 后缀,与离线声明并存不冲突,同一 gguf)。
 		// /v1/audio/transcriptions/live 实时识别只认 streaming 声明(真机实测)。
+		// unfixed_token_num 调成官方 demo 值 1(默认 5):每步扣留的未定尾窗从 ~5 token
+		// 缩到 ~1,句尾文字不必等下一句顶出——否则最后一句的尾巴只在停止时才出现。
 		if e.Entry.Kind == "asr" && family == "confucius4_r2t2" {
 			serverModels = append(serverModels, serverModel{
 				ID: streamingASRModelID(e.Entry.ID), Family: family, Path: p, Task: task, Mode: "streaming",
+				SessionOptions: map[string]any{"confucius4_r2t2.unfixed_token_num": 1},
 			})
 		}
 	}
