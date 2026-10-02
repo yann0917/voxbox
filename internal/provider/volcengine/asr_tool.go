@@ -473,9 +473,20 @@ func audioFormatFromURL(raw string) (string, error) {
 	return "", fmt.Errorf("无法从 URL 识别音频格式（闲时版/极速版仅支持 wav/mp3/ogg/spx/amr/aac/m4a，请使用带扩展名的音频 URL）")
 }
 
-// hotwordsCorpus 把逗号/分号分隔热词打包为闲时版/极速版的 corpus.context JSON 字符串；
+// hotwordsCorpus 把逗号/分号分隔热词打包为闲时版/极速版的 corpus.context；
 // 空热词返回 nil（不携带 corpus 字段）。协议约束：corpus 与 enable_auto_lang 互斥。
 func hotwordsCorpus(hotwords string) *aucCorpus {
+	if ctx := hotwordsContextJSON(hotwords); ctx != "" {
+		return &aucCorpus{Context: ctx}
+	}
+	return nil
+}
+
+// hotwordsContextJSON 把逗号/分号分隔热词打包为 corpus.context 的 JSON 字符串形态
+// （{"hotwords":[{"word":"..."}]}，协议要求 context 为 JSON 而非纯文本），空热词返回空串。
+// 闲时/极速版（hotwordsCorpus）与实时字幕 async 会话共用；
+// 真机实测（2026-10）bigmodel_async 对纯文本 context 报 55000000 fail to unmarshal corpusCtx。
+func hotwordsContextJSON(hotwords string) string {
 	fields := strings.FieldsFunc(hotwords, func(r rune) bool {
 		return r == ',' || r == '，' || r == ';' || r == '；'
 	})
@@ -486,10 +497,10 @@ func hotwordsCorpus(hotwords string) *aucCorpus {
 		}
 	}
 	if len(words) == 0 {
-		return nil
+		return ""
 	}
 	raw, _ := json.Marshal(map[string]any{"hotwords": words})
-	return &aucCorpus{Context: string(raw)}
+	return string(raw)
 }
 
 // audioFormatOf 由扩展名推断音频格式，白名单对齐官方 bigmodel_nostream 文档的
