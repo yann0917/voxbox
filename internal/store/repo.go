@@ -48,12 +48,15 @@ func (d *DB) GetTask(id string) (*Task, error) {
 	return &t, nil
 }
 
-// ListTasks 按 provider/status 过滤分页；userID 为空=全部（admin/本地模式），
+// ListTasks 按 provider/tool/status 过滤分页；userID 为空=全部（admin/本地模式），
 // 非 admin 传自己的 id 只看自己的任务（含本地历史的空 owner 行不可见）。
-func (d *DB) ListTasks(provider string, statuses []TaskStatus, limit, offset int, userID string) ([]Task, int64, error) {
+func (d *DB) ListTasks(provider, tool string, statuses []TaskStatus, limit, offset int, userID string) ([]Task, int64, error) {
 	q := d.gorm.Model(&Task{})
 	if provider != "" {
 		q = q.Where("provider = ?", provider)
+	}
+	if tool != "" {
+		q = q.Where("tool = ?", tool)
 	}
 	if len(statuses) > 0 {
 		q = q.Where("status IN ?", statuses)

@@ -110,7 +110,7 @@ func (s *Server) listTasks(c *gin.Context) {
 	if page < 1 {
 		page = 1
 	}
-	items, total, err := s.svc.DB().ListTasks(c.Query("provider"), nil, size, (page-1)*size, uid)
+	items, total, err := s.svc.DB().ListTasks(c.Query("provider"), c.Query("tool"), nil, size, (page-1)*size, uid)
 	if err != nil {
 		failErr(c, err)
 		return

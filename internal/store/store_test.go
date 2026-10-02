@@ -59,7 +59,7 @@ func TestDeleteTaskSoft(t *testing.T) {
 	db := openTest(t)
 	_ = db.CreateTask(&Task{ID: "t1", Provider: "volcengine", Tool: "tts", Status: StatusSucceeded})
 	_ = db.CreateArtifact(&Artifact{ID: "a1", TaskID: "t1", Kind: "audio", Path: "x.mp3", CreatedAt: time.Now()})
-	items, total, err := db.ListTasks("volcengine", nil, 10, 0, "")
+	items, total, err := db.ListTasks("volcengine", "", nil, 10, 0, "")
 	if err != nil || total != 1 || len(items) != 1 {
 		t.Fatalf("list: items=%d total=%d err=%v", len(items), total, err)
 	}
@@ -70,12 +70,22 @@ func TestDeleteTaskSoft(t *testing.T) {
 	if _, err := db.GetTask("t1"); err != ErrNotFound {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
-	_, total, err = db.ListTasks("volcengine", nil, 10, 0, "")
+	_, total, err = db.ListTasks("volcengine", "", nil, 10, 0, "")
 	if err != nil || total != 0 {
 		t.Fatalf("list after delete: total=%d err=%v", total, err)
 	}
 	arts, _ := db.ListArtifacts("t1")
 	if len(arts) != 1 {
 		t.Errorf("artifacts 应随软删保留: %d", len(arts))
+	}
+}
+
+func TestListTasksToolFilter(t *testing.T) {
+	db := openTest(t)
+	_ = db.CreateTask(&Task{ID: "a1", Provider: "volcengine", Tool: "tts", Status: StatusSucceeded})
+	_ = db.CreateTask(&Task{ID: "a2", Provider: "volcengine", Tool: "asr", Status: StatusSucceeded})
+	items, total, err := db.ListTasks("", "tts", nil, 10, 0, "")
+	if err != nil || total != 1 || len(items) != 1 || items[0].ID != "a1" {
+		t.Fatalf("tool 过滤: items=%d total=%d err=%v", len(items), total, err)
 	}
 }

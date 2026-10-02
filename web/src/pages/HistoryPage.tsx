@@ -15,6 +15,7 @@ import {
   IconButton,
   Input,
   PageHeader,
+  Pagination,
   Skeleton,
   StatusBadge,
   useToast,
@@ -69,6 +70,9 @@ function Highlight({ text, q }: { text: string; q: string }) {
   return <>{parts}</>;
 }
 
+/** 历史列表每页条数（与后端 size 默认值一致） */
+const PAGE_SIZE = 20;
+
 export default function HistoryPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -81,14 +85,35 @@ export default function HistoryPage() {
     setParams(id ? { task: id } : {}, { replace: true });
   };
   const [pendingDelete, setPendingDelete] = useState<Task | null>(null);
-  const [toolFilter, setToolFilter] = useState("");
+  const [toolFilter, setToolFilterState] = useState("");
+  const [page, setPage] = useState(1);
+  // 筛选变化回第一页：服务端过滤后的页码与全量页码不可混用
+  const setToolFilter = (v: string) => {
+    setToolFilterState(v);
+    setPage(1);
+  };
   const [searchQ, setSearchQ] = useState("");
   const [searched, setSearched] = useState("");
 
   const list = useQuery({
-    queryKey: ["tasks", "history"],
-    queryFn: () => fetchJSON<{ items: Task[]; total: number }>("/api/tasks?size=50"),
+    queryKey: ["tasks", "history", toolFilter, page],
+    // 翻页/切筛选期间保留上一页数据，列表不闪骨架屏
+    placeholderData: (prev) => prev,
+    queryFn: () =>
+      fetchJSON<{ items: Task[]; total: number }>(
+        `/api/tasks?page=${page}&size=${PAGE_SIZE}${toolFilter ? `&tool=${toolFilter}` : ""}`,
+      ),
   });
+  const total = list.data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  /* 总数收缩（如末页仅剩的任务被删）把页码夹回有效范围：渲染期参照上次总数调整，
+   * 晚于数据到达一拍的状态修正不进 effect（同步 setState-in-effect 会被编译器拒优化） */
+  const [prevTotal, setPrevTotal] = useState(total);
+  if (prevTotal !== total) {
+    setPrevTotal(total);
+    if (page > pageCount) setPage(pageCount);
+  }
 
   const detail = useQuery({
     queryKey: ["task", selected],
@@ -125,8 +150,9 @@ export default function HistoryPage() {
     onError: (e: Error) => toast({ tone: "error", title: "重跑失败", description: e.message }),
   });
 
-  const items = (list.data?.items ?? []).filter((t) => !toolFilter || t.tool === toolFilter);
-  // 搜索命中但不在当前列表（超出 50 条/被筛选）的任务：点开后把详情任务置顶补进列表
+  // 类型筛选已下推服务端（/api/tasks?tool=），列表即筛选后的分页切片
+  const items = list.data?.items ?? [];
+  // 搜索命中但不在当前页的任务：点开后把详情任务置顶补进列表
   const visibleItems =
     selected && !items.some((t) => t.id === selected) && detail.data?.task?.id === selected
       ? [detail.data.task, ...items]
@@ -248,7 +274,7 @@ export default function HistoryPage() {
         <CardHeader
           title="任务列表"
           icon={<Clock size={15} strokeWidth={1.75} />}
-          aside={<span className="micro">{visibleItems.length} 条</span>}
+          aside={<span className="micro">{toolFilter ? `筛选后 ${total} 条` : `共 ${total} 条`}</span>}
         />
         {list.isLoading ? (
           <div className="space-y-2 p-4">
@@ -334,6 +360,7 @@ export default function HistoryPage() {
             ))}
           </ul>
         )}
+        <Pagination page={page} pageCount={pageCount} total={total} onChange={setPage} className="border-t border-line" />
       </Card>
 
       <ConfirmDialog

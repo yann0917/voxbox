@@ -37,7 +37,7 @@ func (s *Server) MountMCP(h http.Handler) { s.mcpHandler = h }
 
 // snapshotJSONFor 返回非终态任务快照消息（按用户收窄；空=全量，admin 用）。
 func (s *Server) snapshotJSONFor(userID string) []byte {
-	items, _, err := s.svc.DB().ListTasks("", []store.TaskStatus{store.StatusPending, store.StatusRunning}, 100, 0, userID)
+	items, _, err := s.svc.DB().ListTasks("", "", []store.TaskStatus{store.StatusPending, store.StatusRunning}, 100, 0, userID)
 	if err != nil || len(items) == 0 {
 		return nil
 	}
