@@ -746,3 +746,137 @@ func TestLiveSilenceKeepAlive(t *testing.T) {
 		t.Errorf("静音续命的正常会话不应有 degraded: %v", final)
 	}
 }
+
+// ---- 火山引擎中途故障降级(volcAsyncClient mock 注入) ----
+
+// fakeVolcAsync volcengine.ASRAsyncClient 的 mock:测试脚本驱动增量投递与终态,
+// 模拟会话中途故障(updates/done 收敛 + Wait 返回错误)。
+type fakeVolcAsync struct {
+	upd  chan volcengine.ASRAsyncUpdate
+	done chan struct{}
+
+	mu      sync.Mutex
+	waitRes volcengine.ASRAsyncResult
+	waitErr error
+}
+
+func newFakeVolcAsync() *fakeVolcAsync {
+	return &fakeVolcAsync{upd: make(chan volcengine.ASRAsyncUpdate, 4), done: make(chan struct{})}
+}
+
+func (f *fakeVolcAsync) Open(ctx context.Context) error { return nil }
+func (f *fakeVolcAsync) Send(pcm []byte) error          { return nil }
+func (f *fakeVolcAsync) Finish() error                  { return nil }
+func (f *fakeVolcAsync) Close() error                   { return nil }
+
+func (f *fakeVolcAsync) Updates() <-chan volcengine.ASRAsyncUpdate { return f.upd }
+func (f *fakeVolcAsync) Done() <-chan struct{}                     { return f.done }
+
+func (f *fakeVolcAsync) Wait(ctx context.Context) (volcengine.ASRAsyncResult, error) {
+	select {
+	case <-f.done:
+	case <-ctx.Done():
+		return volcengine.ASRAsyncResult{}, ctx.Err()
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.waitRes, f.waitErr
+}
+
+// dieAt 模拟会话中途故障(网络断流/服务端异常):置终态错误并收敛 updates/done
+// (真实读循环断链退出时的通道形状,无终帧、无二遍修正全量)。
+func (f *fakeVolcAsync) dieAt(err error) {
+	f.mu.Lock()
+	f.waitErr = err
+	f.mu.Unlock()
+	close(f.upd)
+	close(f.done)
+}
+
+// TestLiveVolcDegradedMidSession 火山会话中途故障(如 1h 会议第 50 分钟网络抖动):
+// 不再丢全部已出字——stop 后以 final{degraded:true} 降级交付(committed+unstable 拼接,
+// 时长取快照末句尾时间戳),降级文本可 save 落库,与本地引擎断流降级语义对齐。
+func TestLiveVolcDegradedMidSession(t *testing.T) {
+	ts, s, ac := newTestServer(t)
+	fc := newFakeVolcAsync()
+	eng := &volcLiveEngine{c: fc}
+	s.newLiveEngine = func(p liveControlMsg) (liveEngine, string, string, error) {
+		return eng, "volcengine", "volcengine", nil
+	}
+	ws := dialLiveWS(t, ts, sessionCookieHeader(t, ac, ts))
+	sendJSON(t, ws, `{"type":"start","engine":"volcengine"}`)
+	expectType(t, ws, "ready")
+
+	// 会话中已出字:一次增量快照(committed/unstable/segments)。
+	fc.upd <- volcengine.ASRAsyncUpdate{
+		CommittedText: "前五十分钟纪要", UnstableText: "正在说",
+		Segments: []volcengine.ASRSegment{{Text: "前五十分钟纪要", StartMS: 0, EndMS: 3000000, Speaker: "0"}},
+	}
+	if p := expectType(t, ws, "partial"); p["committed"] != "前五十分钟纪要" {
+		t.Fatalf("partial = %v", p)
+	}
+
+	// 中途故障:客户端读循环断链。
+	fc.dieAt(fmt.Errorf("读取火山实时识别响应失败: connection reset"))
+
+	// stop 受理(会话已死,终止帧无从发送的错误须被容忍)→ 降级 final 而非 error 断连。
+	sendJSON(t, ws, `{"type":"stop"}`)
+	final := expectTypeSkip(t, ws, "final", "partial")
+	if final["text"] != "前五十分钟纪要正在说" || final["degraded"] != true {
+		t.Fatalf("final = %v, want degraded 降级交付已出字(不丢文本)", final)
+	}
+	if final["duration_ms"].(float64) != 3000000 {
+		t.Errorf("duration_ms = %v, want 3000000(快照末句尾时间戳)", final["duration_ms"])
+	}
+
+	// 降级文本可 save:任务落库,Summary 留 degraded 痕,txt 产物=拼接全量。
+	sendJSON(t, ws, `{"type":"save"}`)
+	saved := expectType(t, ws, "saved")
+	id, _ := saved["task_id"].(string)
+	tk, err := s.svc.DB().GetTask(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var summary map[string]any
+	_ = json.Unmarshal([]byte(tk.Summary), &summary)
+	if summary["degraded"] != true {
+		t.Errorf("summary = %v(降级应留痕)", summary)
+	}
+	if segs, _ := summary["segments"].([]any); len(segs) != 1 {
+		t.Errorf("summary.segments = %v(降级快照分句应保留)", summary["segments"])
+	}
+	arts, _ := s.svc.DB().ListArtifacts(id)
+	var txt string
+	for _, a := range arts {
+		if a.Kind == "transcript" {
+			raw, err := os.ReadFile(filepath.Join(s.svc.Config().DataDir, a.Path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			txt = string(raw)
+		}
+	}
+	if txt != "前五十分钟纪要正在说" {
+		t.Errorf("txt 产物 = %q", txt)
+	}
+}
+
+// TestLiveVolcZeroTextFailureError 零文本故障(未出任何字即断流):仍以 error 收束
+// (零内容无保存价值,不造 degraded 空结果),连接关闭、前端重连开新会话。
+func TestLiveVolcZeroTextFailureError(t *testing.T) {
+	ts, s, ac := newTestServer(t)
+	fc := newFakeVolcAsync()
+	eng := &volcLiveEngine{c: fc}
+	s.newLiveEngine = func(p liveControlMsg) (liveEngine, string, string, error) {
+		return eng, "volcengine", "volcengine", nil
+	}
+	ws := dialLiveWS(t, ts, sessionCookieHeader(t, ac, ts))
+	sendJSON(t, ws, `{"type":"start","engine":"volcengine"}`)
+	expectType(t, ws, "ready")
+
+	fc.dieAt(fmt.Errorf("读取火山实时识别响应失败: boom"))
+	m := expectType(t, ws, "error")
+	if !strings.Contains(m["message"].(string), "实时识别会话结束") {
+		t.Errorf("error = %v(零文本错误应照常透传)", m)
+	}
+}

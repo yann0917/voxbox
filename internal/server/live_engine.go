@@ -52,9 +52,27 @@ type liveEngine interface {
 	Close() error
 }
 
+// volcAsyncClient volcLiveEngine 依赖的底层客户端能力面(生产=volcengine.ASRAsyncClient,
+// 测试注入 mock;方法与 ASRAsyncClient 公开面一一对应)。
+type volcAsyncClient interface {
+	Open(ctx context.Context) error
+	Send(pcm []byte) error
+	Finish() error
+	Updates() <-chan volcengine.ASRAsyncUpdate
+	Done() <-chan struct{}
+	Wait(ctx context.Context) (volcengine.ASRAsyncResult, error)
+	Close() error
+}
+
 // volcLiveEngine 火山 bigmodel_async 适配:增量快照与终态直映射(字段一一对应)。
+// 会话中途故障(网络抖动/服务端断流)降级交付:Updates 泵留存最后一次增量快照,
+// Wait 出错但快照已有文本即改投 final{degraded:true}(可保存),与本地引擎断流降级
+// 语义对齐;零文本错误才透传(relay 走 error 帧)。
 type volcLiveEngine struct {
-	c *volcengine.ASRAsyncClient
+	c volcAsyncClient
+
+	mu       sync.Mutex
+	snapshot liveUpdate // 最后一次增量快照(泵留存,中途故障降级用)
 }
 
 func newVolcLiveEngine(cred volcengine.SpeechCred, opts volcengine.ASRAsyncOptions) *volcLiveEngine {
@@ -63,18 +81,37 @@ func newVolcLiveEngine(cred volcengine.SpeechCred, opts volcengine.ASRAsyncOptio
 
 func (e *volcLiveEngine) Open(ctx context.Context) error { return e.c.Open(ctx) }
 func (e *volcLiveEngine) Send(pcm []byte) error          { return e.c.Send(pcm) }
-func (e *volcLiveEngine) Finish() error                  { return e.c.Finish() }
-func (e *volcLiveEngine) Close() error                   { return e.c.Close() }
+
+// Finish 结束音频输入。会话已中途终止(网络断流等)时终止帧无从发送(底层报「已终止」),
+// 按已受理处理返回 nil:终态将经 Wait 以降级快照交付,relay 的 stop→final→save 链路不受阻;
+// 会话仍存活时的真实写失败照常透传(stop 可重试)。
+func (e *volcLiveEngine) Finish() error {
+	if err := e.c.Finish(); err != nil {
+		select {
+		case <-e.c.Done(): // 会话已终(中途故障):错误视为已受理
+			return nil
+		default:
+		}
+		return err
+	}
+	return nil
+}
+func (e *volcLiveEngine) Close() error { return e.c.Close() }
 
 // Updates 转发增量快照(独立 goroutine + 缓冲通道:与底层客户端的背压通道解耦,
 // 消费方停读时逐级背压至火山服务端,不丢弃;会话终止经 Done 解除转发阻塞防泄漏)。
+// 泵同时留存最后一次快照:中途故障时 Wait 据此降级交付。
 func (e *volcLiveEngine) Updates() <-chan liveUpdate {
 	out := make(chan liveUpdate, 16)
 	go func() {
 		defer close(out)
 		for u := range e.c.Updates() {
+			lu := volcUpdateToLive(u)
+			e.mu.Lock()
+			e.snapshot = lu
+			e.mu.Unlock()
 			select {
-			case out <- volcUpdateToLive(u):
+			case out <- lu:
 			case <-e.c.Done():
 				return
 			}
@@ -86,9 +123,32 @@ func (e *volcLiveEngine) Updates() <-chan liveUpdate {
 func (e *volcLiveEngine) Wait(ctx context.Context) (liveResult, error) {
 	r, err := e.c.Wait(ctx)
 	if err != nil {
+		// 中途故障降级:已有识别文本(最后增量快照)即不投 error,改投 degraded final
+		// ——1h 会议第 50 分钟断流仍可保存前 50 分钟(与本地引擎 finishWith 语义对齐,
+		// 协议零改动);零文本错误照常透传(零内容无保存价值,relay 走 error 帧)。
+		e.mu.Lock()
+		snap := e.snapshot
+		e.mu.Unlock()
+		if txt := snap.Committed + snap.Unstable; txt != "" {
+			return liveResult{
+				Text:       txt,
+				DurationMS: volcSnapshotDurationMS(snap),
+				Segments:   snap.Segments,
+				Degraded:   true,
+			}, nil
+		}
 		return liveResult{}, err
 	}
 	return liveResult{Text: r.Text, DurationMS: r.DurationMS, Segments: volcSegmentsToLive(r.Segments)}, nil
+}
+
+// volcSnapshotDurationMS 降级交付的时长口径:无服务端 audio_info,取快照分句末句的
+// 尾时间戳(已提交内容的音频覆盖范围);仅 unstable 无分句时计 0。
+func volcSnapshotDurationMS(snap liveUpdate) int64 {
+	if n := len(snap.Segments); n > 0 {
+		return snap.Segments[n-1].EndMS
+	}
+	return 0
 }
 
 func volcUpdateToLive(u volcengine.ASRAsyncUpdate) liveUpdate {

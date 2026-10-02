@@ -576,8 +576,10 @@ func TestASRAsyncCloseUnblocksBackpressure(t *testing.T) {
 	}
 }
 
-// TestSmokeASRAsyncLive 真机冒烟（实时字幕硬验收）：需本机 ~/.voxbox/config.yaml 配置火山语音
-// 凭据与冒烟样本，无凭据/样本自动跳过，不进 CI。按实时节奏（200ms/包）喂入双人样本：
+// TestSmokeASRAsyncLive 真机冒烟（实时字幕硬验收）：VOXBOX_LIVE_SMOKE=volc 显式启用
+// （缺省 t.Skip——会话按时长计费，不门控则本机有凭据时每次 go test 都会真打 2 次计费
+// ASR 会话，与 internal/server 侧冒烟门控统一），无凭据/样本亦自动跳过，不进 CI。
+// 按实时节奏（200ms/包）喂入双人样本：
 //   - 会话 1：说话人分离开——断言增量回调多次、definite 分句出现、speaker 字段（additions 兜底）、
 //     Finish 后全量文本合理；
 //   - 会话 2（对照）：热词（样本中真实出现的「开会」）+ enable_nonstream 默认开——断言会话成功、
@@ -585,6 +587,9 @@ func TestASRAsyncCloseUnblocksBackpressure(t *testing.T) {
 //
 // 实时节奏耗时 ≈ 音频时长（样本 ≤30s），两会话约 2×样本时长 + 尾部处理。
 func TestSmokeASRAsyncLive(t *testing.T) {
+	if os.Getenv("VOXBOX_LIVE_SMOKE") != "volc" {
+		t.Skip("设 VOXBOX_LIVE_SMOKE=volc 启用真机冒烟（产生计费 ASR 会话，缺省跳过）")
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		t.Skipf("读取本机配置失败，跳过真机冒烟: %v", err)

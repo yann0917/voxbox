@@ -19,10 +19,12 @@
 //	  {"type":"final","text":"…","duration_ms":n,"segments"?,"degraded":true?}
 //	                                                             全量结果(stop 后二遍修正/本地 done);
 //	                                                             degraded=true=会话异常中断但已保留部分文本
-//	                                                             (仅本地引擎断流降级,内容可保存但可能不完整)
+//	                                                             (本地断流与火山中途故障降级,内容可保存但可能不完整)
 //	  {"type":"saved","task_id":"<uuid>"}                        已存任务(可多次 save,各生成新任务)
-//	  {"type":"error","message":"…"}                             错误;未终止的会话随之结束,
-//	                                                             客户端回到可重新 start 的状态
+//	  {"type":"error","message":"…"}                             错误;连接去留视阶段:start 构造/建立失败
+//	                                                             与音频推送失败保留连接(可重试 start /
+//	                                                             stop→save 降级),会话开启后的引擎终态
+//	                                                             错误才终止连接关闭(前端重连开新会话)
 //
 // 一条连接一次会话:start→音频→stop→final→(save)*;再次 start 视为协议错误(前端重连开新会话)。
 //
@@ -99,8 +101,9 @@ type liveErrorMsg struct {
 }
 
 // liveConnState 会话状态机:idle →(start)streaming →(stop)finishing →(final)final。
-// error 后:会话中→idle(可重新 start 同连接?否——一连接一次会话,前端重连);
-// 实现上 error 即终止连接关闭(简单可靠,前端按断连处理)。
+// error 后连接去留视阶段(与头部协议注释一致):start 构造/建立失败与音频推送失败保留
+// 连接(可重试 start / stop→save 降级保存);会话开启后的引擎终态错误才终止连接关闭
+// (前端按断连处理,重连开新会话)。
 type liveConnState int
 
 const (
@@ -135,12 +138,16 @@ type liveFinal struct {
 // serveLiveConn 单连接生命周期:读泵喂消息、引擎泵转播增量、主循环状态机收束。
 func (s *Server) serveLiveConn(conn *websocket.Conn, userID string) {
 	var (
-		send     = make(chan []byte, 64)
-		msgs     = make(chan liveInMsg, 16)
-		finalCh  = make(chan liveFinal, 1)
-		readDone = make(chan struct{}) // 读 goroutine 退出(连接已死)
+		send      = make(chan []byte, 64)
+		msgs      = make(chan liveInMsg, 16)
+		finalCh   = make(chan liveFinal, 1)
+		readDone  = make(chan struct{}) // 读 goroutine 退出(连接已死)
+		writeDone = make(chan struct{}) // 写泵退出(残余帧已排空)
 	)
-	go liveWritePump(conn, send)
+	go func() {
+		defer close(writeDone)
+		liveWritePump(conn, send)
+	}()
 	go liveReadPump(conn, msgs, readDone)
 
 	var (
@@ -164,6 +171,7 @@ func (s *Server) serveLiveConn(conn *websocket.Conn, userID string) {
 		}
 		wg.Wait()
 		close(send)
+		<-writeDone // 写泵排空残余帧(终态 error/final)后再关连接,防帧丢失
 		_ = conn.Close()
 	}()
 

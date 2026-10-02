@@ -113,9 +113,12 @@ export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelPro
 
       {/* 操作 */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" size="sm" icon={<RotateCw size={13} strokeWidth={1.75} />} loading={rerunPending} onClick={onRerun}>
-          重跑
-        </Button>
+        {/* live 任务无输入文件,重跑必失败——隐藏重跑入口 */}
+        {task.params?.version !== "live" && (
+          <Button variant="secondary" size="sm" icon={<RotateCw size={13} strokeWidth={1.75} />} loading={rerunPending} onClick={onRerun}>
+            重跑
+          </Button>
+        )}
         {toolRoute[task.tool] && (
           <Link
             to={toolRoute[task.tool]}

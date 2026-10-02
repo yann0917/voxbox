@@ -424,6 +424,10 @@ export default function LivePage() {
             )}
 
             <div className="flex flex-col items-center gap-2 border-t border-line pt-4">
+              {/* 开始前计费预告（会话中的同款提示在下方另行展示） */}
+              {engine === "volcengine" && phase === "idle" && (
+                <p className="text-center text-[11px] text-muted">实时识别约 1 元/小时，按音频时长计费</p>
+              )}
               <button
                 type="button"
                 aria-label={live ? "停止" : "开始"}
