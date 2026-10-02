@@ -24,13 +24,17 @@ export interface LiveCaptureSession {
 export type CaptureMode = "worklet" | "script";
 
 /** 特性检测：getUserMedia + 音频图 + 至少一种处理器可用。
- *  非安全上下文（http 非 localhost）下没有 mediaDevices，一并归入不支持。 */
+ *  非安全上下文（http 非 localhost）下没有 mediaDevices，一并归入不支持。
+ *  注意：不要探测 AudioContext.prototype.audioWorklet——它是带 brand check 的
+ *  IDL 访问器，Chrome/Edge 对非实例取值直接抛 Illegal invocation（2026-10-02
+ *  线上事故）；AudioWorkletNode 全局存在即视为 worklet 可用，实例化后
+ *  addModule 失败仍有 ScriptProcessor 降级兜底。 */
 export function captureSupport(): { ok: boolean; mode: CaptureMode | null } {
   if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     return { ok: false, mode: null };
   }
   if (typeof AudioContext === "undefined") return { ok: false, mode: null };
-  if (typeof AudioWorkletNode !== "undefined" && AudioContext.prototype.audioWorklet) {
+  if (typeof AudioWorkletNode !== "undefined") {
     return { ok: true, mode: "worklet" };
   }
   if (typeof AudioContext.prototype.createScriptProcessor === "function") {
