@@ -58,11 +58,8 @@ export default function AboutPage() {
         <CardBody className="space-y-3">
           <p className="text-sm leading-relaxed text-fg">
             voxbox 是一套个人自用的多媒体 AI 工具箱：单个 Go 二进制，既是命令行工具也是 Web 控制台（另有双击即用的桌面应用）。
-            它把五家语音平台的 AI 能力装进同一个任务引擎——火山引擎豆包语音的八项能力为主干，
-            另接千问平台（qwen3-tts 合成 / qwen3-asr 文件转写）、小米 MiMo（MiMo-V2.5-TTS 合成 / mimo-v2.5-asr 同步转写）、
-            智谱（glm-tts 合成 / glm-asr 短音频转写）与 OpenRouter（Gemini TTS 合成，经 openrouter.ai 网关）作为备用引擎；
-            不配云端凭证也能离线跑：设置页「本地环境」可下载 Qwen3-TTS、IndexTTS 2.5、Kokoro、Chatterbox、
-            VoxCPM2 与 SenseVoice 本地推理引擎。
+            五家云端语音平台与本地离线推理装进同一个任务引擎——火山引擎豆包语音八项能力为主干，
+            千问 / 小米 / 智谱 / OpenRouter 作备选，不配云端凭证也能在设置页下载模型离线跑。
             提交任务、实时进度、产物落盘、任务记录可溯，面向配音、转写、播客、会议纪要、翻译等日常内容生产场景。
           </p>
           <p className="text-sm leading-relaxed text-fg-2">
