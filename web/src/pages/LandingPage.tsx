@@ -12,7 +12,7 @@ import {
   Waves,
   Wrench,
 } from "lucide-react";
-import { Button } from "../ui";
+import { Button, WavePlayer } from "../ui";
 
 /** 能力矩阵（与控制台导航同序同义，公开页只做介绍不拉数据）。 */
 const CAPABILITIES = [
@@ -51,6 +51,15 @@ voxbox tts "你好世界" --voice zh_female_roushunvsheng`,
   },
 ];
 
+/** Hero 演示：内置一段真实合成产物（public/demo-zh.mp3，本地引擎生成），播放由全局播放器驱动——
+ *  波形只在播放时推进，暂停即静，不做无语义的永动律动。 */
+const DEMO = {
+  src: "/demo-zh.mp3",
+  title: "语音合成演示",
+  durationSec: 8.85,
+  text: "你好，我是 voxbox 合成的声音。选好音色，粘贴文案，几秒钟，就能生成这样一段自然的语音。",
+};
+
 /** 产品展示页（公开路由 /）：介绍能力与接入方式，登录入口在右上角。 */
 export default function LandingPage() {
   return (
@@ -81,18 +90,24 @@ export default function LandingPage() {
           style={{ background: "radial-gradient(60% 100% at 50% 0%, color-mix(in oklab, var(--accent) 13%, transparent), transparent)" }}
         />
         <div className="mx-auto max-w-[1100px] px-4 py-20 md:px-8 md:py-28">
-          <p className="micro mb-4 text-accent">一键部署 · 免装环境 · 数据自有</p>
-          <h1 className="max-w-3xl text-3xl font-semibold leading-tight tracking-tight md:text-5xl md:leading-[1.15]">
+          <p className="micro rise mb-4 text-accent">一键部署 · 免装环境 · 数据自有</p>
+          <h1
+            className="rise max-w-3xl text-3xl font-semibold leading-tight tracking-tight md:text-5xl md:leading-[1.15]"
+            style={{ animationDelay: "60ms" }}
+          >
             多引擎语音工具箱，
             <br />
             自托管，开箱即用
           </h1>
-          <p className="mt-5 max-w-2xl text-sm leading-relaxed text-fg-2 md:text-base">
+          <p
+            className="rise mt-5 max-w-2xl text-sm leading-relaxed text-fg-2 md:text-base"
+            style={{ animationDelay: "120ms" }}
+          >
             合成、识别、分离、翻译、妙记、字幕——火山引擎与千问平台双云端引擎，加上本地 ffmpeg
             音频处理，组成一套完整的自托管工作台。一份程序跑在服务器或本机，任务引擎与产物全在你的磁盘上，Agent
             经 MCP 直接调用。
           </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
+          <div className="rise mt-8 flex flex-wrap items-center gap-3" style={{ animationDelay: "180ms" }}>
             <Link to="/workbench">
               <Button>进入控制台</Button>
             </Link>
@@ -100,7 +115,15 @@ export default function LandingPage() {
               <Button variant="secondary">查看接入方式</Button>
             </a>
           </div>
-          <dl className="mt-12 grid max-w-2xl grid-cols-3 gap-6">
+          {/* 真实产物试听：波形播放器就是控制台里的同一套体验 */}
+          <figure className="rise mt-10 max-w-2xl rounded-[var(--radius-md)] border border-line bg-raise p-4" style={{ animationDelay: "240ms" }}>
+            <p className="micro text-muted">VOICE DEMO</p>
+            <blockquote className="mt-2 text-sm leading-relaxed text-fg">「{DEMO.text}」</blockquote>
+            <figcaption className="mt-3">
+              <WavePlayer src={DEMO.src} title={DEMO.title} durationSec={DEMO.durationSec} />
+            </figcaption>
+          </figure>
+          <dl className="rise mt-10 grid max-w-2xl grid-cols-3 gap-6" style={{ animationDelay: "300ms" }}>
             {[
               ["35", "内置工具"],
               ["3", "调用入口 Web / CLI / MCP"],
