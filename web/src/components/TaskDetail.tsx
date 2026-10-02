@@ -42,6 +42,11 @@ function pickTimecode(segments: { start_ms: number; end_ms: number }[]): (ms: nu
 export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelProps) {
   const { task, artifacts } = d;
   const segments = task.summary?.segments ?? [];
+  // 无 segments 的纯文本识别（本地 R2T2 / 智谱）：纪要区以 Summary.text 兜底——
+  // 以单段全文喂问答上下文（无时间戳，引用 chip 最多回跳起点），说话人区自动隐藏
+  const fullText = task.summary?.text?.trim() ?? "";
+  const notebookSegments =
+    segments.length > 0 ? segments : fullText ? [{ text: fullText, start_ms: 0, end_ms: 0 }] : [];
   const playSrc = resolvePlaySrc(task, artifacts);
   const { activeIdx, seekTo } = useTranscriptSync(segments, playSrc);
   const params = Object.entries(task.params ?? {});
@@ -91,10 +96,10 @@ export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelPro
         </div>
       )}
 
-      {/* 纪要区（ASR 且有分句时）：说话人改名统计 + AI 提炼 + 就稿问答，引用 chip 复用同一跳播。
-          key=任务 id：切换任务即重置改名/加工/问答的本会话状态 */}
-      {task.tool === "asr" && segments.length > 0 && (
-        <NotebookSection key={task.id} task={task} segments={segments} onSeek={playSrc ? (ms) => seekTo(ms, track) : undefined} />
+      {/* 纪要区（ASR 且有转写内容时）：说话人改名统计 + AI 提炼 + 就稿问答，引用 chip 复用同一跳播。
+          无 segments 的纯文本任务以 Summary.text 兜底成单段。key=任务 id：切换任务即重置改名/加工/问答的本会话状态 */}
+      {task.tool === "asr" && notebookSegments.length > 0 && (
+        <NotebookSection key={task.id} task={task} segments={notebookSegments} onSeek={playSrc ? (ms) => seekTo(ms, track) : undefined} />
       )}
 
       {/* 产物 */}

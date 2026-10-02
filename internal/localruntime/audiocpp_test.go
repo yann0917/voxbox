@@ -357,6 +357,135 @@ func startFakeOnConfigPort(t *testing.T, cmd *exec.Cmd) error {
 	return nil
 }
 
+// fakeTranscribeServer 假 audiocpp_server 转写面:/health 恒就绪;/v1/audio/transcriptions
+// 捕获 JSON 请求体并回 plain 路由实测形态(仅 text+timing,无 language/segments)。
+func fakeTranscribeServer(t *testing.T, captured *atomic.Value, status int) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	})
+	mux.HandleFunc("/v1/audio/transcriptions", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if captured != nil {
+			captured.Store(body)
+		}
+		if status != 200 {
+			http.Error(w, "model not found", status)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"text":   "你好世界",
+			"timing": map[string]any{"wall_ms": 1137.59, "audio_duration_ms": 8624.12, "rtf": 0.131908},
+		})
+	})
+	return httptest.NewServer(mux)
+}
+
+// TestTranscribeViaBaseURL 转写 JSON 分支:请求体 {model, audio(本地路径直读), text(热词)},
+// 响应 text+timing 映射到 TranscribeResult。
+func TestTranscribeViaBaseURL(t *testing.T) {
+	var captured atomic.Value
+	srv := fakeTranscribeServer(t, &captured, 200)
+	defer srv.Close()
+
+	rt := NewTTSRuntime(t.TempDir(), nil) // models 传 nil:BaseURL seam 下不查安装态
+	rt.BaseURL = srv.URL
+	defer rt.Close()
+
+	res, err := rt.Transcribe(context.Background(), TranscribeRequest{
+		ModelID: "r2t2-q8_0", Wav: "/tmp/in.wav", Hotwords: "voxbox,人工智能",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Text != "你好世界" || res.Timing.WallMS != 1137.59 ||
+		res.Timing.AudioDurationMS != 8624.12 || res.Timing.RTF != 0.131908 {
+		t.Fatalf("响应映射不符: %+v", res)
+	}
+	req := captured.Load().(map[string]any)
+	if req["model"] != "r2t2-q8_0" || req["audio"] != "/tmp/in.wav" {
+		t.Fatalf("请求体 model/audio 不符: %v", req)
+	}
+	// 热词/上下文经 JSON text 字段透传(v0.9.0 实测:JSON 分支无 prompt 字段)
+	if req["text"] != "voxbox,人工智能" {
+		t.Fatalf("热词应经 text 字段透传: %v", req)
+	}
+}
+
+// TestTranscribeHotwordsOmitted 热词为空时请求体不携带 text 键(不透传空串)。
+func TestTranscribeHotwordsOmitted(t *testing.T) {
+	var captured atomic.Value
+	srv := fakeTranscribeServer(t, &captured, 200)
+	defer srv.Close()
+	rt := NewTTSRuntime(t.TempDir(), nil)
+	rt.BaseURL = srv.URL
+	defer rt.Close()
+	if _, err := rt.Transcribe(context.Background(), TranscribeRequest{
+		ModelID: "r2t2-q8_0", Wav: "/tmp/in.wav",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	req := captured.Load().(map[string]any)
+	if _, exists := req["text"]; exists {
+		t.Fatalf("热词为空不应携带 text 键: %v", req)
+	}
+	if _, exists := req["language"]; exists {
+		t.Fatalf("语种为空(自动检测)不应携带 language 键: %v", req)
+	}
+}
+
+// TestTranscribeLanguagePassthrough 强制语种经 JSON language 字段透传(实测:zh 强制
+// 普通话、未知码 server 500 直述;空=自动检测不透传)。
+func TestTranscribeLanguagePassthrough(t *testing.T) {
+	var captured atomic.Value
+	srv := fakeTranscribeServer(t, &captured, 200)
+	defer srv.Close()
+	rt := NewTTSRuntime(t.TempDir(), nil)
+	rt.BaseURL = srv.URL
+	defer rt.Close()
+	if _, err := rt.Transcribe(context.Background(), TranscribeRequest{
+		ModelID: "r2t2-q8_0", Wav: "/tmp/in.wav", Language: "zh",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	req := captured.Load().(map[string]any)
+	if req["language"] != "zh" {
+		t.Fatalf("强制语种应经 language 字段透传: %v", req)
+	}
+}
+
+// TestTranscribeErrorStatus 非 200 响应错误透传(HTTP 状态码直述)。
+func TestTranscribeErrorStatus(t *testing.T) {
+	srv := fakeTranscribeServer(t, nil, 500)
+	defer srv.Close()
+	rt := NewTTSRuntime(t.TempDir(), nil)
+	rt.BaseURL = srv.URL
+	defer rt.Close()
+	_, err := rt.Transcribe(context.Background(), TranscribeRequest{ModelID: "r2t2-q8_0", Wav: "/tmp/in.wav"})
+	if err == nil || !strings.Contains(err.Error(), "500") {
+		t.Fatalf("非 200 应透传错误: %v", err)
+	}
+}
+
+// TestTranscribeInstalledGuard models 注入时未安装模型前置拦截(与 Synthesize 同款防御)。
+func TestTranscribeInstalledGuard(t *testing.T) {
+	var captured atomic.Value
+	srv := fakeTranscribeServer(t, &captured, 200)
+	defer srv.Close()
+	dir := t.TempDir()
+	rt := NewTTSRuntime(dir, seedTTSManager(t, dir))
+	rt.BaseURL = srv.URL
+	defer rt.Close()
+	if _, err := rt.Transcribe(context.Background(), TranscribeRequest{ModelID: "r2t2-q8_0", Wav: "/tmp/in.wav"}); err == nil {
+		t.Fatal("模型未安装应报错")
+	}
+	if captured.Load() != nil {
+		t.Fatal("未安装模型不应发起转写请求")
+	}
+}
+
 // TestEnsureHealthRestartAfterCrash 崩溃自愈:进程退出标志置位后,ensureHealth 轮询中
 // 触发恰好一次重建(每任务至多一次),重建后 /health 就绪即成功。
 func TestEnsureHealthRestartAfterCrash(t *testing.T) {

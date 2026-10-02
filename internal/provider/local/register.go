@@ -14,7 +14,7 @@ import (
 func AllTools(dataDir string, models *localmodel.Manager, tts *localruntime.TTSRuntime, voices *voicelib.Library) []provider.Tool {
 	return []provider.Tool{
 		newTTSTool(dataDir, models, tts, voices),
-		newASRTool(dataDir, models),
+		newASRTool(dataDir, models, tts),
 	}
 }
 

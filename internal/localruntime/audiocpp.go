@@ -334,6 +334,67 @@ func (t *TTSRuntime) Synthesize(ctx context.Context, req SynthRequest, report fu
 	return final, nil
 }
 
+// TranscribeRequest 一次识别请求(与 audiocpp_server /v1/audio/transcriptions JSON 分支对齐)。
+type TranscribeRequest struct {
+	ModelID  string // 已安装的 asr 条目 id(如 r2t2-q8_0;与 server.json models[].id 一致)
+	Wav      string // 本地 wav 绝对路径(server 同机直读文件,无需 base64)
+	Hotwords string // 热词/上下文:经 JSON text 字段透传(v0.9.0 实测 JSON 分支无 prompt 字段)
+	Language string // 强制语种码:经 JSON language 透传;空=语种自动检测(缺省,不透传)
+}
+
+// TranscribeTiming plain 转写路由的耗时面(v0.9.0 实测)。
+type TranscribeTiming struct {
+	WallMS          float64 `json:"wall_ms"`
+	AudioDurationMS float64 `json:"audio_duration_ms"`
+	RTF             float64 `json:"rtf"`
+}
+
+// TranscribeResult /v1/audio/transcriptions plain 路由的解析结果。实测响应仅 text+timing
+// 两键:无 language(language 在 details 路由)、无 segments(R2T2 无时间戳,预期形态)。
+type TranscribeResult struct {
+	Text   string           `json:"text"`
+	Timing TranscribeTiming `json:"timing"`
+}
+
+// Transcribe 本地识别:复用 audiocpp_server 常驻进程(与 Synthesize 同一 server 实例/
+// lazy_load/健康检查/崩溃自愈),POST /v1/audio/transcriptions JSON 分支,audio 传本机
+// wav 绝对路径由 server 直读。语种缺省自动检测(Language 空);强制语种仅显式传入时透传。
+func (t *TTSRuntime) Transcribe(ctx context.Context, req TranscribeRequest) (TranscribeResult, error) {
+	var out TranscribeResult
+	base, err := t.ensureHealth(ctx)
+	if err != nil {
+		return out, err
+	}
+	if t.models != nil && !t.models.Installed(req.ModelID) {
+		return out, fmt.Errorf("本地模型未安装: %s,请到设置页下载", req.ModelID)
+	}
+	payload := map[string]any{"model": req.ModelID, "audio": req.Wav}
+	if req.Hotwords != "" {
+		payload["text"] = req.Hotwords // 热词/上下文字段实测为 text(multipart 的 prompt 同映射)
+	}
+	if req.Language != "" {
+		payload["language"] = req.Language // 强制语种;未知码由 server 直述(实测 500 透传错误)
+	}
+	body, _ := json.Marshal(payload)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/audio/transcriptions", bytes.NewReader(body))
+	if err != nil {
+		return out, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return out, fmt.Errorf("本地识别请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return out, fmt.Errorf("本地识别引擎响应异常: HTTP %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return out, fmt.Errorf("本地识别引擎响应无法解析: %w", err)
+	}
+	return out, nil
+}
+
 func freePort() (int, error) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

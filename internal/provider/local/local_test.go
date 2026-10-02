@@ -62,7 +62,7 @@ func TestTTSModeModelMismatch(t *testing.T) {
 
 func TestASRRequiresInstallations(t *testing.T) {
 	_, m := newTestPkg(t)
-	asr := newASRTool(t.TempDir(), m)
+	asr := newASRTool(t.TempDir(), m, nil)
 	if _, err := asr.Run(context.Background(), provider.TaskInput{
 		Params: map[string]any{"language": "auto", "itn": true},
 		Files:  map[string]string{"audio": "in.wav"},
@@ -135,7 +135,7 @@ func TestASRHappyPath(t *testing.T) {
 	if err := os.WriteFile(wav, []byte("RIFF"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	asr := newASRTool(dataDir, m)
+	asr := newASRTool(dataDir, m, nil)
 	const text = "今天天气不错"
 	asr.transcribeFn = func(ctx context.Context, binPath, modelDir, wavPath, language string, itn bool) (localruntime.SherpaResult, error) {
 		if filepath.Base(binPath) != "sherpa-onnx-offline" {
@@ -697,7 +697,7 @@ func TestASRProducesSegments(t *testing.T) {
 	if err := os.WriteFile(wav, []byte("RIFF"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	asr := newASRTool(dataDir, m)
+	asr := newASRTool(dataDir, m, nil)
 	asr.transcribeFn = func(ctx context.Context, binPath, modelDir, wavPath, language string, itn bool) (localruntime.SherpaResult, error) {
 		return localruntime.SherpaResult{
 			Text:       "你好，世界！好",
@@ -756,7 +756,7 @@ func TestASRTranscodesNonWav(t *testing.T) {
 	if err := os.WriteFile(mp3, []byte("FAKE_MP3"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	asr := newASRTool(dataDir, m)
+	asr := newASRTool(dataDir, m, nil)
 	var gotWav string
 	// lookPath 必须注入:CI runner 无 ffmpeg,不注入会先死在环境探测上
 	// (缺 ffmpeg 分支由 TestASRTranscodeNeedsFFmpeg 显式覆盖)
@@ -805,7 +805,7 @@ func TestASRWavPassthrough(t *testing.T) {
 	if err := os.WriteFile(wav, []byte("RIFF"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	asr := newASRTool(dataDir, m)
+	asr := newASRTool(dataDir, m, nil)
 	asr.transcodeFn = func(ctx context.Context, src, dst string) error {
 		t.Errorf("wav 输入不应触发转码: %q", src)
 		return nil
@@ -832,13 +832,237 @@ func TestASRTranscodeNeedsFFmpeg(t *testing.T) {
 	if err := os.WriteFile(mp3, []byte("FAKE_MP3"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	asr := newASRTool(dataDir, m)
+	asr := newASRTool(dataDir, m, nil)
 	asr.lookPath = func(string) (string, error) { return "", fmt.Errorf("not found") }
 	_, err := asr.Run(context.Background(), provider.TaskInput{
 		Files: map[string]string{"audio": mp3},
 	}, func(p int, note string, d map[string]any) {})
 	if err == nil || !strings.Contains(err.Error(), "ffmpeg") {
 		t.Fatalf("缺 ffmpeg 应直述: %v", err)
+	}
+}
+
+// —— R2T2(audiocpp)双路径路由:params.model 缺省回落 sherpa 原路径,条目 requires_engine 分流 ——
+
+// TestASRDefaultModelRoutesSherpa 无 model 参数(旧任务重跑)必须走 sherpa 原路径:
+// transcribeFn 触达,audiocpp seam 不触达,artifact/summary 与既有形态一致。
+func TestASRDefaultModelRoutesSherpa(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedEngine(t, dataDir, m, "sherpa-onnx", "sherpa-onnx-offline")
+	seedModelFile(t, dataDir, m, "sensevoice-int8", "model.int8.onnx")
+	wav := filepath.Join(dataDir, "in.wav")
+	if err := os.WriteFile(wav, []byte("RIFF"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	asr := newASRTool(dataDir, m, nil)
+	asr.transcribeAIFn = func(ctx context.Context, req localruntime.TranscribeRequest) (localruntime.TranscribeResult, error) {
+		t.Errorf("缺省不得走 audiocpp 路径: %+v", req)
+		return localruntime.TranscribeResult{}, fmt.Errorf("不应到达")
+	}
+	asr.transcribeFn = func(ctx context.Context, binPath, modelDir, wavPath, language string, itn bool) (localruntime.SherpaResult, error) {
+		return localruntime.SherpaResult{Text: "你好"}, nil
+	}
+	out, err := asr.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"language": "zh", "itn": true},
+		Files:  map[string]string{"audio": wav},
+	}, func(p int, note string, d map[string]any) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Artifacts[0].Meta["engine"] != "sherpa-onnx" {
+		t.Fatalf("缺省路径 artifact engine 应为 sherpa-onnx: %+v", out.Artifacts[0].Meta)
+	}
+}
+
+// TestASRR2T2RoutesAudiocpp model=r2t2-q8_0 走 audiocpp 路径:请求 ModelID/热词透传,
+// language 不透传(JSON 分支实测不收);产物 transcript txt,summary 仅 text/engine/source
+// (+duration_ms),无 segments、无 srt 产物。
+func TestASRR2T2RoutesAudiocpp(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedEngine(t, dataDir, m, "audiocpp", "audiocpp_server")
+	seedModelFile(t, dataDir, m, "r2t2-q8_0", "r2t2-q8_0.gguf")
+	wav := filepath.Join(dataDir, "in.wav")
+	if err := os.WriteFile(wav, []byte("RIFF"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	asr := newASRTool(dataDir, m, nil)
+	asr.transcribeFn = func(ctx context.Context, binPath, modelDir, wavPath, language string, itn bool) (localruntime.SherpaResult, error) {
+		t.Errorf("r2t2 不得走 sherpa 路径: %v", wavPath)
+		return localruntime.SherpaResult{}, fmt.Errorf("不应到达")
+	}
+	var got localruntime.TranscribeRequest
+	asr.transcribeAIFn = func(ctx context.Context, req localruntime.TranscribeRequest) (localruntime.TranscribeResult, error) {
+		got = req
+		return localruntime.TranscribeResult{
+			Text:   "识别文本",
+			Timing: localruntime.TranscribeTiming{WallMS: 900, AudioDurationMS: 5000, RTF: 0.18},
+		}, nil
+	}
+	out, err := asr.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "r2t2-q8_0", "hotwords": "热词A,热词B", "language": "zh", "itn": false},
+		Files:  map[string]string{"audio": wav},
+	}, func(p int, note string, d map[string]any) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ModelID != "r2t2-q8_0" || got.Hotwords != "热词A,热词B" {
+		t.Fatalf("TranscribeRequest 不符: %+v", got)
+	}
+	if got.Language != "zh" {
+		t.Fatalf("显式语种应透传: %+v", got)
+	}
+	// auto(缺省)= 自动检测,不透传 language
+	if _, err := asr.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "r2t2-q8_0"},
+		Files:  map[string]string{"audio": wav},
+	}, func(p int, note string, d map[string]any) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got.Language != "" {
+		t.Fatalf("auto 应回落自动检测不透传: %+v", got)
+	}
+	if got.Wav != wav {
+		t.Fatalf("wav 输入应原样透传: %q", got.Wav)
+	}
+	if len(out.Artifacts) != 1 {
+		t.Fatalf("应产出 1 个 artifact(无 srt),实际 %d", len(out.Artifacts))
+	}
+	art := out.Artifacts[0]
+	if art.Kind != "transcript" || art.Format != "txt" || !strings.HasSuffix(art.Path, "in_local.txt") {
+		t.Fatalf("artifact 形状不符: %+v", art)
+	}
+	if art.Meta["engine"] != "audiocpp" || art.Meta["model"] != "r2t2-q8_0" {
+		t.Fatalf("artifact Meta 应含 engine/model: %+v", art.Meta)
+	}
+	if _, hasLang := art.Meta["lang"]; hasLang {
+		t.Fatalf("plain 路由无 language,meta 不应有 lang: %+v", art.Meta)
+	}
+	if out.Summary["text"] != "识别文本" || out.Summary["engine"] != "audiocpp" {
+		t.Fatalf("summary text/engine 不符: %+v", out.Summary)
+	}
+	if out.Summary["duration_ms"] != int64(5000) {
+		t.Fatalf("summary duration_ms 应取 audio_duration_ms: %+v", out.Summary)
+	}
+	if _, has := out.Summary["segments"]; has {
+		t.Fatalf("r2t2 无时间戳,summary 不应有 segments: %+v", out.Summary)
+	}
+	if _, has := out.Summary["language"]; has {
+		t.Fatalf("plain 路由无 language,summary 不应有 language: %+v", out.Summary)
+	}
+}
+
+// TestASRR2T2TranscodesNonWav mp3 输入走同一条 ensureWav 转码(24k mono 实测可用)后进
+// audiocpp 路径;转码临时文件用后即清。
+func TestASRR2T2TranscodesNonWav(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedEngine(t, dataDir, m, "audiocpp", "audiocpp_server")
+	seedModelFile(t, dataDir, m, "r2t2-q8_0", "r2t2-q8_0.gguf")
+	mp3 := filepath.Join(dataDir, "in.mp3")
+	if err := os.WriteFile(mp3, []byte("FAKE_MP3"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	asr := newASRTool(dataDir, m, nil)
+	asr.lookPath = func(string) (string, error) { return "ffmpeg", nil }
+	asr.transcodeFn = func(ctx context.Context, src, dst string) error {
+		return os.WriteFile(dst, []byte("RIFF"), 0o644)
+	}
+	var gotWav string
+	asr.transcribeAIFn = func(ctx context.Context, req localruntime.TranscribeRequest) (localruntime.TranscribeResult, error) {
+		gotWav = req.Wav
+		return localruntime.TranscribeResult{Text: "ok"}, nil
+	}
+	if _, err := asr.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "r2t2-q8_0"},
+		Files:  map[string]string{"audio": mp3},
+	}, func(p int, note string, d map[string]any) {}); err != nil {
+		t.Fatal(err)
+	}
+	if gotWav == "" || gotWav == mp3 {
+		t.Fatalf("应收到转码产物路径: %q", gotWav)
+	}
+	if _, err := os.Stat(gotWav); !os.IsNotExist(err) {
+		t.Fatalf("转码临时文件应已清理: %v", err)
+	}
+}
+
+// TestASRUnknownModelRejects 未知/非 asr 条目的 model 直述错误(手拼参数拦截)。
+func TestASRUnknownModelRejects(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	asr := newASRTool(dataDir, m, nil)
+	for _, id := range []string{"nope", "qwen3-tts-base-q8"} { // 不存在 / kind=tts 均拒
+		_, err := asr.Run(context.Background(), provider.TaskInput{
+			Params: map[string]any{"model": id},
+			Files:  map[string]string{"audio": "in.wav"},
+		}, func(p int, note string, d map[string]any) {})
+		if err == nil || !strings.Contains(err.Error(), "未知本地识别模型") {
+			t.Fatalf("model=%s 应直述未知模型: %v", id, err)
+		}
+	}
+}
+
+// TestASRR2T2RequiresInstall audiocpp 引擎在而 r2t2 模型未安装 → 直述去设置页下载。
+func TestASRR2T2RequiresInstall(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedEngine(t, dataDir, m, "audiocpp", "audiocpp_server")
+	asr := newASRTool(dataDir, m, nil)
+	asr.transcribeAIFn = func(ctx context.Context, req localruntime.TranscribeRequest) (localruntime.TranscribeResult, error) {
+		t.Errorf("模型未安装不应到达转写: %+v", req)
+		return localruntime.TranscribeResult{}, fmt.Errorf("不应到达")
+	}
+	_, err := asr.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "r2t2-q8_0"},
+		Files:  map[string]string{"audio": "in.wav"},
+	}, func(p int, note string, d map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "设置页") {
+		t.Fatalf("模型未安装应直述去设置页: %v", err)
+	}
+}
+
+// TestASRR2T2WithoutRuntime audiocpp 运行时未注入(仅测试误用可达)→ 前置直述不可用。
+func TestASRR2T2WithoutRuntime(t *testing.T) {
+	dataDir, m := newTestPkg(t)
+	seedEngine(t, dataDir, m, "audiocpp", "audiocpp_server")
+	seedModelFile(t, dataDir, m, "r2t2-q8_0", "r2t2-q8_0.gguf")
+	asr := newASRTool(dataDir, m, nil)
+	_, err := asr.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"model": "r2t2-q8_0"},
+		Files:  map[string]string{"audio": "in.wav"},
+	}, func(p int, note string, d map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "引擎不可用") {
+		t.Fatalf("运行时未注入应直述不可用: %v", err)
+	}
+}
+
+// TestASRParamSpecsModelEnum ParamSpecs 的 model 枚举选项来自目录 kind=asr 条目
+// (sensevoice-int8 + r2t2-q8_0),缺省值 sensevoice-int8;hotwords 为可选 string。
+func TestASRParamSpecsModelEnum(t *testing.T) {
+	_, m := newTestPkg(t)
+	asr := newASRTool(t.TempDir(), m, nil)
+	specs := asr.ParamSpecs()
+	var model, hotwords *provider.ParamSpec
+	for i := range specs {
+		switch specs[i].Key {
+		case "model":
+			model = &specs[i]
+		case "hotwords":
+			hotwords = &specs[i]
+		}
+	}
+	if model == nil || model.Type != provider.ParamEnum || model.Required {
+		t.Fatalf("model 枚举缺失或形态不符: %+v", model)
+	}
+	got := make([]string, 0, len(model.Options))
+	for _, o := range model.Options {
+		got = append(got, o.Value)
+	}
+	if len(got) != 2 || got[0] != "sensevoice-int8" || got[1] != "r2t2-q8_0" {
+		t.Fatalf("model 枚举选项应为目录 asr 条目序: %v", got)
+	}
+	if model.Default != "sensevoice-int8" {
+		t.Fatalf("model 缺省应回落 sensevoice-int8: %+v", model.Default)
+	}
+	if hotwords == nil || hotwords.Type != provider.ParamString || hotwords.Required {
+		t.Fatalf("hotwords 形态不符: %+v", hotwords)
 	}
 }
 

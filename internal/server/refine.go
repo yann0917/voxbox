@@ -207,7 +207,8 @@ func parseJSONArray(s string) ([]any, bool) {
 // transcriptFromSummary 把 Summary.segments 渲染成逐行转写：HH:MM:SS 说话人N：文本
 // （speaker_names 有改名用改名，无编号说话人的行不补前缀；说话人编号取 speaker 键，
 // 千问 ASR 的同名段用 speaker_id）；妙记 segments 的 text 自带「说话人N：」前缀且
-// 无说话人键——原样保留不解析。无 segments 或全部空文本返回空串。
+// 无说话人键——原样保留不解析。无 segments（或全部空文本）时回落 Summary.text 整段
+// 全文（本地 R2T2 / 智谱等纯文本识别任务无时间戳，不伪造时间码前缀）；两者皆空返回空串。
 func transcriptFromSummary(sum map[string]any) string {
 	segs, _ := sum["segments"].([]any)
 	names, _ := sum["speaker_names"].(map[string]any)
@@ -239,7 +240,11 @@ func transcriptFromSummary(sum map[string]any) string {
 		b.WriteString(text)
 		b.WriteByte('\n')
 	}
-	return strings.TrimRight(b.String(), "\n")
+	if out := strings.TrimRight(b.String(), "\n"); out != "" {
+		return out
+	}
+	text, _ := sum["text"].(string)
+	return strings.TrimSpace(text)
 }
 
 // clockMS 毫秒时间码 → HH:MM:SS（超一小时录音自然进位）。

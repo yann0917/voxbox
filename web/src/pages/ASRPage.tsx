@@ -21,7 +21,7 @@ import { apiBase, fetchJSON } from "../lib/api";
 import { useMe } from "../lib/auth";
 import { formatTime } from "../lib/player";
 import type { Artifact, TaskDetail, TaskStatus } from "../lib/types";
-import { useLocalReady } from "../lib/models";
+import { useLocalReady, useModels } from "../lib/models";
 import { useProviderConfigured, useStorageEnabled } from "../lib/useStorageEnabled";
 import { useTaskEvents } from "../lib/ws";
 import { useTranscriptSync } from "../lib/useTranscriptSync";
@@ -123,6 +123,14 @@ const LOCAL_LANGUAGES: { value: string; label: string }[] = [
   { value: "yue", label: "粤语" },
 ];
 
+/** 本地识别模型缺省值：与后端 ParamSpecs 的 Default 一致（旧任务重跑无 model 参数回落 sherpa 原路径） */
+const LOCAL_DEFAULT_MODEL = "sensevoice-int8";
+/** 模型目录未加载完成时的下拉兜底（与后端枚举同序同值） */
+const LOCAL_MODEL_FALLBACK = [
+  { value: "sensevoice-int8", label: "SenseVoice 多语种识别(int8)" },
+  { value: "r2t2-q8_0", label: "Confucius4-R2T2 识别(q8)" },
+];
+
 type Segment = { text: string; start_ms: number; end_ms: number };
 
 /** 录音文件识别支持语种（与后端 ParamSpecs 同词表）；留空 = 自动识别中文/英文及常见方言 */
@@ -207,6 +215,8 @@ export default function ASRPage() {
   const [hotwords, setHotwords] = useState("");
   const [diarization, setDiarization] = useState(false);
   const [qwenModel, setQwenModel] = useState("qwen3-asr-flash-filetrans");
+  // 本地识别模型：驱动后端 sherpa/audiocpp 双路径路由（缺省 sensevoice 向后兼容）
+  const [localModel, setLocalModel] = useState(LOCAL_DEFAULT_MODEL);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [detail, setDetail] = useState<TaskDetail | null>(null);
@@ -234,6 +244,16 @@ export default function ASRPage() {
   // 本地就绪查询（引擎+模型依赖链一次判定）：异步查询单独取，不能塞进同步三元链；
   // 渲染层在 engineReady 判定之前先挡 isLoading（避免加载中闪「未安装」引导卡）
   const localReady = useLocalReady("asr");
+  // 模型目录：本地识别模型下拉的选项源（kind=asr 条目，与后端 ParamSpecs 枚举同源）
+  const { data: modelsData } = useModels();
+  const localModelOptions = (() => {
+    const items = (modelsData?.items ?? []).filter((m) => m.kind === "asr");
+    if (items.length === 0) return LOCAL_MODEL_FALLBACK;
+    return items.map((m) => ({
+      value: m.id,
+      label: m.status === "installed" ? m.name : `${m.name}（未安装）`,
+    }));
+  })();
   // 火山无需凭证卡；云端引擎未配置（或未加载完）时切过去渲染设置引导卡；
   // local：data 未到（undefined = 加载中/查询失败）时同云端保守态走引导卡
   const engineReady =
@@ -355,8 +375,11 @@ export default function ASRPage() {
         // 小米同步转写：仅语种（空串 = 服务端自动识别），音频经 file_ids/artifact_input 通道进 Files
         params = { language: language.trim() };
       } else if (engine === "local") {
-        // 本地识别：语言枚举是 sherpa 口径（auto/zh/en/ja/ko/yue），空串归一 auto
-        params = { language: language.trim() || "auto", itn: true };
+        // 本地识别：model 驱动后端路由（sensevoice→sherpa / r2t2→audiocpp；缺省向后兼容）；
+        // 语言枚举是 sherpa 口径（auto/zh/en/ja/ko/yue），空串归一 auto；r2t2 语种自动
+        // 检测（UI 不出语言选择，后端仅在显式指定时透传）；热词仅 r2t2 消费（JSON text 透传）
+        params = { model: localModel, language: language.trim() || "auto", itn: true };
+        if (hotwords.trim()) params.hotwords = hotwords.trim();
       } else if (engine === "qianwen") {
         params = {
           srt: true,
@@ -678,9 +701,51 @@ export default function ASRPage() {
                         mimo-v2.5-asr 同步转写：返回纯文本（无时间戳，不产 SRT）；本地文件直读，无需对象存储。
                       </p>
                     ) : engine === "local" ? (
-                      <p className="text-xs text-muted">
-                        SenseVoice 本地识别：中英日韩粤，自动标点与 ITN；支持 mp3 / wav / m4a / flac / ogg（非 wav 自动转码），数据不出本机。
-                      </p>
+                      <div className="space-y-2">
+                        <Field
+                          label="识别模型"
+                          hint={localModel === "sensevoice-int8" ? undefined : "语种自动检测（30 语），无需指定"}
+                        >
+                          {({ id, ...rest }) => (
+                            <Select
+                              id={id}
+                              value={localModel}
+                              onChange={(e) => {
+                                setLocalModel(e.target.value);
+                                setLanguage(""); // 两模型语言口径不同：切换即清空
+                              }}
+                              {...rest}
+                            >
+                              {localModelOptions.map((m) => (
+                                <option key={m.value} value={m.value}>
+                                  {m.label}
+                                </option>
+                              ))}
+                            </Select>
+                          )}
+                        </Field>
+                        <p className="text-xs text-muted">
+                          {localModel === "sensevoice-int8"
+                            ? "SenseVoice 本地识别：中英日韩粤，自动标点与 ITN；支持 mp3 / wav / m4a / flac / ogg（非 wav 自动转码），数据不出本机。"
+                            : "Confucius4-R2T2 本地识别：30 语自动检测（无需选择语种），支持热词上下文；转写为纯文本（无时间戳，不产字幕），数据不出本机。"}
+                        </p>
+                        {localModel !== "sensevoice-int8" && (
+                          <>
+                            <Field label="热词" aside="可选" hint="逗号分隔，作为上下文提升专有名词识别率">
+                              {({ id, ...rest }) => (
+                                <Input
+                                  id={id}
+                                  value={hotwords}
+                                  onChange={(e) => setHotwords(e.target.value)}
+                                  placeholder="专有名词,产品名"
+                                  {...rest}
+                                />
+                              )}
+                            </Field>
+                            <DictFill field="hotwords" onFill={setHotwords} />
+                          </>
+                        )}
+                      </div>
                     ) : (
                       <>
                         <Field label="转写模型" hint="qwen3 通用推荐；qwen-audio 说话人分离更强（≤2GB / 12 小时）">
@@ -907,7 +972,7 @@ export default function ASRPage() {
                 aside={<span className="micro">{engine} · asr</span>}
               />
               <CardBody className="space-y-4">
-                {isZhipu ? null : (
+                {isZhipu || (engine === "local" && localModel !== "sensevoice-int8") ? null : (
                 <Field
                   label="语言"
                   hint={
@@ -1082,10 +1147,26 @@ export default function ASRPage() {
                     )}
                   </div>
                 ) : detail?.task.summary?.text ? (
-                  // 本地识别（sherpa-onnx）只回整段文本，无分句时间戳：直接展示文稿
-                  <p className="whitespace-pre-wrap py-2 text-sm leading-relaxed text-fg">
-                    {detail.task.summary.text}
-                  </p>
+                  // 本地识别（sherpa-onnx / R2T2）等纯文本结果（无分句时间戳）：直接展示文稿，
+                  // 后续加工（AI 提炼/待办/就稿问答）与分句任务同入口在历史任务详情
+                  <div className="space-y-3">
+                    <p className="whitespace-pre-wrap py-2 text-sm leading-relaxed text-fg">
+                      {detail.task.summary.text}
+                    </p>
+                    {taskId && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<NotebookPen size={13} strokeWidth={1.75} />}
+                          onClick={() => navigate(`/history?task=${taskId}`)}
+                        >
+                          AI 提炼与问答
+                        </Button>
+                        <span className="text-[11px] text-muted">在历史任务详情里提炼总结、待办，并可继续追问</span>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <p className="py-2 text-xs text-muted">未识别到分句内容，可直接下载转写文本查看。</p>
                 )}

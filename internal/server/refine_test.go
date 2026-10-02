@@ -54,6 +54,8 @@ func refineFixture(t *testing.T, s *Server) {
 		{"rf-empty", "asr", `{}`},
 		{"rf-failed", "asr", `{"segments":[]}`},
 		{"rf-tts", "tts", `{"text":"合成结果"}`},
+		// 本地 R2T2/智谱形态:纯文本无 segments(text 键承载全文)
+		{"rf-text", "asr", `{"text":"本地识别的整段转写全文","engine":"audiocpp","source":"file"}`},
 	} {
 		status := store.StatusSucceeded
 		if tc.id == "rf-failed" {
@@ -373,6 +375,45 @@ func TestRefineEmptyOutputNotPersisted(t *testing.T) {
 	}
 	if refined["updated_at"] != oldAt {
 		t.Errorf("空输出不应刷新 updated_at: %v, want %v", refined["updated_at"], oldAt)
+	}
+}
+
+// TestRefineTextOnlySummary 无 segments 的纯文本任务(本地 R2T2/智谱形态):加工从
+// Summary.text 取全文(无时间码前缀),不再误报「任务无转写内容」;segments 为空数组
+// 同样回落(只装了空段不等于有转写)。缺 text 键(rf-empty)仍按无转写拒绝。
+func TestRefineTextOnlySummary(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ts, s, ac := newTestServer(t)
+	refineFixture(t, s)
+	if _, e := doJSON(t, ac, http.MethodPut, ts.URL+"/api/settings/providers/qianwen",
+		`{"fields":{"api_key":"sk-refine-test"}}`); e.Code != CodeOK {
+		t.Fatalf("配置假凭证 code = %d (%s)", e.Code, e.Message)
+	}
+	var gotUser string
+	setRefineStream(t, func(system, user string, onDelta func(string)) error {
+		gotUser = user
+		onDelta("纪要")
+		return nil
+	})
+	body, ct := postRefine(t, ac, ts.URL, `{"task_id":"rf-text","mode":"summary","provider":"qianwen","model":"qwen3.8-flash"}`)
+	if !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("Content-Type = %s, want text/event-stream", ct)
+	}
+	if strings.Contains(body, `"error"`) {
+		t.Fatalf("纯文本任务应可加工: %s", body)
+	}
+	if !strings.Contains(gotUser, "本地识别的整段转写全文") {
+		t.Errorf("user 应含 Summary.text 全文: %s", gotUser)
+	}
+	if strings.Contains(gotUser, "00:00:00") {
+		t.Errorf("text 回退不应伪造时间码前缀: %s", gotUser)
+	}
+	sum := taskSummary(t, ac, ts.URL, "rf-text")
+	if refined, _ := sum["refined"].(map[string]any); refined == nil || refined["summary"] != "纪要" {
+		t.Errorf("refined 应落盘且 text/engine 等键保留: %v", sum)
+	}
+	if sum["text"] != "本地识别的整段转写全文" || sum["engine"] != "audiocpp" {
+		t.Errorf("原 Summary 键应保留: %v", sum)
 	}
 }
 

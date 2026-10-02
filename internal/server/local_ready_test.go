@@ -87,8 +87,8 @@ func TestLocalReadyKokoroPair(t *testing.T) {
 	ts, s, ac := newTestServer(t)
 	modelsRoot := s.svc.LocalModels().Dir()
 	dataDir := filepath.Dir(modelsRoot)
-	seedInstalledEngine(t, dataDir, "sherpa-onnx")
-	seedInstalledModel(t, modelsRoot, "kokoro-v1.0")
+	seedInstalledEngine(t, s, dataDir, "sherpa-onnx")
+	seedInstalledModel(t, s, modelsRoot, "kokoro-v1.0")
 	resp, err := ac.Get(ts.URL + "/api/local/ready?tool=tts")
 	if err != nil {
 		t.Fatal(err)
@@ -101,28 +101,92 @@ func TestLocalReadyKokoroPair(t *testing.T) {
 	}
 }
 
-// seedInstalledEngine 落一个引擎安装标记(manifest 即安装标记,id/revision 与目录条目一致)。
-func seedInstalledEngine(t *testing.T, dataDir, id string) {
+// TestLocalReadyASRAudiocppPair asr 依赖链与 tts 同机制:只装 audiocpp 引擎 + r2t2 模型
+// (不装 sherpa/sensevoice)也应 ready——requires_engine=audiocpp 的条目成对齐备即可用;
+// 引擎缺省推导自条目,不再硬编码 sherpa-onnx。
+func TestLocalReadyASRAudiocppPair(t *testing.T) {
+	ts, s, ac := newTestServer(t)
+	modelsRoot := s.svc.LocalModels().Dir()
+	dataDir := filepath.Dir(modelsRoot)
+	seedInstalledEngine(t, s, dataDir, "audiocpp")
+	seedInstalledModel(t, s, modelsRoot, "r2t2-q8_0")
+	resp, err := ac.Get(ts.URL + "/api/local/ready?tool=asr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var e envelope
+	_ = decodeBody(resp, &e)
+	if e.Code != CodeOK {
+		t.Fatalf("业务码 %d: %s", e.Code, e.Message)
+	}
+	data := e.Data.(map[string]any)
+	if data["ready"] != true {
+		t.Fatalf("r2t2+audiocpp 成对齐备应 ready: %#v", data)
+	}
+}
+
+// TestLocalReadyASRFreshEnv 全新环境 asr 不 ready,missing 引导清单含两条引擎链
+// (sherpa-onnx 与 audiocpp)与全部模型条目。
+func TestLocalReadyASRFreshEnv(t *testing.T) {
+	ts, _, ac := newTestServer(t)
+	resp, err := ac.Get(ts.URL + "/api/local/ready?tool=asr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var e envelope
+	_ = decodeBody(resp, &e)
+	data := e.Data.(map[string]any)
+	if data["ready"] != false {
+		t.Fatal("全新环境 asr 不应 ready")
+	}
+	engines, models := map[string]bool{}, map[string]bool{}
+	for _, raw := range data["missing"].([]any) {
+		m := raw.(map[string]any)
+		if m["type"] == "engine" {
+			engines[m["id"].(string)] = true
+		} else {
+			models[m["id"].(string)] = true
+		}
+	}
+	if !engines["sherpa-onnx"] || !engines["audiocpp"] {
+		t.Fatalf("missing 应含两条引擎链: %#v", engines)
+	}
+	if !models["sensevoice-int8"] || !models["r2t2-q8_0"] {
+		t.Fatalf("一个模型都没装时 missing 应列全部模型: %#v", models)
+	}
+}
+
+// seedInstalledEngine 落一个引擎安装标记(manifest 即安装标记,id/revision 与目录条目
+// 一致——revision 经 Manager 查条目实值:audiocpp 自 v0.9.0 起显式记 revision)。
+func seedInstalledEngine(t *testing.T, s *Server, dataDir, id string) {
 	t.Helper()
+	rev := "master"
+	if e, ok := s.svc.LocalModels().GetEntry(id); ok && e.Revision != "" {
+		rev = e.Revision
+	}
 	dir := filepath.Join(dataDir, "engines", id)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	mf := map[string]any{"id": id, "revision": "master", "binary": "pkg/" + id, "completed_at": "2026-01-01T00:00:00Z"}
+	mf := map[string]any{"id": id, "revision": rev, "binary": "pkg/" + id, "completed_at": "2026-01-01T00:00:00Z"}
 	raw, _ := json.Marshal(mf)
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), raw, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// seedInstalledModel 落一个模型安装标记(modelsRoot 为 Manager.Dir())。
-func seedInstalledModel(t *testing.T, modelsRoot, id string) {
+// seedInstalledModel 落一个模型安装标记(modelsRoot 为 Manager.Dir();revision 同上取条目实值)。
+func seedInstalledModel(t *testing.T, s *Server, modelsRoot, id string) {
 	t.Helper()
+	rev := "master"
+	if e, ok := s.svc.LocalModels().GetEntry(id); ok && e.Revision != "" {
+		rev = e.Revision
+	}
 	dir := filepath.Join(modelsRoot, id)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	mf := map[string]any{"id": id, "revision": "master", "completed_at": "2026-01-01T00:00:00Z"}
+	mf := map[string]any{"id": id, "revision": rev, "completed_at": "2026-01-01T00:00:00Z"}
 	raw, _ := json.Marshal(mf)
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), raw, 0o644); err != nil {
 		t.Fatal(err)

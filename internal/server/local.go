@@ -54,9 +54,33 @@ func (s *Server) localReady(c *gin.Context) {
 			}
 		}
 	case "asr":
-		ensure("engine", "sherpa-onnx")
-		ensure("model", "sensevoice-int8")
-		ready = len(missing) == 0
+		// 依赖链按目录条目推导(与 tts 同机制,不再硬编码单一引擎):任一「引擎+模型」
+		// 成对齐备即可用。sensevoice→sherpa-onnx 与 r2t2→audiocpp 并列,具体提交哪个
+		// 模型由工具 Run 的 params.model 路由(缺省 sensevoice 向后兼容)。
+		seenEngines := map[string]bool{}
+		anyModelInstalled := false
+		for _, v := range m.List() {
+			if v.Entry.Kind != "asr" {
+				continue
+			}
+			if !seenEngines[v.Entry.RequiresEngine] {
+				seenEngines[v.Entry.RequiresEngine] = true
+				ensure("engine", v.Entry.RequiresEngine)
+			}
+			if m.Installed(v.Entry.ID) {
+				anyModelInstalled = true
+				if m.Installed(v.Entry.RequiresEngine) {
+					ready = true
+				}
+			}
+		}
+		if !anyModelInstalled {
+			for _, v := range m.List() {
+				if v.Kind == "asr" {
+					missing = append(missing, missingItem{Type: "model", ID: v.Entry.ID, Name: v.Name})
+				}
+			}
+		}
 	default:
 		fail(c, CodeBadRequest, "参数错误:tool 仅支持 tts|asr")
 		return
