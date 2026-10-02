@@ -152,17 +152,16 @@ export const PRICE_TTS_20: PriceItem = {
 
 /* ---------------- ASR 三版本（大模型录音文件识别，按语音时长） ---------------- */
 
+/** 大模型录音文件识别（标准版）：volc.seedasr.auc（豆包录音文件识别模型 2.0，后端 asr_auc_client 实发资源）。
+ *  后付费 0.8 元/小时（官方计费说明 2026-10-02 实核）；原 2.3 元/小时与下列资源包档位为 1.0 历史刊例，
+ *  1.0（volc.bigasr.auc）阶梯价不适用本条目。闲时/极速版仍为 1.0 族资源，价格条目未动。 */
 export const PRICE_ASR_STANDARD: PriceItem = {
-  label: "大模型录音文件识别（标准版）",
+  label: "大模型录音文件识别（标准版·豆包 2.0）",
   unit: "小时",
-  postpaid: [{ price: 2.3 }],
-  packs: [
-    { size: 30, price: 66 },
-    { size: 1000, price: 2000 },
-    { size: 10000, price: 18000 },
-    { size: 100000, price: 140000 },
-  ],
-  trial: "20 小时 / 半年",
+  postpaid: [{ price: 0.8 }],
+  packs: [], // 2.0 资源包档位以控制台为准（已实核 30h/1年 ≈23 元 ≈0.77 元/小时）
+  trial: "以控制台为准",
+  note: "语音识别 0.8 元/小时（豆包录音文件识别 2.0）",
 };
 
 export const PRICE_ASR_FLASH: PriceItem = {
