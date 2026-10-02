@@ -1,5 +1,5 @@
 // live_engine.go 实时字幕引擎抽象:统一 volcengine bigmodel_async 流式客户端与
-// audiocpp live 中转(含 ≤9min 轮转拼接)两种会话形态,供 /api/ws/live relay 驱动与测试注入。
+// audiocpp live 中转(含 ≤60s 轮转拼接)两种会话形态,供 /api/ws/live relay 驱动与测试注入。
 package server
 
 import (
@@ -170,9 +170,13 @@ func volcSegmentsToLive(segs []volcengine.ASRSegment) []liveSegment {
 	return out
 }
 
-// liveRotateEvery 本地会话轮转周期:服务端 total_timeout 600s 上限内留足余量(真机实测
-// total 超时会话被服务端终止),到期收束当前会话(done 全量)并无缝开下一路,文本拼接。
-const liveRotateEvery = 9 * time.Minute
+// liveRotateEvery 本地会话轮转周期:R2T2 流式解码每步重喂全部已累积音频(官方参考实现
+// qwen3_asr.py 即如此,无增量缓存;audiocpp 移植版特征缓存又被全段峰值归一化反复击穿),
+// 每块成本随会话时长增长——长会话解码跟不上实时,滞后累积直至 CPU 满载。官方 demo 以
+// max_session_seconds=30 硬性封顶回避同一问题;60s 在模型 110s 音频窗内留余量,同时把
+// 重喂成本钉在低位(9min 时实测滞后 30s+、CPU 满载 99°C)。到期收束当前会话(done 全量)
+// 并无缝开下一路,文本拼接。
+const liveRotateEvery = 60 * time.Second
 
 // localLiveAudioBuffer 轮转期音频缓冲上限(chunk 数):轮转收束+重开约 1-2s,实时音频
 // 320ms/块远够;超出即阻塞 Send 背压至客户端(浏览器 socket 攒包),不丢弃音频。

@@ -36,7 +36,7 @@ type Phase = "idle" | "connecting" | "streaming" | "finishing" | "final";
 
 const ENGINE_TABS = [
   { value: "volcengine" as LiveEngine, label: "火山引擎" },
-  { value: "local" as LiveEngine, label: "本地识别" },
+  { value: "local" as LiveEngine, label: "本地识别", tag: "实验" },
 ];
 
 export default function LivePage() {
@@ -282,6 +282,9 @@ export default function LivePage() {
           }}
         />
         {live && <span className="text-[11px] text-muted">会话进行中，暂不可切换引擎</span>}
+        {engine === "local" && !live && r2t2Installed && (
+          <span className="text-[11px] text-muted">本机识别每 60 秒分段续接，适合短会话；长会议建议用火山引擎</span>
+        )}
       </div>
 
       {/* 本地引擎未就绪：安装引导卡（模型依赖精确到 Confucius4-R2T2） */}

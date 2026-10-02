@@ -4,6 +4,8 @@ export interface TabItem<T extends string> {
   value: T;
   label: string;
   icon?: ReactNode;
+  /** 徽记（如「实验」）：文字后的微型胶囊，标注页签的成熟度 */
+  tag?: string;
 }
 
 export interface TabsProps<T extends string> {
@@ -46,6 +48,11 @@ export function Tabs<T extends string>({ items, value, onChange, className = "" 
           >
             {it.icon}
             {it.label}
+            {it.tag && (
+              <span className="rounded-full bg-warn/15 px-1.5 py-px text-[10px] leading-3.5 font-medium text-warn">
+                {it.tag}
+              </span>
+            )}
           </button>
         );
       })}
