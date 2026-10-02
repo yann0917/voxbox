@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildICS } from "../src/lib/ics";
+import { buildICS, icsEventCount } from "../src/lib/ics";
 
 describe("buildICS", () => {
   it("renders events with dtstamp and uid", () => {
@@ -40,5 +40,22 @@ describe("buildICS", () => {
     expect(ics.startsWith("BEGIN:VCALENDAR\r\n")).toBe(true);
     expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
     expect(ics).not.toContain("\n\n");
+  });
+});
+
+describe("icsEventCount", () => {
+  it("counts only events whose start parses to a local stamp (buildICS skips the rest)", () => {
+    expect(
+      icsEventCount([
+        { title: "评审会", start: "2026-10-07 14:00" },
+        { title: "未注明时间", start: "下周三下午" },
+        { title: "全天", start: "2026-10-08T09:30" },
+      ]),
+    ).toBe(2);
+  });
+
+  it("returns 0 when nothing parses or the list is empty", () => {
+    expect(icsEventCount([{ title: "改天再说", start: "改天" }])).toBe(0);
+    expect(icsEventCount([])).toBe(0);
   });
 });

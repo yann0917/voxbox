@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -27,7 +27,7 @@ import {
   useToast,
 } from "../../ui";
 import { WavePlayer } from "../../ui/WavePlayer";
-import { safeFilename, speakerStats, transcriptText, type QNSegment, type ResultView, type Run } from "./model";
+import { failedStatusText, safeFilename, speakerStats, transcriptText, type QNSegment, type ResultView, type Run } from "./model";
 
 export interface ResultPanelProps {
   view: ResultView;
@@ -75,6 +75,13 @@ export function ResultPanel({
   const { toast } = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // 最新改名 map（ref 同步）：渲染闭包快照可能滞后于在途乐观更新（连续快速改名），
+  // 提交以推进后的 ref 为基线，PATCH body 与乐观态同源，不漏掉在途笔。
+  // 渲染后经 effect 对齐父级（commitRename 里的先行推进覆盖同 tick 的连续提交）
+  const namesRef = useRef(speakerNames);
+  useEffect(() => {
+    namesRef.current = speakerNames;
+  }, [speakerNames]);
 
   const rename = useMutation({
     mutationFn: async (names: Record<string, string>) => {
@@ -92,26 +99,23 @@ export function ResultPanel({
    *  清空输入 = 移除覆盖（恢复默认称呼） */
   const commitRename = (id: string) => {
     const name = draft.trim();
-    const prevName = speakerNames[id]; // 该 id 的旧值（可能 undefined = 无覆盖）
+    const prevName = namesRef.current[id]; // 该 id 的旧值（可能 undefined = 无覆盖）
     setEditingId(null);
     if (name === (prevName ?? "")) return;
-    onSpeakerNamesChange((cur) => {
-      const next = { ...cur };
-      if (name) next[id] = name;
-      else delete next[id];
-      return next;
-    });
-    // PATCH 整体覆盖式：body 基于提交时刻的全量 map（含其他在途改名的乐观值）
-    const body = { ...speakerNames };
-    if (name) body[id] = name;
-    else delete body[id];
-    rename.mutate(body, {
+    // 以 ref 为基线先行推进（不等下一次渲染）：乐观更新与 PATCH body 同取 next，
+    // 消除渲染闭包快照——快照取值会让 body 漏掉在途改名、被整体覆盖式 PATCH 连带抹掉
+    const next = { ...namesRef.current };
+    if (name) next[id] = name;
+    else delete next[id];
+    namesRef.current = next;
+    onSpeakerNamesChange(() => next);
+    rename.mutate(next, {
       onError: (e: Error) => {
         onSpeakerNamesChange((cur) => {
-          const next = { ...cur };
-          if (prevName === undefined) delete next[id];
-          else next[id] = prevName;
-          return next;
+          const rollback = { ...cur };
+          if (prevName === undefined) delete rollback[id];
+          else rollback[id] = prevName;
+          return rollback;
         });
         toast({ tone: "error", title: "改名失败", description: e.message });
       },
@@ -287,7 +291,14 @@ export function ResultPanel({
         <CardBody className="space-y-3">
           <p className="flex items-start gap-2 text-sm text-danger">
             <AlertTriangle size={15} strokeWidth={1.75} className="mt-0.5 shrink-0" />
-            <span className="min-w-0 break-words">{submitError || run?.error || "转写失败，请重试"}</span>
+            {/* 兜底文案随终态细分（取消/中断不是失败）；有具体错误信息时优先展示 */}
+            <span className="min-w-0 break-words">
+              {submitError ||
+                run?.error ||
+                (run?.status === "canceled" || run?.status === "interrupted"
+                  ? failedStatusText(run.status)
+                  : "转写失败，请重试")}
+            </span>
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button

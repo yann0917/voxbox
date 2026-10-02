@@ -14,7 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useDefaultAssistantModel } from "../../lib/assistant";
-import { downloadICS } from "../../lib/ics";
+import { downloadICS, icsEventCount } from "../../lib/ics";
 import type { RefineEvent, RefineTodo, Refined } from "../../lib/types";
 import { Button, Card, CardBody, CardHeader, Field, IconButton, Markdown, Textarea, useToast } from "../../ui";
 import {
@@ -255,6 +255,7 @@ export function RefinePanel({ taskId, title, refined }: RefinePanelProps) {
                 value={v}
                 docTitle={title}
                 running={running}
+                modelMissing={defaultModel === null}
                 onRerun={() => {
                   setMode(m);
                   void start(m);
@@ -278,6 +279,7 @@ function ResultBlock({
   value,
   docTitle,
   running,
+  modelMissing,
   onRerun,
   onCopy,
 }: {
@@ -287,10 +289,13 @@ function ResultBlock({
   /** 任务标题（事件批量导出的文件名） */
   docTitle: string;
   running: boolean;
+  /** 未配置默认大模型：重新加工是点了也不会有结果的死按钮，禁用并提示 */
+  modelMissing: boolean;
   onRerun: () => void;
   onCopy: (text: string) => void;
 }) {
   const Icon = MODE_ICONS[mode];
+  const rerunTitle = modelMissing ? "先在设置页选好「AI 默认大模型」再加工" : undefined;
   return (
     <div className="space-y-2 rounded-[var(--radius-md)] border border-line bg-raise-2/30 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -304,14 +309,25 @@ function ResultBlock({
               <Copy size={13} strokeWidth={1.75} />
             </IconButton>
           )}
-          <IconButton size="sm" label="重新加工" disabled={running} onClick={onRerun}>
+          <IconButton
+            size="sm"
+            label={rerunTitle ?? "重新加工"}
+            disabled={running || modelMissing}
+            onClick={onRerun}
+          >
             <RefreshCw size={13} strokeWidth={1.75} />
           </IconButton>
         </div>
       </div>
       {typeof value === "string" ? (
         mode === "todos" || mode === "events" ? (
-          <RawFallback label={label} text={value} disabled={running} onRetry={onRerun} />
+          <RawFallback
+            label={label}
+            text={value}
+            disabled={running}
+            modelMissing={modelMissing}
+            onRetry={onRerun}
+          />
         ) : (
           <Markdown>{value}</Markdown>
         )
@@ -356,7 +372,13 @@ function EventList({ events, docTitle }: { events: RefineEvent[]; docTitle: stri
   if (items.length === 0) return <p className="text-xs text-muted">这段录音里没有提取到日程安排。</p>;
   const exportAll = () => {
     downloadICS(items, `${safeFilename(docTitle || "日程")}.ics`);
-    toast({ tone: "ok", title: "日历文件已下载", description: "导入系统日历即可查看这些安排" });
+    // 对账：start 无法解析的事件不会写进文件（非法 DTSTART 会被导入端整份拒绝）
+    const missing = items.length - icsEventCount(items);
+    if (missing > 0) {
+      toast({ tone: "warn", title: "日历文件已下载", description: `${missing} 条时间无法解析，未包含在日历文件中` });
+    } else {
+      toast({ tone: "ok", title: "日历文件已下载", description: "导入系统日历即可查看这些安排" });
+    }
   };
   const exportOne = (ev: RefineEvent) => {
     downloadICS([ev], `${safeFilename(ev.title)}.ics`);
@@ -402,11 +424,14 @@ function RawFallback({
   label,
   text,
   disabled,
+  modelMissing,
   onRetry,
 }: {
   label: string;
   text: string;
   disabled: boolean;
+  /** 未配置默认大模型：重试同样禁用并提示 */
+  modelMissing: boolean;
   onRetry: () => void;
 }) {
   return (
@@ -418,7 +443,14 @@ function RawFallback({
       <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-[var(--radius-sm)] border border-line bg-inset px-3 py-2 font-mono text-[12px] leading-relaxed text-fg-2">
         {text}
       </pre>
-      <Button size="sm" variant="secondary" icon={<RefreshCw size={13} strokeWidth={1.75} />} disabled={disabled} onClick={onRetry}>
+      <Button
+        size="sm"
+        variant="secondary"
+        icon={<RefreshCw size={13} strokeWidth={1.75} />}
+        disabled={disabled || modelMissing}
+        title={modelMissing ? "先在设置页选好「AI 默认大模型」再加工" : undefined}
+        onClick={onRetry}
+      >
         重试
       </Button>
     </div>

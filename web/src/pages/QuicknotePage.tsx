@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Mic, SlidersHorizontal, Square } from "lucide-react";
 import { apiBase, fetchJSON } from "../lib/api";
@@ -15,7 +15,7 @@ import { Card, CardBody, CardHeader, Field, Input, PageHeader, useToast } from "
 import { ChatPanel } from "./quicknote/ChatPanel";
 import { RefinePanel } from "./quicknote/RefinePanel";
 import { ResultPanel } from "./quicknote/ResultPanel";
-import { loadTask, type ResultView, type Run } from "./quicknote/model";
+import { failedStatusText, loadTask, replayFileId, type ResultView, type Run } from "./quicknote/model";
 
 /** 页面状态机：待录 → 录音中 → 提交中 → 转写中 → 完成 | 出错（录音停止即自动提交） */
 type Phase = "idle" | "recording" | "submitting" | "running" | "done" | "error";
@@ -46,6 +46,13 @@ export default function QuicknotePage() {
   const ev = useTaskEvents();
   // undefined = 设置未加载完成，与未配置同走引导卡（保守态，与语音识别页一致）
   const volcReady = useProviderConfigured("volcengine");
+  // 深链恢复（/quicknote?task=<id>，来自历史页「查看笔记」）：参数保留在地址栏
+  // （与语音识别页 ?artifact= 同例），会话内只消费一次；成功恢复后即使火山凭证
+  // 未配置也放行工作区——回看历史笔记不依赖转写凭证
+  const [searchParams] = useSearchParams();
+  const deepTaskId = searchParams.get("task")?.trim() ?? "";
+  const deepConsumedRef = useRef(false);
+  const [deepRestored, setDeepRestored] = useState(false);
 
   /* 进度事件驱动当前任务：progress 刷进度条；done/error/canceled 均为收尾，拉详情进结果态 */
   useEffect(() => {
@@ -70,7 +77,7 @@ export default function QuicknotePage() {
             setPhase("done");
           } else {
             setPhase("error");
-            toast({ tone: "error", title: "转写失败", description: d.task.error || undefined });
+            toast({ tone: "error", title: failedStatusText(d.task.status), description: d.task.error || undefined });
           }
         })
         .catch((e: Error) => {
@@ -80,6 +87,58 @@ export default function QuicknotePage() {
         });
     }
   }, [ev, taskId, toast]);
+
+  /* 深链恢复：?task=<id> → 拉任务详情，succeeded 且有分句时直接进 done 视图
+     （文字稿/回放/改名/加工/问答全部可用），回放源从任务 input 的 file_ids 恢复
+     （服务端上传流，刷新后仍可回放）；取不到则降级隐藏播放器。仍在转写中的任务
+     接线到事件流由 WS 驱动（回放源同样预置，收尾即有播放器）；失败或无可回看
+     文字稿在结果区直述提示。
+     恢复过程的 setState 都落在 promise 回调（异步），不在 effect 体内同步写。 */
+  useEffect(() => {
+    if (!deepTaskId || deepConsumedRef.current) return;
+    deepConsumedRef.current = true;
+    loadTask(deepTaskId)
+      .then((d) => {
+        if (recSessionRef.current) return; // 用户已抢先开始录音：丢弃过期恢复，不打断录音主流程
+        if (d.task.status === "pending" || d.task.status === "running") {
+          // 任务仍在转写：与常规提交后同一链路，进度与收尾交给 WS 事件。
+          // 回放源此刻预置——WS 收尾只写 run/task/speakerNames（常规流的 recFileId
+          // 由 submit onSuccess 补，深链路径没人补），不预置则完成后没有播放器；
+          // 同时放行工作区（接线已成立，回看不依赖转写凭证）
+          setTaskId(d.task.id);
+          setRun({ status: d.task.status, progress: d.task.progress, note: d.task.progress_note || "处理中" });
+          setRecFileId(replayFileId(d.task.input));
+          setDeepRestored(true);
+          setPhase("running");
+          return;
+        }
+        const segs = d.task.summary?.segments ?? [];
+        if (d.task.status !== "succeeded" || segs.length === 0) {
+          setRun({ status: d.task.status, progress: d.task.progress, note: d.task.progress_note, error: d.task.error });
+          setSubmitError(d.task.error || "该任务没有可回看的文字稿");
+          setPhase("error");
+          return;
+        }
+        setTaskId(d.task.id);
+        setTask(d);
+        setRun({ status: d.task.status, progress: d.task.progress, note: d.task.progress_note });
+        setSpeakerNames(d.task.summary?.speaker_names ?? {});
+        setRecFileId(replayFileId(d.task.input));
+        setDeepRestored(true);
+        setPhase("done");
+      })
+      .catch((e: Error) => {
+        if (recSessionRef.current) return; // 同上：录音进行中不写错误态
+        setSubmitError(`读取任务失败：${e.message}`);
+        setPhase("error");
+      });
+  }, [deepTaskId]);
+
+  /* Blob 回放地址生命周期：换源与卸载时统一释放，防泄漏（走服务端上传流时不产生 Blob） */
+  useEffect(() => {
+    if (!recUrl) return;
+    return () => URL.revokeObjectURL(recUrl);
+  }, [recUrl]);
 
   /* 卸载即停录：离开页面不遗留活跃的麦克风会话 */
   useEffect(() => () => recSessionRef.current?.cancel(), []);
@@ -169,8 +228,7 @@ export default function QuicknotePage() {
     try {
       const wav = await session.stop(); // 产出 16kHz 单声道 WAV，走本地上传通道
       recFileRef.current = wav;
-      if (recUrl) URL.revokeObjectURL(recUrl);
-      setRecUrl(URL.createObjectURL(wav));
+      setRecUrl(URL.createObjectURL(wav)); // 旧 Blob 由 [recUrl] 生命周期 effect 释放
       submit.mutate();
     } catch (e) {
       // 录音未生成（无任务产生）：同样清运行态，让错误视图接管结果区
@@ -183,8 +241,7 @@ export default function QuicknotePage() {
 
   /** 回到待录状态：清掉上一段的录音与结果（热词保留，便于连续记录同类内容） */
   const resetToIdle = () => {
-    if (recUrl) URL.revokeObjectURL(recUrl);
-    setRecUrl(null);
+    setRecUrl(null); // 旧 Blob 由 [recUrl] 生命周期 effect 释放
     recFileRef.current = null;
     setRecFileId(null);
     setTaskId(null);
@@ -192,6 +249,7 @@ export default function QuicknotePage() {
     setTask(null);
     setSpeakerNames({});
     setSubmitError("");
+    setDeepRestored(false);
     setPhase("idle");
   };
 
@@ -229,8 +287,9 @@ export default function QuicknotePage() {
         icon={<Mic size={16} strokeWidth={1.75} />}
       />
 
-      {/* 未配置凭证（或设置未加载完）：引导卡替代整个工作区，与语音识别页一致 */}
-      {!volcReady ? (
+      {/* 未配置凭证（或设置未加载完）：引导卡替代整个工作区，与语音识别页一致；
+          深链恢复成功时放行工作区（回看历史笔记不依赖转写凭证） */}
+      {!volcReady && !deepRestored ? (
         <Card>
           <CardBody className="space-y-2">
             <p className="text-sm text-fg-2">尚未配置火山引擎凭证，录音笔记暂时无法转写。</p>

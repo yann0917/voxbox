@@ -58,6 +58,12 @@ export function buildICS(events: ICSEvent[]): string {
   return lines.join("\r\n") + "\r\n";
 }
 
+/** 可落为 VEVENT 的事件数：start 无法解析的会被 buildICS 跳过（非法 DTSTART 会让
+ *  整份文件被导入端拒绝）。「全部导出」据此对账——实际写入数少于选中数时给出警示。 */
+export function icsEventCount(events: ICSEvent[]): number {
+  return events.filter((e) => localStamp(e.start) !== "").length;
+}
+
 /** 前端直出 .ics 文件：Blob + 临时 <a download> 触发保存（无需服务端往返）。 */
 export function downloadICS(events: ICSEvent[], filename: string): void {
   const url = URL.createObjectURL(new Blob([buildICS(events)], { type: "text/calendar;charset=utf-8" }));

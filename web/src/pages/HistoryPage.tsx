@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Clock, RefreshCw, Search, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Clock, NotebookPen, RefreshCw, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import { fetchJSON } from "../lib/api";
 import { formatTime } from "../lib/player";
 import type { Task, TaskDetail } from "../lib/types";
@@ -284,6 +284,18 @@ export default function HistoryPage() {
                     {t.cost_ms > 0 ? `${(t.cost_ms / 1000).toFixed(1)}s` : "—"}
                   </span>
                   <span className="shrink-0 font-mono text-[11px] text-muted">{t.created_at}</span>
+                  {/* 录音笔记回看：转写完成且有分句的任务直达录音笔记页（深链恢复纪要视图） */}
+                  {t.tool === "asr" && t.status === "succeeded" && (t.summary?.segments?.length ?? 0) > 0 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="shrink-0"
+                      icon={<NotebookPen size={13} strokeWidth={1.75} />}
+                      onClick={() => navigate(`/quicknote?task=${t.id}`)}
+                    >
+                      查看笔记
+                    </Button>
+                  )}
                   <IconButton
                     label="删除任务"
                     size="sm"

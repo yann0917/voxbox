@@ -13,6 +13,27 @@ export interface Run {
   error?: string;
 }
 
+/** 深链回放源恢复：任务 input（创建时的原始输入引用 JSON）→ 上传文件 id。
+ *  录音笔记经 file_ids 通道创建（POST /api/uploads 先拿 id），取第一个有效 id 即
+ *  服务端上传流；产物/URL 通道或格式异常返回 null，调用方降级隐藏播放器。 */
+export function replayFileId(input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const ids = (input as { file_ids?: unknown }).file_ids;
+  if (!Array.isArray(ids)) return null;
+  for (const id of ids) {
+    if (typeof id === "string" && id.trim() !== "") return id;
+  }
+  return null;
+}
+
+/** 失败终态文案：用户取消=已取消、服务端中断=已中断，其余失败态归「转写失败」。
+ *  收尾 toast 标题与结果区兜底文案共用同一映射，避免终态一律念「转写失败」。 */
+export function failedStatusText(status: TaskStatus): string {
+  if (status === "canceled") return "已取消";
+  if (status === "interrupted") return "已中断";
+  return "转写失败";
+}
+
 /** 结果区视图：空闲 / 提交中 / 转写中 / 完成 / 出错 */
 export type ResultView = "empty" | "submitting" | "progress" | "done" | "error";
 
