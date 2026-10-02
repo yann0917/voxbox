@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -10,6 +10,7 @@ import {
   FileText,
   Link2,
   Mic,
+  NotebookPen,
   RefreshCw,
   SlidersHorizontal,
   Square,
@@ -187,6 +188,7 @@ function DownloadRow({ a }: { a: Artifact }) {
 }
 
 export default function ASRPage() {
+  const navigate = useNavigate();
   /* 跨工具联动：/asr?artifact=<id>（来自人声分离页「送 ASR识别」）→ 跳过输入区，
      以 artifact_input 直接提交识别任务。 */
   const [searchParams] = useSearchParams();
@@ -600,7 +602,7 @@ export default function ASRPage() {
               <CardHeader
                 title={artifactMode ? "输入来源" : "音频输入"}
                 icon={<FileAudio size={15} strokeWidth={1.75} />}
-                aside={<span className="micro">{artifactMode ? "artifact_input" : mode === "upload" ? "本地文件" : "公网 URL"}</span>}
+                aside={<span className="micro">{artifactMode ? "artifact_input" : mode === "upload" ? "本地文件" : mode === "recording" ? "麦克风录音" : "公网 URL"}</span>}
               />
               <CardBody className="space-y-4">
                 {artifactMode ? (
@@ -859,7 +861,7 @@ export default function ASRPage() {
                                   ? "正在录音，点击方块停止"
                                   : recState === "processing"
                                     ? "正在转码…"
-                                    : "点击麦克风开始录音，产出 16kHz WAV 走标准版识别"}
+                                    : "点击麦克风开始录音，产出 16kHz WAV，与上传文件同一通道"}
                               </p>
                             </div>
                             {recError && (
@@ -1058,11 +1060,27 @@ export default function ASRPage() {
                     ))}
                   </div>
                 ) : segments.length > 0 ? (
-                  <TranscriptList
-                    segments={segments}
-                    activeIdx={activeIdx}
-                    onSeek={(ms) => seekTo(ms, seekTrack)}
-                  />
+                  <div className="space-y-2">
+                    <TranscriptList
+                      segments={segments}
+                      activeIdx={activeIdx}
+                      onSeek={(ms) => seekTo(ms, seekTrack)}
+                    />
+                    {/* 一句话转写的后续加工在历史详情：提炼/待办/日程与就稿问答都在那里 */}
+                    {engine === "volcengine" && version === "sentence" && taskId && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<NotebookPen size={13} strokeWidth={1.75} />}
+                          onClick={() => navigate(`/history?task=${taskId}`)}
+                        >
+                          AI 提炼与问答
+                        </Button>
+                        <span className="text-[11px] text-muted">在历史任务详情里提炼总结、待办，并可继续追问</span>
+                      </div>
+                    )}
+                  </div>
                 ) : detail?.task.summary?.text ? (
                   // 本地识别（sherpa-onnx）只回整段文本，无分句时间戳：直接展示文稿
                   <p className="whitespace-pre-wrap py-2 text-sm leading-relaxed text-fg">

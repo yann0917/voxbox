@@ -1,12 +1,13 @@
 import { RotateCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button, MicroLabel, WavePlayer } from "../ui";
-import { taskLabel, toolRoute } from "../lib/toolNames";
+import { toolLabel, toolRoute } from "../lib/toolNames";
 import { formatTime } from "../lib/player";
 import { resolvePlaySrc } from "../lib/playback";
 import { useTranscriptSync } from "../lib/useTranscriptSync";
 import { TranscriptList } from "./TranscriptList";
 import { ArtifactRow } from "./ArtifactRow";
+import { NotebookSection } from "./notebook/NotebookSection";
 import type { TaskDetail as TaskDetailData } from "../lib/types";
 
 interface TaskDetailPanelProps {
@@ -43,13 +44,9 @@ export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelPro
   const segments = task.summary?.segments ?? [];
   const playSrc = resolvePlaySrc(task, artifacts);
   const { activeIdx, seekTo } = useTranscriptSync(segments, playSrc);
-  // scene 是录音笔记的入口标记（非用户参数），参数回显里滤掉
-  const params = Object.entries(task.params ?? {}).filter(([k]) => k !== "scene");
+  const params = Object.entries(task.params ?? {});
   const timecode = pickTimecode(segments);
-  const track = { title: `${taskLabel(task.tool, task.params)} 回放`, sub: task.id.slice(0, 8) };
-  // 录音笔记任务的「工具页」是纪要视图本身（深链恢复），其余任务回各自工具页
-  const openRoute =
-    task.tool === "asr" && task.params?.scene === "quicknote" ? `/quicknote?task=${task.id}` : toolRoute[task.tool];
+  const track = { title: `${toolLabel(task.tool)} 回放`, sub: task.id.slice(0, 8) };
 
   return (
     <div className="space-y-3">
@@ -94,6 +91,12 @@ export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelPro
         </div>
       )}
 
+      {/* 纪要区（ASR 且有分句时）：说话人改名统计 + AI 提炼 + 就稿问答，引用 chip 复用同一跳播。
+          key=任务 id：切换任务即重置改名/加工/问答的本会话状态 */}
+      {task.tool === "asr" && segments.length > 0 && (
+        <NotebookSection key={task.id} task={task} segments={segments} onSeek={(ms) => seekTo(ms, track)} />
+      )}
+
       {/* 产物 */}
       {artifacts.length > 0 && (
         <div className="space-y-2">
@@ -108,9 +111,9 @@ export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelPro
         <Button variant="secondary" size="sm" icon={<RotateCw size={13} strokeWidth={1.75} />} loading={rerunPending} onClick={onRerun}>
           重跑
         </Button>
-        {openRoute && (
+        {toolRoute[task.tool] && (
           <Link
-            to={openRoute}
+            to={toolRoute[task.tool]}
             className="inline-flex items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
           >
             打开工具页

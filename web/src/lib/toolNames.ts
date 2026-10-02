@@ -20,10 +20,6 @@ export const toolName: Record<string, string> = {
 
 export const toolLabel = (t: string): string => toolName[t] ?? t;
 
-/** 任务展示名：asr 是双入口工具——录音笔记任务带 params.scene=quicknote 标记，其余为语音识别页发起。 */
-export const taskLabel = (tool: string, params?: Record<string, unknown> | null): string =>
-  tool === "asr" && params?.scene === "quicknote" ? "录音笔记" : toolLabel(tool);
-
 /** 工具名 → 控制台路由（历史页重跑后跳转等跨页导航用）。 */
 export const toolRoute: Record<string, string> = {
   tts: "/tts",

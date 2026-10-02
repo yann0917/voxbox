@@ -22,8 +22,6 @@ const AudioEditorPage = lazy(() => import("./pages/AudioEditorPage"));
 const GsgcPage = lazy(() => import("./pages/GsgcPage"));
 const TranslatePage = lazy(() => import("./pages/TranslatePage"));
 const MinutesPage = lazy(() => import("./pages/MinutesPage"));
-// eslint-disable-next-line react/only-export-components -- 本文件无导出，每条 lazy 路由声明都会触发该规则（同款声明见上方各页）
-const QuicknotePage = lazy(() => import("./pages/QuicknotePage"));
 const SubtitlesPage = lazy(() => import("./pages/SubtitlesPage"));
 const PromptLibraryPage = lazy(() => import("./pages/PromptLibraryPage"));
 const AboutPage = lazy(() => import("./pages/AboutPage"));
@@ -91,7 +89,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="/gsgc" element={<GsgcPage />} />
               <Route path="/translate" element={<TranslatePage />} />
               <Route path="/minutes" element={<MinutesPage />} />
-              <Route path="/quicknote" element={<QuicknotePage />} />
               <Route path="/subtitles" element={<SubtitlesPage />} />
               <Route path="/prompts" element={<PromptLibraryPage />} />
               <Route path="/about" element={<AboutPage />} />

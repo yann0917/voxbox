@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Clock, NotebookPen, RefreshCw, Search, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Clock, RefreshCw, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import { fetchJSON } from "../lib/api";
 import { formatTime } from "../lib/player";
 import type { Task, TaskDetail } from "../lib/types";
@@ -19,7 +19,7 @@ import {
   StatusBadge,
   useToast,
 } from "../ui";
-import { taskLabel, toolLabel } from "../lib/toolNames";
+import { toolLabel } from "../lib/toolNames";
 
 const filters = [
   { value: "", label: "全部" },
@@ -271,7 +271,7 @@ export default function HistoryPage() {
                     onClick={() => selectTask(selected === t.id ? null : t.id)}
                     className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
                   >
-                    <span className="w-20 shrink-0 text-fg-2">{taskLabel(t.tool, t.params)}</span>
+                    <span className="w-20 shrink-0 text-fg-2">{toolLabel(t.tool)}</span>
                     {t.title && (
                       <span className="hidden min-w-0 max-w-48 shrink truncate text-sm sm:inline">{t.title}</span>
                     )}
@@ -284,18 +284,6 @@ export default function HistoryPage() {
                     {t.cost_ms > 0 ? `${(t.cost_ms / 1000).toFixed(1)}s` : "—"}
                   </span>
                   <span className="shrink-0 font-mono text-[11px] text-muted">{t.created_at}</span>
-                  {/* 录音笔记回看：转写完成且有分句的任务直达录音笔记页（深链恢复纪要视图） */}
-                  {t.tool === "asr" && t.status === "succeeded" && (t.summary?.segments?.length ?? 0) > 0 && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="shrink-0"
-                      icon={<NotebookPen size={13} strokeWidth={1.75} />}
-                      onClick={() => navigate(`/quicknote?task=${t.id}`)}
-                    >
-                      查看笔记
-                    </Button>
-                  )}
                   <IconButton
                     label="删除任务"
                     size="sm"
@@ -352,7 +340,7 @@ export default function HistoryPage() {
         open={Boolean(pendingDelete)}
         title="删除任务"
         description={`将删除「${
-          pendingDelete ? taskLabel(pendingDelete.tool, pendingDelete.params) : ""
+          pendingDelete ? toolLabel(pendingDelete.tool) : ""
         }」任务记录及其产物文件，且不可恢复。`}
         confirmLabel="删除"
         loading={del.isPending}

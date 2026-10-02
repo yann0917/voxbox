@@ -1,46 +1,8 @@
-import { fetchJSON } from "../../lib/api";
 import { streamPostSSE } from "../../lib/sse";
-import type { RefineEvent, RefineTodo, TaskDetail, TaskStatus } from "../../lib/types";
+import type { RefineEvent, RefineTodo } from "../../lib/types";
 
 /** 转写分句：speaker 为上游说话人编号（"0"/"1"… 字符串，未启用分离时缺省） */
 export type QNSegment = { text: string; start_ms: number; end_ms: number; speaker?: string };
-
-/** 任务运行态：只保留界面需要的字段，不伪造完整 Task DTO（与语音识别/妙记页同一结构） */
-export interface Run {
-  status: TaskStatus;
-  progress: number;
-  note: string;
-  error?: string;
-}
-
-/** 深链回放源恢复：任务 input（创建时的原始输入引用 JSON）→ 上传文件 id。
- *  录音笔记经 file_ids 通道创建（POST /api/uploads 先拿 id），取第一个有效 id 即
- *  服务端上传流；产物/URL 通道或格式异常返回 null，调用方降级隐藏播放器。 */
-export function replayFileId(input: unknown): string | null {
-  if (!input || typeof input !== "object") return null;
-  const ids = (input as { file_ids?: unknown }).file_ids;
-  if (!Array.isArray(ids)) return null;
-  for (const id of ids) {
-    if (typeof id === "string" && id.trim() !== "") return id;
-  }
-  return null;
-}
-
-/** 失败终态文案：用户取消=已取消、服务端中断=已中断，其余失败态归「转写失败」。
- *  收尾 toast 标题与结果区兜底文案共用同一映射，避免终态一律念「转写失败」。 */
-export function failedStatusText(status: TaskStatus): string {
-  if (status === "canceled") return "已取消";
-  if (status === "interrupted") return "已中断";
-  return "转写失败";
-}
-
-/** 结果区视图：空闲 / 提交中 / 转写中 / 完成 / 出错 */
-export type ResultView = "empty" | "submitting" | "progress" | "done" | "error";
-
-/** 终态回读：进度通道收到收尾事件后拉任务详情（分句文字稿在 task.summary.segments） */
-export function loadTask(id: string): Promise<TaskDetail> {
-  return fetchJSON<TaskDetail>(`/api/tasks/${id}`);
-}
 
 /** 说话人统计：每人的发言轮数 / 时长 / 占比（无说话人标注的分句不计入） */
 export function speakerStats(segs: QNSegment[]) {
@@ -54,11 +16,6 @@ export function speakerStats(segs: QNSegment[]) {
   }
   const total = [...m.values()].reduce((a, b) => a + b.ms, 0) || 1;
   return [...m].map(([id, v]) => ({ id, ...v, pct: v.ms / total }));
-}
-
-/** 文稿全文：逐行「说话人N：文本」（无说话人标注的句子只有文本），供复制与 .md 导出。 */
-export function transcriptText(segs: QNSegment[]): string {
-  return segs.map((s) => (s.speaker ? `说话人${s.speaker}：${s.text}` : s.text)).join("\n");
 }
 
 /* ---------- 加工区（/api/refine）：模式、请求与结果归一 ---------- */
@@ -141,7 +98,7 @@ export function refinedAtText(rfc3339: string | undefined): string {
 
 /** 文件名安全化：路径与系统保留字符替换为连字符（事件名/任务标题直接做下载名）。 */
 export function safeFilename(name: string): string {
-  return name.replace(/[/\\:*?"<>|]/g, "-").trim() || "录音笔记";
+  return name.replace(/[/\\:*?"<>|]/g, "-").trim() || "语音识别";
 }
 
 /* ---------- 问答区（/api/assistant/chat + context）：上下文组装与时间戳引用 ---------- */

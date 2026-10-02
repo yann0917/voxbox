@@ -5,10 +5,11 @@ import {
   clockText,
   linkifyCitations,
   seekHrefToMs,
+  speakerStats,
   timedTranscript,
   todayText,
   type QNSegment,
-} from "../src/pages/quicknote/model";
+} from "../src/components/notebook/model";
 
 describe("clockText", () => {
   it("formats ms as HH:MM:SS with zero padding", () => {
@@ -39,6 +40,25 @@ describe("timedTranscript", () => {
 
   it("applies rename overrides through speakerLabel", () => {
     expect(timedTranscript([segs[0]], () => "老王")).toBe("00:00:04 老王：大家好，开始吧。");
+  });
+});
+
+describe("speakerStats", () => {
+  it("aggregates turns/duration/share per speaker, ignoring unlabeled segments", () => {
+    const segs: QNSegment[] = [
+      { text: "a", start_ms: 0, end_ms: 1000, speaker: "0" },
+      { text: "b", start_ms: 1000, end_ms: 3000, speaker: "1" },
+      { text: "无标注", start_ms: 3000, end_ms: 9000 },
+      { text: "c", start_ms: 9000, end_ms: 11000, speaker: "0" },
+    ];
+    const stats = speakerStats(segs);
+    expect(stats).toHaveLength(2);
+    expect(stats[0]).toMatchObject({ id: "0", turns: 2, ms: 3000, pct: 0.6 });
+    expect(stats[1]).toMatchObject({ id: "1", turns: 1, ms: 2000, pct: 0.4 });
+  });
+
+  it("returns empty for segments without any speaker labels", () => {
+    expect(speakerStats([{ text: "独白", start_ms: 0, end_ms: 100 }])).toEqual([]);
   });
 });
 

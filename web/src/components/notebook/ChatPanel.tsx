@@ -23,7 +23,7 @@ export interface ChatPanelProps {
 
 /** 问答区：就这段录音的转写继续追问——发送时组装转写上下文（含说话人改名与
  *  引用约定）走 /api/assistant/chat 的 SSE 流；回答中的【分:秒】渲染成 chip，
- *  点击跳播到对应位置。会话仅存于内存，重录或刷新即清。 */
+ *  点击跳播到对应位置。会话仅存于内存，切换任务或刷新即清。 */
 export function ChatPanel({ segments, speakerLabel, onSeek }: ChatPanelProps) {
   // undefined=配置加载中（保守禁用）；null=未选默认模型（引导去设置页）
   const defaultModel = useDefaultAssistantModel();
@@ -35,7 +35,7 @@ export function ChatPanel({ segments, speakerLabel, onSeek }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickBottom = useRef(true);
 
-  // 卸载即中止未完成的流（重录/离开页面）
+  // 卸载即中止未完成的流（切换任务/离开页面）
   useEffect(() => () => abortRef.current?.abort(), []);
 
   // 流式输出贴底滚动；用户上翻（距底 > 64px）则停止跟随
@@ -133,7 +133,7 @@ export function ChatPanel({ segments, speakerLabel, onSeek }: ChatPanelProps) {
   }, [onSeek]);
 
   return (
-    <Card className="mt-4">
+    <Card>
       <CardHeader
         title="追问这段录音"
         icon={<MessageCircle size={15} strokeWidth={1.75} />}

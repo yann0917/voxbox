@@ -130,7 +130,7 @@ export function RefinePanel({ taskId, title, refined }: RefinePanelProps) {
   const stop = () => abortRef.current?.abort();
 
   return (
-    <Card className="mt-4">
+    <Card>
       <CardHeader
         title="AI 加工"
         icon={<Sparkles size={15} strokeWidth={1.75} />}

@@ -17,7 +17,7 @@ import {
   PRICE_ASR_IDLE,
   PRICE_ASR_STANDARD,
   PRICE_MT,
-  PRICE_QUICKNOTE_SAUC,
+  PRICE_ASR_SAUC_HOUR,
   PRICE_SNAPSHOT_DATE,
   PRICING_SOURCES,
   PRICE_SYNC_BY_CALLS,
@@ -455,7 +455,7 @@ function SeparateEstimator() {
 
 export default function PricingPage() {
   const allItems = useMemo(
-    () => [PRICE_SYNC_BY_MINUTE, PRICE_SYNC_BY_CHARS, PRICE_SYNC_BY_CALLS, PRICE_TTS_20, PRICE_ASR_STANDARD, PRICE_ASR_FLASH, PRICE_ASR_IDLE, PRICE_QUICKNOTE_SAUC, PRICE_MT],
+    () => [PRICE_SYNC_BY_MINUTE, PRICE_SYNC_BY_CHARS, PRICE_SYNC_BY_CALLS, PRICE_TTS_20, PRICE_ASR_STANDARD, PRICE_ASR_FLASH, PRICE_ASR_IDLE, PRICE_ASR_SAUC_HOUR, PRICE_MT],
     [],
   );
 
@@ -573,7 +573,7 @@ export default function PricingPage() {
               字符口径：1 个汉字/字母/标点/空格均算 1 字符（UTF-8 字节数不影响计费；千问例外——汉字计 2 字符）；时长口径：累加每次调用语音时长精确至毫秒折算小时。
               本页估算不含资源包抵扣顺序、试用额度与并发增购，后付费按小时出账；官方未给出「接口 ↔ 商品」映射，
               同步合成（V1 接口）的计费商品随音色代际而异，测算已按口径拆分并以账单为准；
-              录音笔记（大模型流式语音识别·小时版）{PRICE_QUICKNOTE_SAUC.postpaid[0].price} 元/小时（豆包流式语音识别 2.0·API 调用后付费），AI 加工另按所配大模型计费，以账单为准；
+              语音识别（大模型流式·小时版）{PRICE_ASR_SAUC_HOUR.postpaid[0].price} 元/小时（豆包流式语音识别 2.0·API 调用后付费），AI 提炼与问答另按所配大模型计费，以账单为准；
               机器翻译按 token 计费（输入/输出分别计价，资源包按总量抵扣），
               人声分离属 AI MediaKit 音频工具计费体系，随文档更新于 2026.07；
               千问/小米价格取自模型市场与 Pay-As-You-Go 页（快照 {CLOUD_PRICE_SNAPSHOT_DATE}）。
