@@ -217,7 +217,14 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("读取配置失败: %w", err)
 		}
 	}
-	return configFromViper(v), nil
+	cfg := configFromViper(v)
+	// VOXBOX_HOME 隔离优先于一切显式 data_dir：SetDefault 只在键缺失时兜底，
+	// config.yaml 一旦写过 data_dir，env 隔离（冒烟/测试/服务器解耦的核心机制）
+	// 就会被显式值穿透。这里在装载末端强制归位到 env 根目录，配置与数据始终同源。
+	if strings.TrimSpace(os.Getenv("VOXBOX_HOME")) != "" {
+		cfg.DataDir = filepath.Join(homeDir(), ".voxbox", "data")
+	}
+	return cfg, nil
 }
 
 // newFileViper 绑定 config.yaml 并预置默认值（Load 与 Watch 共用）。

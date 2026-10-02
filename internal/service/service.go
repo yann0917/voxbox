@@ -399,6 +399,41 @@ func (s *Service) SaveStorage(sc config.StorageConfig) error {
 	return nil
 }
 
+// SaveDataDir 校验并持久化数据保存位置（config.yaml 的 data_dir 键），重启生效：
+// 监听与 SQLite 连接是启动期属性，运行期不换（ReloadDiskConfig 对 DataDir 同口径不热应用），
+// 因此不做内存快照替换——GET 回显的 data_dir 在重启前保持当前生效值。
+// 规则：非空、绝对路径；~/ 前缀展开用户主目录（os 包不处理壳层波浪号）；展开后 Clean。
+// 与当前生效值相同的写入视为无操作拒绝（前端同值禁用保存按钮，正常流不会触达）。
+// 返回展开后的最终目录供端点回显。
+func (s *Service) SaveDataDir(dir string) (string, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return "", fmt.Errorf("目录不能为空")
+	}
+	if dir == "~" || strings.HasPrefix(dir, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("无法定位用户主目录: %w", err)
+		}
+		dir = filepath.Join(home, strings.TrimPrefix(dir, "~"))
+	}
+	dir = filepath.Clean(dir)
+	if !filepath.IsAbs(dir) {
+		return "", fmt.Errorf("目录必须是绝对路径（以 / 或盘符开头）")
+	}
+	// 卷根防呆（/ 或 C:\）：数据库与产物会直接落在文件系统根，几乎总是误填。
+	if dir == filepath.VolumeName(dir)+string(os.PathSeparator) {
+		return "", fmt.Errorf("不能使用磁盘根目录，请选择一个专门的文件夹")
+	}
+	if dir == s.cfg.Load().DataDir {
+		return "", fmt.Errorf("与当前目录相同，无需修改")
+	}
+	if err := config.Set("data_dir", dir); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
 // TestStorageConnection 对象存储探活（HeadBucket）：桶可达且凭证有效即成功。
 // 未就绪时按原因区分提示（未配置 / 配了参数但没选存储类型 / 初始化失败），可定位。
 func (s *Service) TestStorageConnection() (string, bool) {

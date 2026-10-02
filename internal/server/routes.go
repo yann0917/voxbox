@@ -78,6 +78,7 @@ func (s *Server) Handler() http.Handler {
 		settingsAdmin.PUT("/providers/:name", s.putProviderSettings)
 		settingsAdmin.PUT("/storage", s.putStorageSettings)
 		settingsAdmin.PUT("/assistant", s.putAssistantSettings)
+		settingsAdmin.PUT("/data-dir", s.putDataDirSettings)
 		settingsAdmin.POST("/test-connection", s.testConnection)
 	}
 

@@ -120,6 +120,26 @@ func (s *Server) putStorageSettings(c *gin.Context) {
 	ok(c, gin.H{"ok": true, "note": "存储配置已保存"})
 }
 
+type putDataDirReq struct {
+	Dir string `json:"dir"`
+}
+
+// putDataDirSettings 保存数据保存位置（config.yaml data_dir），重启生效：监听与
+// SQLite 连接是启动期属性，运行期不换，响应带 restart_required=true 供前端提示。
+func (s *Server) putDataDirSettings(c *gin.Context) {
+	var req putDataDirReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, CodeBadRequest, "参数错误")
+		return
+	}
+	dir, err := s.svc.SaveDataDir(req.Dir)
+	if err != nil {
+		fail(c, CodeBadRequest, err.Error())
+		return
+	}
+	ok(c, gin.H{"dir": dir, "restart_required": true})
+}
+
 // providerTest 卡探活结果（test-connection 的 results 数组元素）。
 type providerTest struct {
 	Name    string `json:"name"`

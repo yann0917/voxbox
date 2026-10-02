@@ -157,6 +157,65 @@ func TestWatchRenameStyleSave(t *testing.T) {
 	}
 }
 
+// writeDataDirConfig 在当前 home（经 Path() 解析）落一份含 data_dir 的 config.yaml。
+func writeDataDirConfig(t *testing.T, dataDir string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(Path()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := "data_dir: " + dataDir + "\n"
+	if err := os.WriteFile(Path(), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDataDirVOXBOXHomeWins VOXBOX_HOME 隔离优先于 config.yaml 显式 data_dir：
+// 冒烟/测试环境靠 env 整体隔离（配置与数据一起走 env 根目录），显式配置不得穿透。
+func TestDataDirVOXBOXHomeWins(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("VOXBOX_HOME", home)
+	writeDataDirConfig(t, "/explicit/elsewhere")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, ".voxbox", "data"); cfg.DataDir != want {
+		t.Errorf("DataDir = %q, want VOXBOX_HOME 推导 %q", cfg.DataDir, want)
+	}
+}
+
+// TestDataDirExplicitConfig 无 VOXBOX_HOME 时 config.yaml 显式 data_dir 生效
+// （设置页/CLI 写入的值重启后从盘上读回应原样生效）。
+func TestDataDirExplicitConfig(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	t.Setenv("VOXBOX_HOME", "") // 显式置空：防止开发机环境的 VOXBOX_HOME 穿透测试
+	writeDataDirConfig(t, "/custom/voxbox-data")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DataDir != filepath.Clean("/custom/voxbox-data") {
+		t.Errorf("DataDir = %q, want 显式配置 /custom/voxbox-data", cfg.DataDir)
+	}
+}
+
+// TestDataDirDefault 无 env 无显式配置：默认 用户主目录/.voxbox/data。
+func TestDataDirDefault(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	t.Setenv("VOXBOX_HOME", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, ".voxbox", "data"); cfg.DataDir != want {
+		t.Errorf("DataDir = %q, want 默认 %q", cfg.DataDir, want)
+	}
+}
+
 // TestStorageChannelMigration 旧版平铺 storage.* 字段读取时一次性迁移进
 // storage.providers.<名> 通道段（内存态；盘上旧键残留无害，viper 无删键能力，
 // 新段一旦存在旧键不再参与读取）。

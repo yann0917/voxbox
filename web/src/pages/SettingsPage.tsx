@@ -8,7 +8,6 @@ import {
   CloudUpload,
   Eye,
   EyeOff,
-  FolderOpen,
   KeyRound,
   PlugZap,
   Server,
@@ -25,7 +24,6 @@ import {
   Field,
   IconButton,
   Input,
-  MicroLabel,
   PageHeader,
   Select,
   Skeleton,
@@ -37,6 +35,7 @@ import {
 import LocalModelsSection from "./LocalModelsSection";
 import PronunciationSection from "./PronunciationSection";
 import AssistantModelCard from "./AssistantModelCard";
+import DataDirCard from "./DataDirCard";
 
 /** test-connection 响应：results 逐卡回 name/ok/message，storage 独立段。 */
 interface ConnResult {
@@ -465,8 +464,10 @@ export default function SettingsPage() {
         <PronunciationSection />
       ) : (
         <div className="space-y-4">
-          <LocalModelsSection />
+          {/* 数据保存位置置顶：改目录要停服务搬数据，先于本地模型区看到迁移口径 */}
+          <DataDirCard />
 
+          <LocalModelsSection />
           {local.map((p) => (
             <Card key={p.name}>
               <CardHeader
@@ -486,20 +487,6 @@ export default function SettingsPage() {
               </CardBody>
             </Card>
           ))}
-
-          <Card>
-            <CardHeader title="存储位置" icon={<FolderOpen size={15} strokeWidth={1.75} />} />
-            <CardBody className="space-y-4">
-              <div className="space-y-2">
-                <MicroLabel>数据目录</MicroLabel>
-                <p className="break-all font-mono text-xs text-fg-2">{data?.data_dir ?? "—"}</p>
-                <p className="text-[11px] text-muted">
-                  产物文件（音频、转写、字幕、对话稿）与任务数据库都保存在此目录；配置文件为
-                  <code className="font-mono"> ~/.voxbox/config.yaml</code>。
-                </p>
-              </div>
-            </CardBody>
-          </Card>
 
           <Card>
             <CardHeader title="通知" icon={<Bell size={15} strokeWidth={1.75} />} />
