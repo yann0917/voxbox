@@ -274,7 +274,7 @@ export default function HistoryPage() {
         <CardHeader
           title="任务列表"
           icon={<Clock size={15} strokeWidth={1.75} />}
-          aside={<span className="micro">{toolFilter ? `筛选后 ${total} 条` : `共 ${total} 条`}</span>}
+          aside={<span className="micro">共 {total} 条</span>}
         />
         {list.isLoading ? (
           <div className="space-y-2 p-4">
