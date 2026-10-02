@@ -53,7 +53,7 @@ const nav = [
   { to: "/minutes", label: "语音妙记", desc: "音视频转结构化纪要", icon: NotebookPen },
   { to: "/subtitles", label: "字幕工坊", desc: "字幕样式与 SRT/ASS 导出", icon: Captions },
   { to: "/prompts", label: "提示词库", desc: "AI 写作主题与自定义提示词", icon: LibraryBig },
-  { to: "/history", label: "历史", desc: "全部任务与产物", icon: History },
+  { to: "/history", label: "任务", desc: "提交记录与产物", icon: History },
   { to: "/pricing", label: "计费测算", desc: "刊例价用量估算", icon: Calculator },
   { to: "/settings", label: "设置", desc: "凭证与连接", icon: Settings },
   { to: "/about", label: "关于", desc: "产品与使用指南", icon: Info },

@@ -369,7 +369,7 @@ export default function MixerPanel() {
             <EmptyState
               icon={<SlidersHorizontal size={18} strokeWidth={1.75} />}
               title="从分离任务进入混音台"
-              description="混音台以分离产物为原料：先在人声分离页得到人声与伴奏两轨，再从产物行点「混音」进入，或在历史页分离任务详情点「进混音台」。"
+              description="混音台以分离产物为原料：先在人声分离页得到人声与伴奏两轨，再从产物行点「混音」进入，或在任务记录页分离任务详情点「进混音台」。"
               action={
                 <Button variant="primary" onClick={() => navigate("/separate")}>去人声分离</Button>
               }

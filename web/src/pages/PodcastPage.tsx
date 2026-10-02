@@ -423,7 +423,7 @@ export default function PodcastPage() {
             to="/history"
             className="inline-flex items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
           >
-            历史产物
+            任务记录
             <ArrowUpRight size={13} strokeWidth={1.75} />
           </Link>
         }
@@ -782,7 +782,7 @@ export default function PodcastPage() {
                   </div>
                 ) : (
                   <p className="rounded-[var(--radius-sm)] border border-line bg-raise-2 p-3 text-xs text-muted">
-                    任务已完成，但没有音频产物，可到历史页查看该任务的记录。
+                    任务已完成，但没有音频产物，可到任务记录页查看该任务的记录。
                   </p>
                 )}
 

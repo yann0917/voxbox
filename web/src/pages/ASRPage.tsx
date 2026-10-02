@@ -576,7 +576,7 @@ export default function ASRPage() {
             to="/history"
             className="inline-flex items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
           >
-            历史产物
+            任务记录
             <ArrowUpRight size={13} strokeWidth={1.75} />
           </Link>
         }
@@ -659,7 +659,7 @@ export default function ASRPage() {
                         label="识别版本"
                         hint={
                           version === "idle"
-                            ? "闲时任务在服务端持续等待结果，可关闭页面，完成后在历史产物查看"
+                            ? "闲时任务在服务端持续等待结果，可关闭页面，完成后在任务记录查看"
                             : version === "sentence"
                               ? "单向流式大模型的整段同步模式，本地文件秒级返回"
                               : undefined

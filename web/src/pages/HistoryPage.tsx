@@ -161,7 +161,7 @@ export default function HistoryPage() {
   return (
     <>
       <PageHeader
-        title="历史"
+        title="任务记录"
         description="全部任务与产物，可回放、下载、删除"
         actions={
           <>
@@ -193,8 +193,8 @@ export default function HistoryPage() {
             value={searchQ}
             onChange={(e) => setSearchQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && setSearched(searchQ.trim())}
-            placeholder="搜索历史任务：转写内容、歌曲名…，回车搜索"
-            aria-label="搜索历史任务"
+            placeholder="搜索任务记录：转写内容、歌曲名…，回车搜索"
+            aria-label="搜索任务记录"
             className="pl-8"
           />
         </div>

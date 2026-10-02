@@ -204,7 +204,7 @@ export default function TranslatePage() {
             to="/history"
             className="inline-flex items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
           >
-            历史产物
+            任务记录
             <ArrowUpRight size={13} strokeWidth={1.75} />
           </Link>
         }
@@ -453,7 +453,7 @@ export default function TranslatePage() {
                 <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-fg">{translation}</p>
               </div>
             ) : (
-              <p className="text-xs text-muted">任务已完成，但未返回译文（可在历史页查看该任务产物）。</p>
+              <p className="text-xs text-muted">任务已完成，但未返回译文（可在任务记录页查看该任务产物）。</p>
             )}
 
             {artifacts.map((a) => (

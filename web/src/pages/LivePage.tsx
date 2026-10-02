@@ -176,7 +176,7 @@ export default function LivePage() {
         break;
       }
       case "saved":
-        toast({ tone: "ok", title: "已存入历史", description: "正在打开任务详情" });
+        toast({ tone: "ok", title: "已保存", description: "正在打开任务详情" });
         clientRef.current?.close();
         clientRef.current = null;
         navigate(`/history?task=${m.task_id}`);
@@ -488,10 +488,10 @@ export default function LivePage() {
                   disabled={!hasFinalText}
                   onClick={saveResult}
                 >
-                  {hasFinalText ? "保存到历史" : "无可保存内容"}
+                  {hasFinalText ? "保存" : "无可保存内容"}
                 </Button>
                 {hasFinalText ? (
-                  <p className="text-[11px] text-muted">保存后在历史中查看文稿与字幕，可继续 AI 提炼、待办与问答。</p>
+                  <p className="text-[11px] text-muted">保存后在任务记录中查看文稿与字幕，可继续 AI 提炼、待办与问答。</p>
                 ) : (
                   <Button variant="ghost" onClick={() => void startSession()}>
                     再试一次

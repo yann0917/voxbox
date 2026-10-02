@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import {
-  ArrowUpRight,
   BookOpenText,
   Coins,
   Cpu,
@@ -52,15 +51,6 @@ export default function AboutPage() {
         title="关于"
         description="voxbox · 个人自用的多媒体 AI 工作台"
         icon={<Info size={16} strokeWidth={1.75} />}
-        actions={
-          <Link
-            to="/history"
-            className="inline-flex items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
-          >
-            历史产物
-            <ArrowUpRight size={13} strokeWidth={1.75} />
-          </Link>
-        }
       />
 
       {/* 产品介绍 */}
@@ -73,11 +63,11 @@ export default function AboutPage() {
             智谱（glm-tts 合成 / glm-asr 短音频转写）与 OpenRouter（Gemini TTS 合成，经 openrouter.ai 网关）作为备用引擎；
             不配云端凭证也能离线跑：设置页「本地环境」可下载 Qwen3-TTS、IndexTTS 2.5、Kokoro、Chatterbox、
             VoxCPM2 与 SenseVoice 本地推理引擎。
-            提交任务、实时进度、产物落盘、历史可溯，面向配音、转写、播客、会议纪要、翻译等日常内容生产场景。
+            提交任务、实时进度、产物落盘、任务记录可溯，面向配音、转写、播客、会议纪要、翻译等日常内容生产场景。
           </p>
           <p className="text-sm leading-relaxed text-fg-2">
             命令行面向脚本与自动化（<code className="rounded bg-inset px-1.5 py-0.5 font-mono text-xs">--json</code> 输出机器可读结果）；
-            Web 控制台提供波形试听、音色库、悬浮 AI 助手、计费测算与任务历史。两者共享同一份数据目录与任务记录。
+            Web 控制台提供波形试听、音色库、悬浮 AI 助手、计费测算与任务记录。两者共享同一份数据目录与任务记录。
           </p>
         </CardBody>
       </Card>
@@ -121,7 +111,7 @@ export default function AboutPage() {
             <Cmd>voxbox serve --port 8081</Cmd>
             <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
               <Monitor size={12} strokeWidth={1.75} className="mr-1 inline" />
-              浏览器打开 http://127.0.0.1:8081 —— 各工具页交互、试听与历史；同量费用对比见
+              浏览器打开 http://127.0.0.1:8081 —— 各工具页交互、试听与任务记录；同量费用对比见
               <Link to="/pricing" className="text-accent transition-colors duration-150 hover:opacity-80">
                 计费测算
               </Link>

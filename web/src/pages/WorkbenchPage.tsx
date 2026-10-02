@@ -89,7 +89,7 @@ export default function WorkbenchPage() {
             to="/history"
             className="inline-flex items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
           >
-            全部任务
+            任务记录
             <ArrowUpRight size={13} strokeWidth={1.75} />
           </Link>
         }
