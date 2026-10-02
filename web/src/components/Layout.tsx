@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   AudioLines,
+  AudioWaveform,
   Calculator,
   Captions,
   History,
@@ -42,6 +43,7 @@ const nav = [
   { to: "/workbench", label: "工作台", desc: "工具总览与最近任务", icon: LayoutDashboard },
   { to: "/tts", label: "语音合成", desc: "同步/流式/长文本三通道", icon: AudioLines },
   { to: "/asr", label: "语音识别", desc: "音频转文字与字幕", icon: Mic },
+  { to: "/live", label: "实时字幕", desc: "边说边出字与一键存纪要", icon: AudioWaveform },
   { to: "/podcast", label: "播客工坊", desc: "生成双人播客", icon: Podcast },
   { to: "/separate", label: "人声分离", desc: "人声与背景音分轨", icon: Waves },
   { to: "/post", label: "音频后期", desc: "混音台 · 切高潮 · 口播闪避", icon: SlidersHorizontal },

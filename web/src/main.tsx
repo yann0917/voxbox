@@ -15,6 +15,8 @@ const WorkbenchPage = lazy(() => import("./pages/WorkbenchPage"));
 const TTSPage = lazy(() => import("./pages/TTSPage"));
 const PricingPage = lazy(() => import("./pages/PricingPage"));
 const ASRPage = lazy(() => import("./pages/ASRPage"));
+// oxlint-disable-next-line only-export-components 与同列 lazy 路由同款模式；本文件无导出，fast-refresh 规则逐行告警，此处压行保 lint 基线不涨
+const LivePage = lazy(() => import("./pages/LivePage"));
 const PodcastPage = lazy(() => import("./pages/PodcastPage"));
 const SeparatePage = lazy(() => import("./pages/SeparatePage"));
 const PostPage = lazy(() => import("./pages/post/PostPage"));
@@ -78,6 +80,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="/tts-stream" element={<Navigate to="/tts?tab=stream" replace />} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/asr" element={<ASRPage />} />
+              <Route path="/live" element={<LivePage />} />
               <Route path="/podcast" element={<PodcastPage />} />
               <Route path="/separate" element={<SeparatePage />} />
               <Route path="/post" element={<PostPage />} />
