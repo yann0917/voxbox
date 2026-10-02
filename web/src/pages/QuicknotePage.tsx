@@ -330,7 +330,7 @@ export default function QuicknotePage() {
                   点击麦克风开始录音，停止后自动提交转写；语种自动识别，说话人与方言识别已开启，文字稿显示在下方。
                 </p>
                 <p className="text-[11px] leading-relaxed text-muted">
-                  计费：按语音时长 {PRICE_QUICKNOTE_SAUC.postpaid[0].price} 元/小时（占价待核对），刊例快照{" "}
+                  计费：语音识别 {PRICE_QUICKNOTE_SAUC.postpaid[0].price} 元/小时，AI 加工按所配大模型另计，刊例快照{" "}
                   {PRICE_SNAPSHOT_DATE}，以账单为准。
                 </p>
               </CardBody>
