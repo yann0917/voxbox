@@ -218,7 +218,7 @@ export default function SeparatePage() {
     <>
       <PageHeader
         title="人声分离"
-        description="音频源分离四引擎：格式工厂 / 转换猫（免费，双线路互为备用）、MVSep（120+ 算法，每日 50 次免费）、火山 MediaKit（人声/背景，计费）"
+        description="音频源分离四引擎：格式工厂 / 转换猫（双线路互为备用）、MVSep（120+ 算法）、火山 MediaKit（人声/背景双轨）"
       />
 
       <Card>

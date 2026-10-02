@@ -23,7 +23,6 @@ import { TranscriptList } from "../components/TranscriptList";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { DictFill } from "../components/DictFill";
 import { FileDrop } from "../components/FileDrop";
-import { MINUTES_PRICE, PRICE_SNAPSHOT_DATE } from "../lib/pricing";
 import {
   Button,
   Card,
@@ -325,7 +324,7 @@ export default function MinutesPage() {
             )}
             <p className="text-[11px] leading-relaxed text-muted">
               妙记与 ASR 的区别：ASR 只做转写（本地文件可直发）；妙记额外生成说话人分离、总结、待办、章节等结构化纪要，
-              按小时计费（转写 1.8 元/小时 + 结构费），适合会议/访谈/讲座。同量对比见
+              适合会议/访谈/讲座。费用见
               <Link to="/pricing" className="mx-0.5 text-accent transition-colors duration-150 hover:opacity-80">
                 计费测算
               </Link>
@@ -449,9 +448,7 @@ export default function MinutesPage() {
                 </p>
               )}
               <p className="mt-2 text-[11px] leading-relaxed text-muted">
-                计费：转写 {MINUTES_PRICE.transcriptionPerHour} 元/小时 + 结构
-                {allActivate ? `（打包 ${MINUTES_PRICE.structureBundlePerHour} 元/小时）` : `（单功能 ${MINUTES_PRICE.structureSinglePerHour} 元/小时 × ${features.length}）`}
-                ，刊例快照 {PRICE_SNAPSHOT_DATE}，以账单为准。生成耗时与音视频时长正相关（分钟级）。
+                生成耗时与音视频时长正相关（分钟级）。
               </p>
             </div>
           </CardBody>

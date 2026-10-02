@@ -337,9 +337,7 @@ export default function LivePage() {
                 <div ref={levelRef} className="h-full rounded-full bg-accent" style={{ width: "0%" }} />
               </div>
             )}
-            {engine === "volcengine" && phase === "idle" && (
-              <span className="text-[11px] text-muted">约 1 元/小时</span>
-            )}
+            
           </div>
           <div
             className={`flex min-w-0 flex-1 flex-wrap items-center gap-x-5 gap-y-3 ${
@@ -413,9 +411,6 @@ export default function LivePage() {
             aside={
               live ? (
                 <span className="flex items-center gap-2">
-                  {engine === "volcengine" && (
-                    <span className="text-[11px] text-muted">约 1 元/小时</span>
-                  )}
                   <span className="flex items-center gap-1.5 text-danger">
                     <span className="signal-dot signal-dot-pulse" />
                     <span className="font-mono text-xs tabular-nums">{formatElapsed(elapsedMs)}</span>

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowUpRight, AudioLines, Radio, ScrollText } from "lucide-react";
 import { Card, CardBody, MicroLabel, PageHeader, Tabs, type TabItem } from "../ui";
-import { PRICE_SNAPSHOT_DATE, TTS_CHANNELS } from "../lib/pricing";
+import { TTS_CHANNELS } from "../lib/pricing";
 import { useProviderConfigured } from "../lib/useStorageEnabled";
 import TTSSyncPanel from "./tts/TTSSyncPanel";
 import TTSStreamPanel from "./tts/TTSStreamPanel";
@@ -151,24 +151,20 @@ export default function TTSPage() {
             <Tabs items={TAB_ITEMS} value={tab} onChange={switchTab} />
           </div>
 
-          {/* 通道说明条：定位 + 计费方式 + 适用建议（费用视角选通道） */}
+          {/* 通道说明条：定位 + 适用建议（费用对比统一收敛到计费测算页） */}
           <Card className="mb-4">
             <CardBody className="space-y-1.5 py-3">
               <div className="flex flex-wrap items-baseline gap-2">
                 <MicroLabel>{info.tab}</MicroLabel>
                 <span className="text-sm text-fg">{info.tagline}</span>
               </div>
-              <p className="text-xs text-fg-2">
-                <span className="mr-1 text-muted">计费：</span>
-                {info.pricing}
-              </p>
               <p className="text-xs text-muted">
                 <span className="mr-1">适用：</span>
-                {info.advice} 同量文本的费用对比见
+                {info.advice} 费用对比见
                 <Link to="/pricing" className="mx-0.5 text-accent transition-colors duration-150 hover:opacity-80">
                   计费测算
                 </Link>
-                （刊例快照 {PRICE_SNAPSHOT_DATE}，以账单为准）。
+                。
               </p>
             </CardBody>
           </Card>

@@ -19,7 +19,6 @@ import { DictFill } from "../components/DictFill";
 import type { TaskDetail, TaskStatus } from "../lib/types";
 import { useTaskEvents } from "../lib/ws";
 import { ArtifactRow } from "../components/ArtifactRow";
-import { PRICE_MT, PRICE_SNAPSHOT_DATE, MT_OUTPUT_PRICE } from "../lib/pricing";
 import {
   Button,
   Card,
@@ -375,8 +374,7 @@ export default function TranslatePage() {
                 </p>
               )}
               <p className="mt-2 text-[11px] leading-relaxed text-muted">
-                计费：输入 {PRICE_MT.postpaid[0].price} 元/百万 token、输出 {MT_OUTPUT_PRICE} 元/百万 token（刊例快照{" "}
-                {PRICE_SNAPSHOT_DATE}），同量对比见{" "}
+                费用见{" "}
                 <Link to="/pricing" className="text-accent transition-colors duration-150 hover:opacity-80">
                   计费测算
                 </Link>
