@@ -57,7 +57,7 @@ export default function AboutPage() {
       <Card className="mb-4">
         <CardBody className="space-y-3">
           <p className="text-sm leading-relaxed text-fg">
-            voxbox 是一套个人自用的多媒体 AI 工具箱：单个 Go 二进制，既是命令行工具也是 Web 控制台（另有双击即用的桌面应用）。
+            voxbox 是一套个人自用的多媒体 AI 工具箱：下载一份程序，既是命令行工具也是 Web 控制台（另有双击即用的桌面应用）。
             五家云端语音平台与本地离线推理装进同一个任务引擎——火山引擎豆包语音八项能力为主干，
             千问 / 小米 / 智谱 / OpenRouter 作备选，不配云端凭证也能在设置页下载模型离线跑。
             提交任务、实时进度、产物落盘、任务记录可溯，面向配音、转写、播客、会议纪要、翻译等日常内容生产场景。

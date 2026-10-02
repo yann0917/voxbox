@@ -81,7 +81,7 @@ export default function LandingPage() {
           style={{ background: "radial-gradient(60% 100% at 50% 0%, color-mix(in oklab, var(--accent) 13%, transparent), transparent)" }}
         />
         <div className="mx-auto max-w-[1100px] px-4 py-20 md:px-8 md:py-28">
-          <p className="micro mb-4 text-accent">一键部署 · 单二进制 · 数据自有</p>
+          <p className="micro mb-4 text-accent">一键部署 · 免装环境 · 数据自有</p>
           <h1 className="max-w-3xl text-3xl font-semibold leading-tight tracking-tight md:text-5xl md:leading-[1.15]">
             多引擎语音工具箱，
             <br />
@@ -89,7 +89,7 @@ export default function LandingPage() {
           </h1>
           <p className="mt-5 max-w-2xl text-sm leading-relaxed text-fg-2 md:text-base">
             合成、识别、分离、翻译、妙记、字幕——火山引擎与千问平台双云端引擎，加上本地 ffmpeg
-            音频处理，组成一套完整的自托管工作台。一个二进制跑在服务器或本机，任务引擎与产物全在你的磁盘上，Agent
+            音频处理，组成一套完整的自托管工作台。一份程序跑在服务器或本机，任务引擎与产物全在你的磁盘上，Agent
             经 MCP 直接调用。
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -113,7 +113,7 @@ export default function LandingPage() {
               </div>
             ))}
           </dl>
-          <p className="mt-3 text-[10px] text-muted">* SQLite 存储，纯 Go 驱动；云端语音能力分别由你配置的火山引擎 / 千问平台凭证计费。</p>
+          <p className="mt-3 text-[10px] text-muted">* 数据与产物都保存在本机；云端语音能力分别由你配置的火山引擎 / 千问平台凭证计费。</p>
         </div>
       </section>
 
