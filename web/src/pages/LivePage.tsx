@@ -195,7 +195,7 @@ export default function LivePage() {
     captureRef.current = null;
     setWarn("");
     setPhaseSafe("idle");
-    setError((prev) => prev || "实时字幕连接已断开，请重新开始");
+    setError((prev) => prev || "实时语音识别连接已断开，请重新开始");
   };
 
   const startSession = async () => {
@@ -269,7 +269,7 @@ export default function LivePage() {
   return (
     <>
       <PageHeader
-        title="实时字幕"
+        title="实时语音识别"
         description="使用麦克风边说边出字，说完一键存为识别任务，继续 AI 提炼与问答"
         icon={<AudioWaveform size={16} strokeWidth={1.75} />}
       />
@@ -408,7 +408,7 @@ export default function LivePage() {
       {/* 字幕流：全宽主内容区 */}
       <Card className="min-w-0">
           <CardHeader
-            title="字幕"
+            title="识别内容"
             icon={<Captions size={15} strokeWidth={1.75} />}
             aside={
               live ? (
@@ -431,7 +431,7 @@ export default function LivePage() {
           <CardBody className="space-y-3">
             <div
               ref={captionBoxRef}
-              aria-label="实时字幕内容"
+              aria-label="实时识别内容"
               className="min-h-[280px] max-h-[52vh] overflow-y-auto"
             >
               {!captionHasText(caption) && !finalInfo ? (
@@ -443,7 +443,7 @@ export default function LivePage() {
                 ) : (
                   <EmptyState
                     icon={<Mic size={18} strokeWidth={1.75} />}
-                    title="还没有字幕"
+                    title="还没有识别内容"
                     description="点击「开始」使用麦克风说话，识别内容会实时显示在这里。"
                   />
                 )

@@ -64,7 +64,7 @@ export class LiveClient {
         // 错误事件无细节：未开先错在此 reject，open 后的错误由 onclose 收口
         if (!settled) {
           settled = true;
-          reject(new Error("无法建立实时字幕通道"));
+          reject(new Error("无法建立实时识别通道"));
         }
       };
       ws.onclose = () => {
@@ -72,7 +72,7 @@ export class LiveClient {
         this.opened = false;
         if (!settled) {
           settled = true;
-          reject(new Error("实时字幕通道连接失败"));
+          reject(new Error("实时识别通道连接失败"));
         }
         this.onClose();
       };
