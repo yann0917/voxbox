@@ -197,7 +197,7 @@ jobs:
           args: ${{ matrix.tauri_args }}
           tagName: ${{ needs.resolve.outputs.tag }}
           releaseName: "VoxBox ${{ needs.resolve.outputs.tag }}"
-          releaseBody: "桌面版安装包与自动更新清单。macOS 首次打开：右键 → 打开；Windows：SmartScreen 点「仍要运行」。"
+          releaseBody: "桌面版安装包与自动更新清单。Windows：SmartScreen 点「仍要运行」。"
           releaseDraft: false
           prerelease: false
 
