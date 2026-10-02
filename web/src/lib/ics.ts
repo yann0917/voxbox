@@ -36,7 +36,7 @@ export function buildICS(events: ICSEvent[]): string {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//voxbox//Quicknote//CN",
+    "PRODID:-//voxbox//VoxBox//CN",
     "CALSCALE:GREGORIAN",
   ];
   events.forEach((e, i) => {

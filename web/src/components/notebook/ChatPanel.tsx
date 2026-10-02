@@ -17,8 +17,9 @@ export interface ChatPanelProps {
   segments: QNSegment[];
   /** 说话人展示名（含本会话改名覆盖），上下文里的说话人称呼 */
   speakerLabel: (id: string) => string;
-  /** 引用 chip 点击跳播（轨标题/时长副标题由接线方并入） */
-  onSeek: (ms: number) => void;
+  /** 引用 chip 点击跳播（轨标题/时长副标题由接线方并入）；无回放源时不传，
+   *  引用渲染为纯文本时间码（不出可点击的假按钮） */
+  onSeek?: (ms: number) => void;
 }
 
 /** 问答区：就这段录音的转写继续追问——发送时组装转写上下文（含说话人改名与
@@ -109,6 +110,9 @@ export function ChatPanel({ segments, speakerLabel, onSeek }: ChatPanelProps) {
       a: ({ href, children }) => {
         const ms = seekHrefToMs(href);
         if (ms !== null) {
+          if (!onSeek) {
+            return <span className="font-mono text-[11px] text-muted align-baseline">{children}</span>;
+          }
           return (
             <button
               type="button"

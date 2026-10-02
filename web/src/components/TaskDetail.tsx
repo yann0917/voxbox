@@ -94,7 +94,7 @@ export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelPro
       {/* 纪要区（ASR 且有分句时）：说话人改名统计 + AI 提炼 + 就稿问答，引用 chip 复用同一跳播。
           key=任务 id：切换任务即重置改名/加工/问答的本会话状态 */}
       {task.tool === "asr" && segments.length > 0 && (
-        <NotebookSection key={task.id} task={task} segments={segments} onSeek={(ms) => seekTo(ms, track)} />
+        <NotebookSection key={task.id} task={task} segments={segments} onSeek={playSrc ? (ms) => seekTo(ms, track) : undefined} />
       )}
 
       {/* 产物 */}

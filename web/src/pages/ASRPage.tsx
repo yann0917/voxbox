@@ -1067,7 +1067,7 @@ export default function ASRPage() {
                       onSeek={(ms) => seekTo(ms, seekTrack)}
                     />
                     {/* 一句话转写的后续加工在历史详情：提炼/待办/日程与就稿问答都在那里 */}
-                    {engine === "volcengine" && version === "sentence" && taskId && (
+                    {taskId && segments.length > 0 && (
                       <div className="flex flex-wrap items-center gap-2">
                         <Button
                           variant="ghost"

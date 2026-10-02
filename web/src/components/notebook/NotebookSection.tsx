@@ -8,8 +8,8 @@ import { SpeakerSection } from "./SpeakerSection";
 export interface NotebookSectionProps {
   task: Task;
   segments: QNSegment[];
-  /** 引用 chip 点击跳播（接线方并入轨标题/时长副标题） */
-  onSeek: (ms: number) => void;
+  /** 引用 chip 点击跳播（接线方并入轨标题/时长副标题）；无回放源时不传，引用为纯文本 */
+  onSeek?: (ms: number) => void;
 }
 
 /** 纪要区（历史任务详情的加工层）：说话人改名与统计 + AI 提炼 + 就稿问答。
