@@ -51,12 +51,12 @@ voxbox tts "你好世界" --voice zh_female_roushunvsheng`,
   },
 ];
 
-/** Hero 演示：内置一段真实合成产物（public/demo-zh.mp3，本地引擎生成），播放由全局播放器驱动——
+/** Hero 演示：内置一段真实合成产物（public/demo-zh.mp3），播放由全局播放器驱动——
  *  波形只在播放时推进，暂停即静，不做无语义的永动律动。 */
 const DEMO = {
   src: "/demo-zh.mp3",
   title: "语音合成演示",
-  durationSec: 8.85,
+  durationSec: 9.38,
   text: "你好，我是 voxbox 合成的声音。选好音色，粘贴文案，几秒钟，就能生成这样一段自然的语音。",
 };
 
