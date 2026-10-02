@@ -30,7 +30,7 @@ import {
 } from "../lib/liveCaption";
 import { useModels } from "../lib/models";
 import { DictFill } from "../components/DictFill";
-import { Button, Card, CardBody, CardHeader, EmptyState, Input, PageHeader, Switch, Tabs, useToast } from "../ui";
+import { Button, Card, CardBody, CardHeader, EmptyState, Input, PageHeader, Select, Switch, Tabs, useToast } from "../ui";
 
 type Phase = "idle" | "connecting" | "streaming" | "finishing" | "final";
 
@@ -47,6 +47,9 @@ export default function LivePage() {
   const [engine, setEngine] = useState<LiveEngine>("volcengine");
   const [hotwords, setHotwords] = useState("");
   const [speaker, setSpeaker] = useState(false);
+  // 本地引擎语种：空=自动检测。R2T2 自动检测在数字、短句等无上下文内容上不稳定
+  // （同一句数字时中时英），固定语种经 prompt 强制后即稳。
+  const [language, setLanguage] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [caption, setCaption] = useState<LiveCaptionState>(emptyLiveCaption);
   const [finalInfo, setFinalInfo] = useState<{ degraded: boolean; durationMs: number } | null>(null);
@@ -231,6 +234,8 @@ export default function LivePage() {
         // 热词按当前引擎 gate：本地引擎词表口径不同，不透传（界面仅火山展示）
         hotwords: engine === "volcengine" ? hotwords.trim() || undefined : undefined,
         speaker: engine === "volcengine" ? speaker : undefined,
+        // 语种仅本地引擎可选手动固定（火山自动检测够稳）；ISO 码由引擎解析为模型规范名
+        language: engine === "local" && language ? language : undefined,
       });
       startedAtRef.current = Date.now();
       setElapsedMs(0);
@@ -358,9 +363,30 @@ export default function LivePage() {
                 </label>
               </>
             ) : (
-              <p className="text-xs text-muted">
-                识别在本机完成，数据不出本机；语种自动检测。长会话在后台无缝衔接，字幕连续输出。
-              </p>
+              <>
+                <Select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  disabled={locked}
+                  aria-label="识别语种"
+                  className="w-40 shrink-0"
+                >
+                  <option value="">语种自动检测</option>
+                  <option value="zh">中文</option>
+                  <option value="en">英语</option>
+                  <option value="ja">日语</option>
+                  <option value="ko">韩语</option>
+                  <option value="fr">法语</option>
+                  <option value="de">德语</option>
+                  <option value="it">意大利语</option>
+                  <option value="es">西班牙语</option>
+                  <option value="pt">葡萄牙语</option>
+                  <option value="ru">俄语</option>
+                </Select>
+                <p className="min-w-0 flex-1 text-xs text-muted">
+                  识别在本机完成，数据不出本机；数字、短句这类内容建议固定语种。长会话在后台无缝衔接，字幕连续输出。
+                </p>
+              </>
             )}
           </div>
         </CardBody>
