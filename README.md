@@ -88,6 +88,8 @@
 # 浏览器打开 http://127.0.0.1:8081
 ```
 
+> macOS 下若提示「Apple could not verify」，执行 `xattr -d com.apple.quarantine ./voxbox` 移除隔离属性即可。
+
 凭证在 Web 设置页填写，与桌面版完全一致。也可以从源码构建：`make all` 产出 `bin/voxbox`。
 
 ### 命令行
