@@ -437,6 +437,9 @@ export default function LivePage() {
               {!captionHasText(caption) && !finalInfo ? (
                 phase === "connecting" ? (
                   <p className="py-10 text-center text-sm text-muted">正在连接…</p>
+                ) : live ? (
+                  // 本地引擎首会话含模型加载（数秒到十几秒），音频已缓冲不丢失，出字后开始追平
+                  <p className="py-10 text-center text-sm text-muted">正在收音…</p>
                 ) : (
                   <EmptyState
                     icon={<Mic size={18} strokeWidth={1.75} />}
