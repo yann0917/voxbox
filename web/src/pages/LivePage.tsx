@@ -30,7 +30,7 @@ import {
 } from "../lib/liveCaption";
 import { useModels } from "../lib/models";
 import { DictFill } from "../components/DictFill";
-import { Button, Card, CardBody, CardHeader, EmptyState, Field, Input, PageHeader, Switch, Tabs, useToast } from "../ui";
+import { Button, Card, CardBody, CardHeader, EmptyState, Input, PageHeader, Switch, Tabs, useToast } from "../ui";
 
 type Phase = "idle" | "connecting" | "streaming" | "finishing" | "final";
 
@@ -304,9 +304,88 @@ export default function LivePage() {
         </Card>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        {/* 左：字幕流 */}
-        <Card className="min-w-0">
+      {/* 会话控制条：动作一行排开（开始/停止靠右），字幕流全宽铺开——控制先于内容，动线自上而下 */}
+      <Card className="mb-4">
+        <CardBody className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <div
+            className={`flex min-w-0 flex-1 flex-wrap items-center gap-x-5 gap-y-3 ${
+              locked ? "pointer-events-none opacity-50" : ""
+            }`}
+          >
+            {engine === "volcengine" ? (
+              <>
+                <Input
+                  value={hotwords}
+                  onChange={(e) => setHotwords(e.target.value)}
+                  placeholder="热词（可选，逗号分隔）"
+                  aria-label="热词"
+                  disabled={locked}
+                  className="min-w-44 max-w-xs flex-1"
+                />
+                <DictFill field="hotwords" onFill={setHotwords} />
+                <label className="flex shrink-0 cursor-pointer items-center gap-2">
+                  <Switch checked={speaker} onChange={setSpeaker} disabled={locked} />
+                  <span className="text-sm text-fg-2">区分说话人</span>
+                </label>
+              </>
+            ) : (
+              <p className="text-xs text-muted">
+                识别在本机完成，数据不出本机；语种自动检测。长会话在后台无缝衔接，字幕连续输出。
+              </p>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            {engine === "volcengine" && phase === "idle" && (
+              <span className="text-[11px] text-muted">约 1 元/小时</span>
+            )}
+            {phase === "connecting" && <span className="text-[11px] text-muted">正在连接…</span>}
+            {phase === "finishing" && <span className="text-[11px] text-muted">正在整理本次内容…</span>}
+            {live && (
+              <div className="h-1 w-24 overflow-hidden rounded-full bg-line">
+                <div ref={levelRef} className="h-full rounded-full bg-accent" style={{ width: "0%" }} />
+              </div>
+            )}
+            <button
+              type="button"
+              aria-label={live ? "停止" : "开始"}
+              disabled={waitingFinal || (engine === "local" && !r2t2Installed)}
+              onClick={() => void (live ? stopSession() : startSession())}
+              className={`flex size-11 cursor-pointer items-center justify-center rounded-full border transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
+                live
+                  ? "border-danger bg-danger/10 text-danger"
+                  : "border-line-strong bg-raise-2 text-accent hover:border-accent"
+              }`}
+            >
+              {live ? (
+                <Square size={18} strokeWidth={1.75} fill="currentColor" />
+              ) : (
+                <Mic size={18} strokeWidth={1.75} />
+              )}
+            </button>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* 错误/警示：全宽横条，紧跟控制条 */}
+      {(error || warn) && (
+        <div className="mb-4 space-y-2">
+          {error && (
+            <p className="flex items-start gap-1.5 text-xs text-danger">
+              <AlertTriangle size={13} strokeWidth={1.75} className="mt-0.5 shrink-0" />
+              <span className="min-w-0 break-words">{error}</span>
+            </p>
+          )}
+          {warn && (
+            <p className="flex items-start gap-1.5 text-xs text-warn">
+              <AlertTriangle size={13} strokeWidth={1.75} className="mt-0.5 shrink-0" />
+              <span className="min-w-0 break-words">{warn}</span>
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* 字幕流：全宽主内容区 */}
+      <Card className="min-w-0">
           <CardHeader
             title="字幕"
             icon={<Captions size={15} strokeWidth={1.75} />}
@@ -341,7 +420,7 @@ export default function LivePage() {
                   <EmptyState
                     icon={<Mic size={18} strokeWidth={1.75} />}
                     title="还没有字幕"
-                    description="点击右侧「开始」使用麦克风说话，识别内容会实时显示在这里。"
+                    description="点击上方「开始」使用麦克风说话，识别内容会实时显示在这里。"
                   />
                 )
               ) : speakerMode ? (
@@ -381,109 +460,10 @@ export default function LivePage() {
                 本次没有识别到说话内容，无可保存的结果。
               </p>
             )}
-          </CardBody>
-        </Card>
-
-        {/* 右：会话控制 */}
-        <Card className="lg:sticky lg:top-4 lg:self-start">
-          <CardHeader
-            title="会话"
-            icon={<Mic size={15} strokeWidth={1.75} />}
-            aside={<span className="micro">{engine === "volcengine" ? "火山引擎" : "本机识别"}</span>}
-          />
-          <CardBody className="space-y-4">
-            {engine === "volcengine" ? (
-              <>
-                <Field label="热词" aside="可选" hint="逗号分隔，用于提升专有名词识别率">
-                  {({ id, ...rest }) => (
-                    <Input
-                      id={id}
-                      value={hotwords}
-                      onChange={(e) => setHotwords(e.target.value)}
-                      placeholder="产品名,专有名词"
-                      disabled={locked}
-                      {...rest}
-                    />
-                  )}
-                </Field>
-                <DictFill field="hotwords" onFill={setHotwords} />
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-3 py-2">
-                  <Switch
-                    checked={speaker}
-                    onChange={setSpeaker}
-                    disabled={locked}
-                    className="mt-0.5 shrink-0"
-                  />
-                  <span className="min-w-0 space-y-0.5">
-                    <span className="block text-sm text-fg">区分说话人</span>
-                    <span className="block text-[11px] text-muted">字幕按说话人分段展示</span>
-                  </span>
-                </label>
-              </>
-            ) : (
-              <p className="text-xs leading-relaxed text-muted">
-                识别在本机完成，数据不出本机；语种自动检测。长时间会话会在后台无缝衔接，字幕连续输出。
-              </p>
-            )}
-
-            <div className="flex flex-col items-center gap-2 border-t border-line pt-4">
-              {/* 开始前计费预告（会话中的同款提示在下方另行展示） */}
-              {engine === "volcengine" && phase === "idle" && (
-                <p className="text-center text-[11px] text-muted">实时识别约 1 元/小时，按音频时长计费</p>
-              )}
-              <button
-                type="button"
-                aria-label={live ? "停止" : "开始"}
-                disabled={waitingFinal || (engine === "local" && !r2t2Installed)}
-                onClick={() => void (live ? stopSession() : startSession())}
-                className={`flex size-14 cursor-pointer items-center justify-center rounded-full border transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
-                  live
-                    ? "border-danger bg-danger/10 text-danger"
-                    : "border-line-strong bg-raise-2 text-accent hover:border-accent"
-                }`}
-              >
-                {live ? <Square size={20} strokeWidth={1.75} fill="currentColor" /> : <Mic size={20} strokeWidth={1.75} />}
-              </button>
-              <span className="font-mono text-sm tabular-nums text-fg-2">{formatElapsed(elapsedMs)}</span>
-              <p className="text-center text-[11px] text-muted">
-                {phase === "connecting"
-                  ? "正在连接…"
-                  : live
-                    ? "正在收音，点击方块停止"
-                    : phase === "finishing"
-                      ? "正在整理本次内容…"
-                      : phase === "final"
-                        ? "已结束，可保存或重新开始"
-                        : "点击开始，边说边出字"}
-              </p>
-              {live && engine === "volcengine" && (
-                <p className="text-center text-[11px] text-muted">云端识别按时长计费，约 1 元/小时</p>
-              )}
-              {live && (
-                <div className="h-1 w-40 overflow-hidden rounded-full bg-line">
-                  <div ref={levelRef} className="h-full rounded-full bg-accent" style={{ width: "0%" }} />
-                </div>
-              )}
-            </div>
-
-            {error && (
-              <p className="flex items-start gap-1.5 text-xs text-danger">
-                <AlertTriangle size={13} strokeWidth={1.75} className="mt-0.5 shrink-0" />
-                <span className="min-w-0 break-words">{error}</span>
-              </p>
-            )}
-            {warn && (
-              <p className="flex items-start gap-1.5 text-xs text-warn">
-                <AlertTriangle size={13} strokeWidth={1.75} className="mt-0.5 shrink-0" />
-                <span className="min-w-0 break-words">{warn}</span>
-              </p>
-            )}
-
             {phase === "final" && (
-              <div className="space-y-2 border-t border-line pt-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-3">
                 <Button
                   variant="primary"
-                  className="w-full"
                   icon={hasFinalText ? <Save size={15} strokeWidth={1.75} /> : <FileText size={15} strokeWidth={1.75} />}
                   loading={saving}
                   disabled={!hasFinalText}
@@ -491,13 +471,10 @@ export default function LivePage() {
                 >
                   {hasFinalText ? "保存到历史" : "无可保存内容"}
                 </Button>
-                {hasFinalText && (
-                  <p className="text-[11px] text-muted">
-                    保存后在历史中查看文稿与字幕，可继续 AI 提炼、待办与问答。
-                  </p>
-                )}
-                {!hasFinalText && (
-                  <Button variant="ghost" className="w-full" onClick={() => void startSession()}>
+                {hasFinalText ? (
+                  <p className="text-[11px] text-muted">保存后在历史中查看文稿与字幕，可继续 AI 提炼、待办与问答。</p>
+                ) : (
+                  <Button variant="ghost" onClick={() => void startSession()}>
                     再试一次
                   </Button>
                 )}
@@ -505,7 +482,6 @@ export default function LivePage() {
             )}
           </CardBody>
         </Card>
-      </div>
     </>
   );
 }
