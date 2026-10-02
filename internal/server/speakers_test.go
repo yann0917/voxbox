@@ -87,6 +87,42 @@ func TestRenameTaskSpeakers(t *testing.T) {
 	}
 }
 
+// TestRenameTaskSpeakersDegenerateSummaries 退化 Summary 分支：空串与非法 JSON 的
+// 任务改名单不报错、不 panic——两者解析失败后都从空对象起步，Patch 后 Summary 被
+// 整体替换为仅含 speaker_names 的新 JSON（speakers.go 与 persistRefined 同款兜底）。
+func TestRenameTaskSpeakersDegenerateSummaries(t *testing.T) {
+	ts, s, _ := newTestServer(t)
+	testUser(t, s, "alice", "user")
+	acAlice := loginAs(t, ts, "alice", "password-alice")
+	for _, tc := range []struct {
+		name, id, summary string
+	}{
+		{"空串 Summary", "spk-empty", ""},
+		{"非法 JSON Summary", "spk-bad", "not-json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := s.svc.DB().CreateTask(&store.Task{
+				ID: tc.id, UserID: "alice-id", Provider: "volcengine", Tool: "asr",
+				Status: store.StatusSucceeded, Params: `{}`, Summary: tc.summary,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, e := doJSON(t, acAlice, http.MethodPatch, ts.URL+"/api/tasks/"+tc.id+"/speakers",
+				`{"names":{"1":"张三"}}`); e.Code != CodeOK {
+				t.Fatalf("rename code = %d (%s)", e.Code, e.Message)
+			}
+			sum := taskSummary(t, acAlice, ts.URL, tc.id)
+			names, _ := sum["speaker_names"].(map[string]any)
+			if len(names) != 1 || names["1"] != "张三" {
+				t.Fatalf("speaker_names = %v, want 仅 {1:张三}", sum["speaker_names"])
+			}
+			if len(sum) != 1 {
+				t.Errorf("原 Summary 不可解析时应整体替换为仅含 speaker_names 的新 JSON: %v", sum)
+			}
+		})
+	}
+}
+
 // TestRenameTaskSpeakersDenied 越权与工具校验：非属主同报不存在（不泄露存在性）；
 // 非 asr 工具拒绝；任务不存在同报 6。
 func TestRenameTaskSpeakersDenied(t *testing.T) {

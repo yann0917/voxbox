@@ -708,9 +708,12 @@ func TestASRToolSaveArtifactsSpeakersCount(t *testing.T) {
 	if v, ok := noSpk.Summary["speakers_count"]; ok {
 		t.Errorf("无 Speaker 时不应产出 speakers_count, got %v", v)
 	}
-	segs, _ = noSpk.Summary["segments"].([]map[string]any)
+	segs, ok := noSpk.Summary["segments"].([]map[string]any)
+	if !ok || len(segs) != 1 {
+		t.Fatalf("无 Speaker 时 segments 形状 = %v, 期望 []map[string]any 且恰好 1 个分句元素", noSpk.Summary["segments"])
+	}
 	for i, s := range segs {
-		if _, ok := s["speaker"]; ok {
+		if _, has := s["speaker"]; has {
 			t.Errorf("无 Speaker 时分句元素不应含 speaker 键: segs[%d] = %v", i, s)
 		}
 	}

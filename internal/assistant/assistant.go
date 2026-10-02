@@ -187,8 +187,8 @@ const systemPrompt = "你是 voxbox 的内置 AI 助手。voxbox 是一个多引
 	"回答默认使用简体中文，简洁直接；涉及 voxbox 使用的问题给出具体页面路径；不确定的功能不要编造。"
 
 // ChatSystem /api/assistant/chat 下发的系统提示：默认助手提示；extra 非空时以空行
-// 追加在其后（单条录音问答经请求的 context 字段注入转写全文）。extra 为空时与
-// Stream 注入的常量逐字节一致，chat 不带 context 行为不变。
+// 追加在其后（单条录音问答经请求的 context 字段注入转写全文）。extra 为空时原样
+// 返回默认助手提示，chat 不带 context 行为不变。
 func ChatSystem(extra string) string {
 	if extra == "" {
 		return systemPrompt
@@ -237,15 +237,10 @@ type apiErrorBody struct {
 	Message string `json:"message"`
 }
 
-// Stream 发起流式对话，逐段回调增量正文（delta.content；reasoning_content 思考通道不回调，
-// 思考期表现为短暂等待）。messages 由调用方完成角色与长度约束，助手角色系统提示在此统一注入。
-// 整体硬上限 3 分钟：正常问答远低于此，上游卡死时兜底。
-func Stream(ctx context.Context, cfg *config.Config, p Provider, model string, messages []Message, onDelta func(string)) error {
-	return streamChat(ctx, cfg, p, model, systemPrompt, messages, onDelta)
-}
-
 // StreamCompose system 参数化的流式调用：提示由调用方给定（提示词库条目；助手
-// chat 传 ChatSystem 组装结果），在此不自动注入助手角色提示。其余语义与 Stream 完全一致。
+// chat 传 ChatSystem 组装结果），在此不自动注入助手角色提示。逐段回调增量正文
+// （delta.content；reasoning_content 思考通道不回调，思考期表现为短暂等待）。
+// 整体硬上限 3 分钟：正常问答远低于此，上游卡死时兜底。
 func StreamCompose(ctx context.Context, cfg *config.Config, p Provider, model, system string, messages []Message, onDelta func(string)) error {
 	return streamChat(ctx, cfg, p, model, system, messages, onDelta)
 }

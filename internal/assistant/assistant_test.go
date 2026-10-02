@@ -83,7 +83,7 @@ func TestBuildChatRequest(t *testing.T) {
 }
 
 func TestChatSystem(t *testing.T) {
-	// 不带 context：与 Stream 注入的常量逐字节一致（/api/assistant/chat 现状不变）
+	// 不带 context：原样返回默认助手提示（/api/assistant/chat 现状不变）
 	if got := ChatSystem(""); got != systemPrompt {
 		t.Fatalf("ChatSystem(\"\") = %q, want 与默认提示逐字节一致", got)
 	}

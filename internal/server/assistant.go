@@ -33,8 +33,8 @@ func (s *Server) assistantModels(c *gin.Context) {
 }
 
 // assistantChatStream 流式底层测试缝：生产即 assistant.StreamCompose（system 参数化
-// 导出入口，system 由 assistant.ChatSystem 组装——不带 context 时与原 Stream 注入的
-// 常量逐字节一致）；server 包测试替换为假实现离线断言下发内容（refineStream 同款）。
+// 导出入口，system 由 assistant.ChatSystem 组装——不带 context 时即默认助手提示）；
+// server 包测试替换为假实现离线断言下发内容（refineStream 同款）。
 var assistantChatStream = assistant.StreamCompose
 
 type assistantChatReq struct {

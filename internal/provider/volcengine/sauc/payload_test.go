@@ -7,12 +7,12 @@ import (
 )
 
 func TestRequestMetaSpeakerFields(t *testing.T) {
-	b, err := json.Marshal(RequestMeta{ModelName: "bigmodel", EnableSpeakerInfo: true, EnableLID: true, SSDVersion: "20240904"})
+	b, err := json.Marshal(RequestMeta{ModelName: "bigmodel", EnableSpeakerInfo: true, EnableLID: true, EnableEmotion: true, SSDVersion: "20240904"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(b)
-	for _, want := range []string{`"enable_speaker_info":true`, `"enable_lid":true`, `"model_name":"bigmodel"`, `"ssd_version":"20240904"`} {
+	for _, want := range []string{`"enable_speaker_info":true`, `"enable_lid":true`, `"enable_emotion_detection":true`, `"model_name":"bigmodel"`, `"ssd_version":"20240904"`} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("missing %s in %s", want, s)
 		}

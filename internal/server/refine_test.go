@@ -143,6 +143,76 @@ func TestRefineSummaryFlow(t *testing.T) {
 	}
 }
 
+// TestRefineCustomFlow custom 模式全链路：instruction 原样作为 system、user 为
+// 纯转写行（无纪要指令前缀），SSE 事件顺序 delta→done（无 error），结果落
+// Summary.refined.custom、updated_at 刷新（旧值直落库，时间戳固定保证断言确定性），
+// 同键空间其它模式结果（refined.summary）与其余 Summary 键保留。
+func TestRefineCustomFlow(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ts, s, ac := newTestServer(t)
+	refineFixture(t, s)
+	if _, e := doJSON(t, ac, http.MethodPut, ts.URL+"/api/settings/providers/qianwen",
+		`{"fields":{"api_key":"sk-refine-test"}}`); e.Code != CodeOK {
+		t.Fatalf("配置假凭证 code = %d (%s)", e.Code, e.Message)
+	}
+	const oldAt = "2026-09-28T10:00:00+08:00"
+	// 旧加工结果直落库：锚定 updated_at 的「刷新」断言
+	tk, err := s.svc.DB().GetTask("rf-asr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seeded map[string]any
+	if err := json.Unmarshal([]byte(tk.Summary), &seeded); err != nil {
+		t.Fatal(err)
+	}
+	seeded["refined"] = map[string]any{"summary": "旧纪要", "updated_at": oldAt}
+	b, _ := json.Marshal(seeded)
+	if err := s.svc.DB().UpdateTaskSummary("rf-asr", "alice-id", string(b)); err != nil {
+		t.Fatal(err)
+	}
+
+	var gotSystem, gotUser string
+	setRefineStream(t, func(system, user string, onDelta func(string)) error {
+		gotSystem, gotUser = system, user
+		onDelta("要点一：确认方案；")
+		onDelta("要点二：下周三交初稿")
+		return nil
+	})
+
+	body, ct := postRefine(t, ac, ts.URL, `{"task_id":"rf-asr","mode":"custom","instruction":"提炼两个要点","provider":"qianwen","model":"qwen3.8-flash"}`)
+	if !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("Content-Type = %s, want text/event-stream", ct)
+	}
+	if strings.Contains(body, `"error"`) || !strings.HasSuffix(strings.TrimSpace(body), `"done":true}`) {
+		t.Fatalf("custom 流应 delta→done: %s", body)
+	}
+	// system/user 定形检查：custom 的 system 即 instruction 原文，user 为纯转写行
+	if gotSystem != "提炼两个要点" {
+		t.Errorf("custom 的 system 应为 instruction 原文: %q", gotSystem)
+	}
+	if !strings.HasPrefix(gotUser, "00:00:00 张三：大家好") || strings.Contains(gotUser, "请基于") {
+		t.Errorf("custom 的 user 应为无前缀的纯转写行: %q", gotUser)
+	}
+	// Summary 落盘 refined.custom，updated_at 刷新，旧模式结果与既有键保留
+	sum := taskSummary(t, ac, ts.URL, "rf-asr")
+	refined, _ := sum["refined"].(map[string]any)
+	if refined == nil {
+		t.Fatalf("Summary 应有 refined 键: %v", sum)
+	}
+	if refined["custom"] != "要点一：确认方案；要点二：下周三交初稿" {
+		t.Errorf("refined.custom = %v", refined["custom"])
+	}
+	if at, _ := refined["updated_at"].(string); at == "" || at == oldAt {
+		t.Errorf("custom 落盘后 updated_at 应刷新: %v, want != %v", refined["updated_at"], oldAt)
+	}
+	if refined["summary"] != "旧纪要" {
+		t.Errorf("custom 模式不应覆写其它模式的结果: refined.summary = %v", refined["summary"])
+	}
+	if sum["duration_ms"].(float64) != 11000 || sum["speaker_names"] == nil || sum["segments"] == nil {
+		t.Errorf("其余 Summary 键应保留: %v", sum)
+	}
+}
+
 // TestRefineTodosPersistence todos 模式：(a) 合法 JSON（容忍代码栅栏）落数组；
 // (b) 非合法 JSON 原文落键 + 仍以 done 收尾（不报错给前端），同模式重跑覆盖旧值。
 func TestRefineTodosPersistence(t *testing.T) {
