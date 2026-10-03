@@ -1,14 +1,26 @@
 package server
 
-// 字幕工坊（本地能力：纯 Go 解析/分句/导出，零上游 API 成本）。
+// 字幕工坊（本地能力：纯 Go 解析/分句/导出，零上游 API 成本；翻译走
+// internal/translate 三源引擎，SSE 协议与 refine/apply 同族）。
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yann0917/voxbox/internal/config"
+	"github.com/yann0917/voxbox/internal/provider/volcengine"
 	"github.com/yann0917/voxbox/internal/subtitle"
+	"github.com/yann0917/voxbox/internal/translate"
 )
+
+// subtitleTranslate 引擎测试缝：生产即 translate.Run，server 包测试替换为
+// 假实现离线跑协议（refineStream 同做法）。
+var subtitleTranslate = func(ctx context.Context, cfg *config.Config, segs []subtitle.Segment, o translate.Options, onProgress translate.Progress) (*translate.Result, error) {
+	return translate.Run(ctx, cfg, segs, o, onProgress)
+}
 
 // listSubtitlePresets 字幕样式预设：单一事实来源（internal/subtitle.Presets），
 // 前端预览与导出参数都以此为准，避免两处颜色定义漂移。
@@ -98,4 +110,76 @@ func (s *Server) exportSubtitles(c *gin.Context) {
 	// 二进制流端点惯例：不套 JSON 包络，真实文件语义
 	c.Header("Content-Disposition", "attachment; filename="+filename)
 	c.Data(http.StatusOK, ct, data)
+}
+
+type translateSubtitlesReq struct {
+	Segments       []subtitle.Segment `json:"segments"`
+	TargetLanguage string             `json:"target_language"`
+	SourceLanguage string             `json:"source_language"`
+	Source         string             `json:"source"`
+	Provider       string             `json:"provider"`
+	Model          string             `json:"model"`
+}
+
+// translateSubtitles 字幕批量翻译（SSE）：预检错误走 JSON 包络，流内帧
+// progress → done(result) / error。协议与 refine/apply 同族。
+func (s *Server) translateSubtitles(c *gin.Context) {
+	var req translateSubtitlesReq
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Segments) == 0 {
+		fail(c, CodeBadRequest, "参数错误：segments 不能为空")
+		return
+	}
+	if strings.TrimSpace(req.TargetLanguage) == "" {
+		fail(c, CodeBadRequest, "参数错误：target_language 必填")
+		return
+	}
+	cfg := s.svc.Config()
+	opts := translate.Options{
+		Source: req.Source, SourceLang: req.SourceLanguage, TargetLang: req.TargetLanguage,
+		Provider: req.Provider, Model: req.Model,
+	}
+	// 预检源可用性（快速失败，不进流）
+	if _, err := translate.ResolveSource(cfg, opts.Source); err != nil {
+		failErr(c, err)
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream; charset=utf-8")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+	w := c.Writer
+	writeEvent := func(v any) bool {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return false
+		}
+		if _, err := w.Write([]byte("data: " + string(raw) + "\n\n")); err != nil {
+			return false
+		}
+		w.Flush()
+		return true
+	}
+	res, err := subtitleTranslate(c.Request.Context(), cfg, req.Segments, opts, func(done, total int) {
+		_ = writeEvent(gin.H{"progress": gin.H{"done": done, "total": total}})
+	})
+	if err != nil {
+		// 客户端主动中止属正常交互：不算错误、不再发事件
+		if c.Request.Context().Err() == nil {
+			writeEvent(gin.H{"error": gin.H{"code": assistantErrCode(err), "message": err.Error()}})
+		}
+		return
+	}
+	// echo_checked 仅 AI 源逐条核对统计；volcengine/free 源无回显可比，恒为 0
+	stats := gin.H{
+		"total": res.Stats.Total, "translated": res.Stats.Translated,
+		"repaired": res.Stats.Repaired, "untranslated": res.Stats.Untranslated,
+		"echo_checked": res.Stats.EchoChecked, "source": res.Stats.Source,
+	}
+	writeEvent(gin.H{"done": true, "result": gin.H{"segments": res.Segments, "stats": stats}})
+}
+
+// listSubtitleLangs 翻译语言清单（火山 32 语种 = 三源统一口径）。
+func (s *Server) listSubtitleLangs(c *gin.Context) {
+	ok(c, volcengine.MTLanguages())
 }

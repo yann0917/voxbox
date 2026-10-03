@@ -99,12 +99,14 @@ func (s *Server) Handler() http.Handler {
 		pronAdmin.DELETE("/:id", s.deletePronunciation)
 	}
 
-	// 字幕工坊（本地能力：纯 Go 解析/分句/导出，零上游 API 成本）
+	// 字幕工坊（本地能力：纯 Go 解析/分句/导出，零上游 API 成本；翻译走三源引擎）
 	subtitles := api.Group("/subtitles")
 	{
 		subtitles.POST("/prepare", s.prepareSubtitles)
 		subtitles.POST("/export", s.exportSubtitles)
 		subtitles.GET("/presets", s.listSubtitlePresets)
+		subtitles.POST("/translate", s.translateSubtitles)
+		subtitles.GET("/langs", s.listSubtitleLangs)
 	}
 
 	minutes := api.Group("/minutes")
