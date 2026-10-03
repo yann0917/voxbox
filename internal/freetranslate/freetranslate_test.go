@@ -2,78 +2,61 @@ package freetranslate
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 )
-
-func TestGoogleFree(t *testing.T) {
-	var gotPath string
-	var gotQ url.Values
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		gotQ = r.URL.Query()
-		// translate_a/single 响应形状:data[0] = [[译段, 原段, ...], ...],译段顺序拼接。
-		w.Write([]byte(`[[["Hello world","你好,世界",null,null,10],["!","!",null,null,1]],null,"zh-CN"]`))
-	}))
-	defer ts.Close()
-	// 同包测试直接给包级测试缝赋值(端点主机部分,/translate_a/single 路径由实现拼接)。
-	testGoogleBase = ts.URL
-	t.Cleanup(func() { testGoogleBase = "" })
-	got, err := GoogleFree(context.Background(), "你好,世界!", "auto", "en")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "Hello world!" {
-		t.Fatalf("GoogleFree=%q", got)
-	}
-	if gotPath != "/translate_a/single" {
-		t.Fatalf("path=%s", gotPath)
-	}
-	if gotQ.Get("client") != "gtx" || gotQ.Get("tl") != "en" || gotQ.Get("dt") != "t" {
-		t.Fatalf("query=%v", gotQ)
-	}
-}
-
-func TestGoogleFreeLangMap(t *testing.T) {
-	// 空目标语言在发起任何请求前即报错(不出网,只测码映射报错路径)。
-	if _, err := GoogleFree(context.Background(), "x", "", ""); err == nil {
-		t.Fatal("空目标语言应报错")
-	}
-}
 
 func TestDeepLX(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/translate" {
 			t.Errorf("path=%s", r.URL.Path)
 		}
+		var req map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("请求体解析失败: %v", err)
+		}
+		// wire 契约:text 进 body,语言码转大写去区域(zh-Hant→ZH)。
+		if req["text"] != "你好世界" || req["source_lang"] != "ZH" || req["target_lang"] != "EN" {
+			t.Errorf("wire: %+v", req)
+		}
 		w.Write([]byte(`{"code":200,"data":"Hello world"}`))
 	}))
 	defer ts.Close()
-	got, err := DeepLX(context.Background(), ts.URL, "你好世界", "zh", "en")
+	got, err := DeepLX(context.Background(), ts.URL, "你好世界", "zh-Hant", "en")
 	if err != nil || got != "Hello world" {
 		t.Fatalf("DeepLX=%q err=%v", got, err)
 	}
 }
 
+func TestDeepLXEmptyEndpoint(t *testing.T) {
+	_, err := DeepLX(context.Background(), "", "文本", "zh", "en")
+	if err == nil {
+		t.Fatal("空端点应报错")
+	}
+	if !strings.Contains(err.Error(), "translate.deeplx_url") {
+		t.Fatalf("报错应带配置指引: %v", err)
+	}
+}
+
 func TestChain(t *testing.T) {
-	// google 失败(403)→ deeplx 兜底:两路共用同一 mock,按路径区分。
+	// 繁体守卫直通 DeepLX:mock 校验请求确实到达端点。
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "translate_a") {
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
 		w.Write([]byte(`{"code":200,"data":"fallback ok"}`))
 	}))
 	defer ts.Close()
-	testGoogleBase = ts.URL
-	t.Cleanup(func() { testGoogleBase = "" })
-	chain := Chain(ts.URL)
-	got, err := chain(context.Background(), "文本", "", "en")
+	got, err := Chain(ts.URL)(context.Background(), "文本", "", "en")
 	if err != nil || got != "fallback ok" {
 		t.Fatalf("chain=%q err=%v", got, err)
+	}
+}
+
+func TestChainEmptyEndpointGuided(t *testing.T) {
+	_, err := Chain("")(context.Background(), "文本", "", "en")
+	if err == nil || !strings.Contains(err.Error(), "deeplx_url") {
+		t.Fatalf("未配端点应报带指引的错误: %v", err)
 	}
 }
 
