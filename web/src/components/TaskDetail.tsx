@@ -56,7 +56,7 @@ export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelPro
 
   return (
     <div className="space-y-3">
-      {/* 标题与标签（内联编辑）：手改置 title_edited，ASR 完成时的自动派生让位 */}
+      {/* 标题（点击正文直接改）与标签 */}
       <TaskMetaEditor task={task} />
 
       {/* 参数回显 */}
@@ -97,6 +97,14 @@ export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelPro
             formatTimecode={timecode}
             maxHeight={256}
           />
+        </div>
+      )}
+
+      {/* 纯文本识别内容（本地 R2T2 / live 本地会话等 Summary 只有 text、无 segments）：
+          不展示的话任务详情里看不到任何识别结果。whitespace-pre-wrap 保留原始换行。 */}
+      {task.status === "succeeded" && segments.length === 0 && fullText && (
+        <div className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-[var(--radius-sm)] border border-line bg-raise-2 p-3 text-sm leading-relaxed text-fg">
+          {fullText}
         </div>
       )}
 

@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { fetchJSON } from "../lib/api";
 import { toolLabel } from "../lib/toolNames";
 import type { Task } from "../lib/types";
-import { IconButton, MicroLabel, useToast } from "../ui";
+import { useToast } from "../ui";
 
-/** 标题与标签编辑器（任务详情内联）：手改标题置 title_edited——ASR 完成时的自动
- *  派生标题据此让位；标签整体覆盖式 PATCH（后端清洗去重，超限静默丢弃）。提交成功
- *  回读任务 DTO 直接 patch 详情缓存并失效任务列表，列表行与详情即时同步。 */
+/** 任务详情头部：标题正文即编辑入口（点击直接改，无独立小节）——手改置 title_edited，
+ *  ASR 完成时的自动派生标题据此让位；标签整体覆盖式 PATCH（后端清洗去重，超限静默
+ *  丢弃）。提交成功回读任务 DTO 直接 patch 详情缓存并失效任务列表，列表行与详情即时同步。 */
 export function TaskMetaEditor({ task }: { task: Task }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -49,40 +49,34 @@ export function TaskMetaEditor({ task }: { task: Task }) {
   };
 
   return (
-    <div className="space-y-1.5">
-      <MicroLabel>标题与标签</MicroLabel>
-      <div className="flex items-center gap-2">
-        {editingTitle ? (
-          <input
-            autoFocus
-            value={titleDraft}
-            onChange={(e) => setTitleDraft(e.target.value)}
-            onBlur={saveTitle}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") saveTitle();
-              if (e.key === "Escape") setEditingTitle(false);
-            }}
-            aria-label="修改任务标题"
-            maxLength={60}
-            className="h-7 min-w-0 flex-1 rounded-[var(--radius-sm)] border border-line-strong bg-raise-2 px-2 text-sm text-fg outline-none focus:border-accent"
-          />
-        ) : (
-          <>
-            <span className="min-w-0 truncate text-sm text-fg">{task.title || `${toolLabel(task.tool)}任务`}</span>
-            <IconButton
-              label="修改标题"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setTitleDraft(task.title ?? "");
-                setEditingTitle(true);
-              }}
-            >
-              <Pencil size={12} strokeWidth={1.75} />
-            </IconButton>
-          </>
-        )}
-      </div>
+    <div className="space-y-2">
+      {editingTitle ? (
+        <input
+          autoFocus
+          value={titleDraft}
+          onChange={(e) => setTitleDraft(e.target.value)}
+          onBlur={saveTitle}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") saveTitle();
+            if (e.key === "Escape") setEditingTitle(false);
+          }}
+          aria-label="修改任务标题"
+          maxLength={60}
+          className="h-8 w-full rounded-[var(--radius-sm)] border border-line-strong bg-raise-2 px-2 text-base font-medium text-fg outline-none focus:border-accent"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setTitleDraft(task.title ?? "");
+            setEditingTitle(true);
+          }}
+          title="点击修改标题"
+          className="block max-w-full cursor-pointer truncate text-left text-base font-medium text-fg transition-colors duration-150 hover:text-accent"
+        >
+          {task.title || `${toolLabel(task.tool)}任务`}
+        </button>
+      )}
       <div className="flex flex-wrap items-center gap-1.5">
         {(task.tags ?? []).map((tag) => (
           <span
