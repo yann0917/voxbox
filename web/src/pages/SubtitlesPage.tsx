@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Captions, Download, FileVideo, Languages, ListTree, Plus, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { Captions, Download, Eraser, FileVideo, Languages, ListTree, Plus, RotateCcw, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import { apiBase, fetchJSON } from "../lib/api";
 import { streamPostSSEEvents } from "../lib/sse";
 import type { TaskDetail } from "../lib/types";
@@ -126,6 +126,16 @@ export default function SubtitlesPage() {
   const [translating, setTranslating] = useState(false);
   const [trProgress, setTrProgress] = useState<{ done: number; total: number } | null>(null);
   const [trStats, setTrStats] = useState<TranslateStats | null>(null);
+  // 工具行：单级撤销快照（批量操作前存，撤销后清）+ 校准面板
+  const [snapshot, setSnapshot] = useState<SubSeg[] | null>(null);
+  const [showCalib, setShowCalib] = useState(false);
+  const [calibMode, setCalibMode] = useState<"shift" | "scale" | "anchor">("shift");
+  const [calibOffset, setCalibOffset] = useState("0");
+  const [calibRatio, setCalibRatio] = useState("1");
+  const [calibA1s, setCalibA1s] = useState("");
+  const [calibA1t, setCalibA1t] = useState("");
+  const [calibA2s, setCalibA2s] = useState("");
+  const [calibA2t, setCalibA2t] = useState("");
   const { toast } = useToast();
 
   const tasks = useQuery({
@@ -268,6 +278,43 @@ export default function SubtitlesPage() {
     downloadExport(merged, "srt", { name: preset, font_size: fontSize, margin_v: marginV, karaoke }, toast).catch(
       (e: Error) => toast({ tone: "error", title: "导出失败", description: e.message }),
     );
+  };
+
+  // 工具行批量操作（校准/去标点）走后端小件端点：单一事实源，失败不改动现有内容
+  const runTools = async (operation: "calibrate" | "strip_punct", bodyExtra?: Record<string, unknown>) => {
+    setSnapshot(segments);
+    try {
+      const r = await fetchJSON<{ segments: SubSeg[] }>("/api/subtitles/tools", {
+        method: "POST",
+        body: JSON.stringify({ segments, operation, ...bodyExtra }),
+      });
+      setSegments(r.segments);
+    } catch (e) {
+      setSnapshot(null);
+      toast({ tone: "error", title: "操作失败", description: e instanceof Error ? e.message : String(e) });
+    }
+  };
+  const stripPunct = () => void runTools("strip_punct");
+  const undoBatch = () => {
+    if (snapshot) setSegments(snapshot);
+    setSnapshot(null);
+  };
+  const applyCalib = () => {
+    const body: Record<string, unknown> =
+      calibMode === "shift"
+        ? { calibrate: { mode: "shift", offset_ms: Math.round((Number.parseFloat(calibOffset) || 0) * 1000) } }
+        : calibMode === "scale"
+          ? { calibrate: { mode: "scale", ratio: Number.parseFloat(calibRatio) || 1 } }
+          : {
+              calibrate: {
+                mode: "anchor",
+                a1_src: parseClockToMs(calibA1s),
+                a1_tgt: parseClockToMs(calibA1t),
+                a2_src: parseClockToMs(calibA2s),
+                a2_tgt: parseClockToMs(calibA2t),
+              },
+            };
+    void runTools("calibrate", body);
   };
 
   /* 预览：按 ASS PlayRes 1080p 等比缩放的近似渲染，颜色/字重取自当前预设 */
@@ -573,7 +620,25 @@ export default function SubtitlesPage() {
           icon={<Captions size={15} strokeWidth={1.75} />}
           aside={
             segments.length > 0 ? (
-              <span className="font-mono text-[11px] tabular-nums text-muted">{segments.length} 条</span>
+              <div className="flex items-center gap-1">
+                <span className="font-mono text-[11px] tabular-nums text-muted">{segments.length} 条</span>
+                {snapshot && (
+                  <IconButton label="撤销上次批量操作" size="sm" variant="ghost" onClick={undoBatch}>
+                    <RotateCcw size={13} strokeWidth={1.75} />
+                  </IconButton>
+                )}
+                <IconButton label="去除中文标点" size="sm" variant="ghost" onClick={stripPunct}>
+                  <Eraser size={13} strokeWidth={1.75} />
+                </IconButton>
+                <IconButton
+                  label={showCalib ? "收起时间轴校准" : "时间轴校准"}
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowCalib((v) => !v)}
+                >
+                  <SlidersHorizontal size={13} strokeWidth={1.75} />
+                </IconButton>
+              </div>
             ) : undefined
           }
         />
@@ -585,6 +650,110 @@ export default function SubtitlesPage() {
           />
         ) : (
           <CardBody className="space-y-2">
+            {showCalib && (
+              <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-sm)] border border-line bg-raise-1 p-3">
+                <Field label="校准方式">
+                  {({ id, ...rest }) => (
+                    <Select
+                      id={id}
+                      value={calibMode}
+                      onChange={(e) => setCalibMode(e.target.value as typeof calibMode)}
+                      className="w-32"
+                      {...rest}
+                    >
+                      <option value="shift">整体平移</option>
+                      <option value="scale">比例伸缩</option>
+                      <option value="anchor">双锚点</option>
+                    </Select>
+                  )}
+                </Field>
+                {calibMode === "shift" && (
+                  <Field label="偏移（秒，负值提前）">
+                    {({ id, ...rest }) => (
+                      <Input
+                        id={id}
+                        type="number"
+                        step="0.1"
+                        value={calibOffset}
+                        onChange={(e) => setCalibOffset(e.target.value)}
+                        className="w-28"
+                        {...rest}
+                      />
+                    )}
+                  </Field>
+                )}
+                {calibMode === "scale" && (
+                  <Field label="比例（如 1.04167 = 24→25 帧）">
+                    {({ id, ...rest }) => (
+                      <Input
+                        id={id}
+                        type="number"
+                        step="0.00001"
+                        value={calibRatio}
+                        onChange={(e) => setCalibRatio(e.target.value)}
+                        className="w-32"
+                        {...rest}
+                      />
+                    )}
+                  </Field>
+                )}
+                {calibMode === "anchor" && (
+                  <>
+                    <Field label="锚1 原时刻">
+                      {({ id, ...rest }) => (
+                        <Input
+                          id={id}
+                          value={calibA1s}
+                          onChange={(e) => setCalibA1s(e.target.value)}
+                          placeholder="mm:ss.d"
+                          className="w-24"
+                          {...rest}
+                        />
+                      )}
+                    </Field>
+                    <Field label="锚1 目标时刻">
+                      {({ id, ...rest }) => (
+                        <Input
+                          id={id}
+                          value={calibA1t}
+                          onChange={(e) => setCalibA1t(e.target.value)}
+                          placeholder="mm:ss.d"
+                          className="w-24"
+                          {...rest}
+                        />
+                      )}
+                    </Field>
+                    <Field label="锚2 原时刻">
+                      {({ id, ...rest }) => (
+                        <Input
+                          id={id}
+                          value={calibA2s}
+                          onChange={(e) => setCalibA2s(e.target.value)}
+                          placeholder="mm:ss.d"
+                          className="w-24"
+                          {...rest}
+                        />
+                      )}
+                    </Field>
+                    <Field label="锚2 目标时刻">
+                      {({ id, ...rest }) => (
+                        <Input
+                          id={id}
+                          value={calibA2t}
+                          onChange={(e) => setCalibA2t(e.target.value)}
+                          placeholder="mm:ss.d"
+                          className="w-24"
+                          {...rest}
+                        />
+                      )}
+                    </Field>
+                  </>
+                )}
+                <Button variant="secondary" size="sm" onClick={applyCalib}>
+                  应用校准
+                </Button>
+              </div>
+            )}
             <div className="flex items-center gap-2 text-[11px] text-muted">
               <span className="w-10 shrink-0 text-center">序号</span>
               <span className="w-24 shrink-0 text-center">开始 (mm:ss.d)</span>

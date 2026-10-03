@@ -94,6 +94,19 @@ func newTranslateCommand() *cobra.Command {
 	return cmd
 }
 
+// translatedSegments 非双语译出稿的正文替换：有译文的条目以译文为字幕文本
+// （无译文退化原文），时间轴与序号语义不变。
+func translatedSegments(segs []subtitle.Segment) []subtitle.Segment {
+	out := make([]subtitle.Segment, len(segs))
+	for i, sg := range segs {
+		out[i] = sg
+		if tr := strings.TrimSpace(sg.Translation); tr != "" {
+			out[i].Text = tr
+		}
+	}
+	return out
+}
+
 // runSRTTranslate 字幕文件翻译：读 SRT → 引擎翻译 → 写 SRT（可选双语）。
 // 进度走 stderr，不污染 --json 的 stdout。
 func runSRTTranslate(c *cobra.Command, srtFile, source, target, outPath string, bilingual, jsonOut bool) error {
@@ -130,7 +143,7 @@ func runSRTTranslate(c *cobra.Command, srtFile, source, target, outPath string, 
 		}
 		out = strings.TrimSuffix(srtFile, filepath.Ext(srtFile)) + "." + target + ext
 	}
-	data := subtitle.BuildSRT(res.Segments)
+	data := subtitle.BuildSRT(translatedSegments(res.Segments))
 	if bilingual {
 		data = subtitle.BuildSRTBilingual(res.Segments)
 	}

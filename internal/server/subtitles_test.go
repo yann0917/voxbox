@@ -94,6 +94,83 @@ func TestSubtitleTranslateBadReq(t *testing.T) {
 	}
 }
 
+// TestSubtitleTools 工坊小件端点：calibrate shift 偏移生效；strip_punct 中文
+// 剥离句读、拉丁行原样；未知 operation 与缺 calibrate 字段走 JSON 包络错误。
+func TestSubtitleTools(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ts, _, ac := newTestServer(t)
+	defer ts.Close()
+
+	post := func(body string) *http.Response {
+		resp, err := ac.Post(ts.URL+"/api/subtitles/tools", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	// calibrate shift：整体 +500ms，译文原样保留
+	resp := post(`{"operation":"calibrate","calibrate":{"mode":"shift","offset_ms":500},` +
+		`"segments":[{"text":"一","translation":"one","start_ms":1000,"end_ms":2000}]}`)
+	var shifted struct {
+		Code int `json:"code"`
+		Data struct {
+			Segments []subtitle.Segment `json:"segments"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(readAll(t, resp)), &shifted); err != nil {
+		t.Fatal(err)
+	}
+	if len(shifted.Data.Segments) != 1 {
+		t.Fatalf("calibrate segments = %+v", shifted.Data.Segments)
+	}
+	sg := shifted.Data.Segments[0]
+	if sg.StartMS != 1500 || sg.EndMS != 2500 || sg.Text != "一" || sg.Translation != "one" {
+		t.Errorf("shift 后 = %+v", sg)
+	}
+
+	// strip_punct：中文行剥离句读，拉丁行原样
+	resp = post(`{"operation":"strip_punct","segments":[` +
+		`{"text":"你好,世界。","start_ms":0,"end_ms":1000},` +
+		`{"text":"Hello, world!","start_ms":1000,"end_ms":2000}]}`)
+	var stripped struct {
+		Code int `json:"code"`
+		Data struct {
+			Segments []subtitle.Segment `json:"segments"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(readAll(t, resp)), &stripped); err != nil {
+		t.Fatal(err)
+	}
+	if len(stripped.Data.Segments) != 2 {
+		t.Fatalf("strip_punct segments = %+v", stripped.Data.Segments)
+	}
+	if got := stripped.Data.Segments[0].Text; got != "你好世界" {
+		t.Errorf("中文去标点 = %q", got)
+	}
+	if got := stripped.Data.Segments[1].Text; got != "Hello, world!" {
+		t.Errorf("拉丁行应原样 = %q", got)
+	}
+
+	// 未知 operation → 包络错误
+	resp = post(`{"operation":"nope","segments":[{"text":"a","start_ms":0,"end_ms":1}]}`)
+	if body := readAll(t, resp); !strings.Contains(body, "calibrate") {
+		t.Errorf("未知 operation 应报错提示合法值: %s", body)
+	}
+
+	// calibrate 缺 calibrate 字段 → 包络错误
+	resp = post(`{"operation":"calibrate","segments":[{"text":"a","start_ms":0,"end_ms":1}]}`)
+	if body := readAll(t, resp); !strings.Contains(body, "calibrate") {
+		t.Errorf("缺 calibrate 应报错: %s", body)
+	}
+
+	// 空 segments → 包络错误
+	resp = post(`{"operation":"strip_punct","segments":[]}`)
+	if body := readAll(t, resp); !strings.Contains(body, "message") {
+		t.Errorf("空 segments 应报错: %s", body)
+	}
+}
+
 // TestSubtitleLangs 语言清单：火山 32 语种（三源统一口径），含 zh-Hant。
 // 先对原始响应体做大小写敏感断言锁线格式（Go JSON 解码大小写不敏感，
 // 若仅解码会漏掉 MTLang json tag 被删后线格式退回大写 Code/Name 的情况）。

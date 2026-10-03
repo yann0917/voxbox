@@ -183,3 +183,41 @@ func (s *Server) translateSubtitles(c *gin.Context) {
 func (s *Server) listSubtitleLangs(c *gin.Context) {
 	ok(c, volcengine.MTLanguages())
 }
+
+type subtitleToolsReq struct {
+	Segments  []subtitle.Segment      `json:"segments"`
+	Operation string                  `json:"operation"` // calibrate | strip_punct
+	Calibrate *subtitle.CalibrateOpts `json:"calibrate,omitempty"`
+}
+
+// subtitleTools 字幕工坊本地小件：时间轴校准 / 中文去标点（纯 Go，零上游成本，
+// 前端工具行与 CLI 共用同一份逻辑实现）。
+func (s *Server) subtitleTools(c *gin.Context) {
+	var req subtitleToolsReq
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Segments) == 0 {
+		fail(c, CodeBadRequest, "参数错误：segments 不能为空")
+		return
+	}
+	switch req.Operation {
+	case "calibrate":
+		if req.Calibrate == nil {
+			fail(c, CodeBadRequest, "参数错误：calibrate 必填")
+			return
+		}
+		segs, err := subtitle.CalibrateSegments(req.Segments, *req.Calibrate)
+		if err != nil {
+			fail(c, CodeBadRequest, err.Error())
+			return
+		}
+		ok(c, gin.H{"segments": segs})
+	case "strip_punct":
+		segs := make([]subtitle.Segment, len(req.Segments))
+		for i, sg := range req.Segments {
+			segs[i] = sg
+			segs[i].Text = subtitle.StripPunct(sg.Text)
+		}
+		ok(c, gin.H{"segments": segs})
+	default:
+		fail(c, CodeBadRequest, "operation 须为 calibrate | strip_punct")
+	}
+}

@@ -107,6 +107,8 @@ func (s *Server) Handler() http.Handler {
 		subtitles.GET("/presets", s.listSubtitlePresets)
 		subtitles.POST("/translate", s.translateSubtitles)
 		subtitles.GET("/langs", s.listSubtitleLangs)
+		// 本地小件：时间轴校准 / 中文去标点（详见 subtitles.go subtitleTools）
+		subtitles.POST("/tools", s.subtitleTools)
 	}
 
 	minutes := api.Group("/minutes")
