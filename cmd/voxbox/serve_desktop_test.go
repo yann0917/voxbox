@@ -57,7 +57,7 @@ func waitReadyLine(t *testing.T, stdout io.ReadCloser, timeout time.Duration) st
 // 桌面壳契约：--port 0 由系统分配空闲端口，就绪行地址真实可连。
 func TestServePortZeroReadyLineAndDialable(t *testing.T) {
 	bin := buildVoxbox(t)
-	cmd := exec.Command(bin, "serve", "--port", "0")
+	cmd := exec.Command(bin, "serve", "--port", "0", "--no-open")
 	cmd.Env = append(os.Environ(), "VOXBOX_HOME="+t.TempDir())
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -82,7 +82,7 @@ func TestServePortZeroReadyLineAndDialable(t *testing.T) {
 // 既有行为回归：显式 --port 覆盖配置默认端口（就绪行同样打印）。
 func TestServeDefaultPortFromConfig(t *testing.T) {
 	bin := buildVoxbox(t)
-	cmd := exec.Command(bin, "serve", "--port", "18099")
+	cmd := exec.Command(bin, "serve", "--port", "18099", "--no-open")
 	cmd.Env = append(os.Environ(), "VOXBOX_HOME="+t.TempDir())
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

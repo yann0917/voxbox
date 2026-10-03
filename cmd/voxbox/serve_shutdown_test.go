@@ -21,7 +21,7 @@ func TestServeGracefulShutdownOnSigterm(t *testing.T) {
 		t.Skip("Windows 无 SIGTERM 语义，优雅关闭路径由 Ctrl+C（os.Interrupt）触发")
 	}
 	bin := buildVoxbox(t)
-	cmd := exec.Command(bin, "serve", "--port", "0")
+	cmd := exec.Command(bin, "serve", "--port", "0", "--no-open")
 	cmd.Env = append(os.Environ(), "VOXBOX_HOME="+t.TempDir())
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
