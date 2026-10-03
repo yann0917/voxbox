@@ -3,21 +3,15 @@ package store
 import (
 	"errors"
 	"strings"
-	"time"
 
 	"gorm.io/gorm"
 )
 
 func (d *DB) CreateTask(t *Task) error {
-	if t.CreatedAt.IsZero() {
-		t.CreatedAt = time.Now()
-	}
-	t.UpdatedAt = time.Now()
 	return d.gorm.Create(t).Error
 }
 
 func (d *DB) UpdateTask(t *Task) error {
-	t.UpdatedAt = time.Now()
 	return d.gorm.Save(t).Error
 }
 
@@ -27,7 +21,7 @@ func (d *DB) UpdateTask(t *Task) error {
 func (d *DB) UpdateTaskSummary(taskID, userID, summaryJSON string) error {
 	res := d.gorm.Model(&Task{}).
 		Where("id = ? AND user_id = ?", taskID, userID).
-		Updates(map[string]any{"summary": summaryJSON, "updated_at": time.Now()})
+		Updates(map[string]any{"summary": summaryJSON})
 	if res.Error != nil {
 		return res.Error
 	}
@@ -118,9 +112,6 @@ func (d *DB) DeleteTask(id string) error {
 }
 
 func (d *DB) CreateArtifact(a *Artifact) error {
-	if a.CreatedAt.IsZero() {
-		a.CreatedAt = time.Now()
-	}
 	return d.gorm.Create(a).Error
 }
 
