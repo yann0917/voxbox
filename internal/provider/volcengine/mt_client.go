@@ -32,6 +32,19 @@ const (
 	mtCodeSrvError = 55000001 // 服务内部错误，可重试
 )
 
+// MTLang 机器翻译语言项。
+type MTLang struct{ Code, Name string }
+
+// MTLanguages 机器翻译支持的 32 语种清单（只读副本；语言口径以官方文档 6561 为准）。
+// 供字幕翻译引擎做目标语言校验与提示词中文消歧共用，避免各处硬编码清单。
+func MTLanguages() []MTLang {
+	out := make([]MTLang, len(mtLanguages))
+	for i, l := range mtLanguages {
+		out[i] = MTLang{Code: l.Code, Name: l.Name}
+	}
+	return out
+}
+
 // MTTranslateReq 翻译请求（Tool 层完成校验与默认值）。
 type MTTranslateReq struct {
 	SourceLanguage    string            // 源语言代码；空串=自动检测
