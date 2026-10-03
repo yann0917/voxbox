@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Captions, Download, FileVideo, ListTree, Plus, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { Captions, Download, FileVideo, Languages, ListTree, Plus, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import { apiBase, fetchJSON } from "../lib/api";
+import { streamPostSSEEvents } from "../lib/sse";
 import type { TaskDetail } from "../lib/types";
 import {
   Button,
@@ -25,6 +26,23 @@ interface SubSeg {
   text: string;
   start_ms: number;
   end_ms: number;
+  translation?: string;
+}
+
+/** GET /api/subtitles/langs 行格式（后端 volcengine.MTLang） */
+interface TranslateLang {
+  code: string;
+  name: string;
+}
+
+/** 翻译终帧 stats（echo_checked 仅 AI 源逐条核对计数，UI 不展示） */
+interface TranslateStats {
+  total: number;
+  translated: number;
+  repaired: number;
+  untranslated: number;
+  echo_checked: number;
+  source: string;
 }
 
 interface PresetStyle {
@@ -102,6 +120,12 @@ export default function SubtitlesPage() {
   // SRT 粘贴/文件内容
   const [srtContent, setSrtContent] = useState("");
   const [importError, setImportError] = useState("");
+  // 翻译：源（auto=按可用性选择）、目标语言、进度与结果统计
+  const [trSource, setTrSource] = useState("auto");
+  const [trTarget, setTrTarget] = useState("en");
+  const [translating, setTranslating] = useState(false);
+  const [trProgress, setTrProgress] = useState<{ done: number; total: number } | null>(null);
+  const [trStats, setTrStats] = useState<TranslateStats | null>(null);
   const { toast } = useToast();
 
   const tasks = useQuery({
@@ -113,6 +137,13 @@ export default function SubtitlesPage() {
     queryFn: () => fetchJSON<PresetStyle[]>("/api/subtitles/presets"),
     staleTime: Infinity,
   });
+  // 目标语言清单（火山 32 语种，三源统一口径）
+  const langs = useQuery({
+    queryKey: ["subtitle-langs"],
+    queryFn: () => fetchJSON<TranslateLang[]>("/api/subtitles/langs"),
+    staleTime: Infinity,
+  });
+  const hasTranslations = segments.some((s) => (s.translation ?? "").trim() !== "");
   // 当前生效样式：预设接口为单一事实来源（预览颜色/字重/导出覆盖均取自它）
   const style = presets.data?.find((p) => p.name === preset) ?? presets.data?.[0] ?? FALLBACK_STYLE;
   const applyPreset = (name: string) => {
@@ -186,6 +217,55 @@ export default function SubtitlesPage() {
 
   const doExport = (format: "srt" | "ass") => {
     downloadExport(segments, format, { name: preset, font_size: fontSize, margin_v: marginV, karaoke }, toast).catch(
+      (e: Error) => toast({ tone: "error", title: "导出失败", description: e.message }),
+    );
+  };
+
+  const doTranslate = async () => {
+    if (segments.length === 0) return;
+    setTranslating(true);
+    setTrProgress(null);
+    setTrStats(null);
+    try {
+      let result: { segments: SubSeg[]; stats: TranslateStats } | undefined;
+      await streamPostSSEEvents(
+        `${apiBase}/api/subtitles/translate`,
+        {
+          segments: segments.map((s) => ({ text: s.text, start_ms: s.start_ms, end_ms: s.end_ms })),
+          target_language: trTarget,
+          source: trSource === "auto" ? undefined : trSource,
+        },
+        (f) => {
+          if (f.progress) setTrProgress(f.progress);
+          if (f.error) throw new Error(f.error.message || "翻译失败");
+          if (f.done && f.result) result = f.result as { segments: SubSeg[]; stats: TranslateStats };
+        },
+      );
+      if (!result) throw new Error("翻译未返回结果");
+      setSegments(result.segments);
+      setTrStats(result.stats);
+      toast({
+        tone: "ok",
+        title: "翻译完成",
+        description: `共 ${result.stats.total} 条 · ${
+          result.stats.source === "ai" ? "AI 翻译" : result.stats.source === "volcengine" ? "火山翻译" : "免费翻译"
+        }`,
+      });
+    } catch (e) {
+      toast({ tone: "error", title: "翻译失败", description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setTranslating(false);
+      setTrProgress(null);
+    }
+  };
+
+  // 双语 SRT：前端把原文与译文拼为上下两行，复用既有 SRT 导出端点
+  const doExportBilingualSRT = () => {
+    const merged = segments.map((s) => ({
+      ...s,
+      text: (s.translation ?? "").trim() !== "" ? `${s.text}\n${s.translation!.trim()}` : s.text,
+    }));
+    downloadExport(merged, "srt", { name: preset, font_size: fontSize, margin_v: marginV, karaoke }, toast).catch(
       (e: Error) => toast({ tone: "error", title: "导出失败", description: e.message }),
     );
   };
@@ -400,6 +480,15 @@ export default function SubtitlesPage() {
 
             <div className="space-y-2 border-t border-line pt-3">
               <Button
+                variant="secondary"
+                className="w-full"
+                icon={<Download size={15} strokeWidth={1.75} />}
+                disabled={!hasTranslations}
+                onClick={doExportBilingualSRT}
+              >
+                导出双语 SRT
+              </Button>
+              <Button
                 variant="primary"
                 className="w-full"
                 icon={<Download size={15} strokeWidth={1.75} />}
@@ -421,6 +510,61 @@ export default function SubtitlesPage() {
           </CardBody>
         </Card>
       </div>
+
+      {/* 翻译 */}
+      <Card className="mt-4">
+        <CardHeader
+          title="翻译"
+          icon={<Languages size={15} strokeWidth={1.75} />}
+          aside={<span className="micro">{hasTranslations ? "已有译文，再次翻译将覆盖" : "AI / 火山 / 免费源自动选择"}</span>}
+        />
+        <CardBody className="space-y-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <Field label="翻译源" hint="自动 = 按可用性选择（AI → 火山 → 免费）">
+              {({ id, ...rest }) => (
+                <Select id={id} value={trSource} onChange={(e) => setTrSource(e.target.value)} className="w-40" {...rest}>
+                  <option value="auto">自动</option>
+                  <option value="ai">AI 翻译</option>
+                  <option value="volcengine">火山翻译</option>
+                  <option value="free">免费翻译</option>
+                </Select>
+              )}
+            </Field>
+            <Field label="目标语言">
+              {({ id, ...rest }) => (
+                <Select id={id} value={trTarget} onChange={(e) => setTrTarget(e.target.value)} className="w-44" {...rest}>
+                  {(langs.data ?? []).map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Languages size={14} strokeWidth={1.75} />}
+              loading={translating}
+              disabled={segments.length === 0}
+              onClick={doTranslate}
+            >
+              翻译字幕
+            </Button>
+            {trProgress && (
+              <span className="text-xs text-muted tabular-nums">
+                {trProgress.done}/{trProgress.total}
+              </span>
+            )}
+            {trStats && (
+              <span className="text-xs text-muted">
+                补翻 {trStats.repaired}
+                {trStats.untranslated > 0 ? ` · ${trStats.untranslated} 条未按译文返回` : ""}
+              </span>
+            )}
+          </div>
+        </CardBody>
+      </Card>
 
       {/* 编辑区 */}
       <Card className="mt-4">
@@ -446,6 +590,7 @@ export default function SubtitlesPage() {
               <span className="w-24 shrink-0 text-center">开始 (mm:ss.d)</span>
               <span className="w-24 shrink-0 text-center">结束 (mm:ss.d)</span>
               <span className="min-w-0 flex-1 pl-3">字幕文本</span>
+              {hasTranslations && <span className="min-w-0 flex-1 pl-3">译文</span>}
               <span className="w-8 shrink-0" />
             </div>
             <div className="max-h-[26rem] space-y-1.5 overflow-y-auto">
@@ -473,6 +618,15 @@ export default function SubtitlesPage() {
                     aria-label={`第 ${i + 1} 条字幕文本`}
                     className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-2 py-1.5 text-sm text-fg focus:border-accent focus:outline-none"
                   />
+                  {hasTranslations && (
+                    <input
+                      type="text"
+                      value={seg.translation ?? ""}
+                      onChange={(e) => updateRow(i, { translation: e.target.value })}
+                      aria-label={`第 ${i + 1} 条译文`}
+                      className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-2 py-1.5 text-sm text-fg-2 focus:border-accent focus:outline-none"
+                    />
+                  )}
                   <IconButton label={`删除第 ${i + 1} 条`} size="sm" variant="ghost" className="hover:text-danger" onClick={() => removeRow(i)}>
                     <Trash2 size={13} strokeWidth={1.75} />
                   </IconButton>
