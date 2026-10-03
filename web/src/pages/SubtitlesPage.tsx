@@ -578,7 +578,7 @@ export default function SubtitlesPage() {
         />
         <CardBody className="space-y-3">
           <div className="flex flex-wrap items-end gap-2">
-            <Field label="翻译源" hint="自动 = 按可用性选择（AI → 火山 → 免费）">
+            <Field label="翻译源" aside="按可用性自动选择">
               {({ id, ...rest }) => (
                 <Select id={id} value={trSource} onChange={(e) => setTrSource(e.target.value)} className="w-40" {...rest}>
                   <option value="auto">自动</option>
