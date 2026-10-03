@@ -95,6 +95,8 @@ func TestSubtitleTranslateBadReq(t *testing.T) {
 }
 
 // TestSubtitleLangs 语言清单：火山 32 语种（三源统一口径），含 zh-Hant。
+// 先对原始响应体做大小写敏感断言锁线格式（Go JSON 解码大小写不敏感，
+// 若仅解码会漏掉 MTLang json tag 被删后线格式退回大写 Code/Name 的情况）。
 func TestSubtitleLangs(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	ts, _, ac := newTestServer(t)
@@ -103,6 +105,17 @@ func TestSubtitleLangs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	raw := readAll(t, resp)
+	for _, key := range []string{`"code":`, `"name":`} {
+		if !strings.Contains(raw, key) {
+			t.Fatalf("langs 响应缺小写键 %s: %s", key, raw)
+		}
+	}
+	for _, key := range []string{`"Code":`, `"Name":`} {
+		if strings.Contains(raw, key) {
+			t.Fatalf("langs 响应出现大写键 %s（MTLang json tag 缺失）: %s", key, raw)
+		}
+	}
 	var payload struct {
 		Code int `json:"code"`
 		Data []struct {
@@ -110,7 +123,7 @@ func TestSubtitleLangs(t *testing.T) {
 			Name string `json:"name"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		t.Fatal(err)
 	}
 	if payload.Code != 0 || len(payload.Data) < 30 {

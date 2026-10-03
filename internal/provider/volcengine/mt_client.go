@@ -33,7 +33,10 @@ const (
 )
 
 // MTLang 机器翻译语言项。
-type MTLang struct{ Code, Name string }
+type MTLang struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
 
 // MTLanguages 机器翻译支持的 32 语种清单（只读副本；语言口径以官方文档 6561 为准）。
 // 供字幕翻译引擎做目标语言校验与提示词中文消歧共用，避免各处硬编码清单。
