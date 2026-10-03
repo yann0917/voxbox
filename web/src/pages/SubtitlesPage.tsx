@@ -3,7 +3,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Captions, Download, Eraser, FileVideo, Languages, ListTree, Plus, RotateCcw, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import { apiBase, fetchJSON } from "../lib/api";
 import { streamPostSSEEvents } from "../lib/sse";
-import type { TaskDetail } from "../lib/types";
+import { toolLabel } from "../lib/toolNames";
+import type { Task, TaskDetail } from "../lib/types";
 import {
   Button,
   Card,
@@ -84,6 +85,16 @@ function parseClockToMs(s: string): number {
   const sec = Number.parseFloat(rest);
   if (!Number.isFinite(sec)) return 0;
   return Math.round((Number.parseInt(m || "0", 10) * 60 + sec) * 1000);
+}
+
+/** 导入下拉项:工具类型 + 可读标题(缺省退回短 ID)+ 短时间,与历史页同一事实源。 */
+function taskOptionLabel(t: Task): string {
+  const d = new Date(t.created_at);
+  const time = Number.isNaN(d.getTime())
+    ? t.created_at
+    : `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const name = (t.title ?? "").trim() || t.id.slice(0, 8);
+  return `${toolLabel(t.tool)} · ${name.length > 24 ? `${name.slice(0, 24)}…` : name} · ${time}`;
 }
 
 /** 导出：二进制端点不套包络，JSON 响应即业务错误 */
@@ -387,7 +398,7 @@ export default function SubtitlesPage() {
                       <option value="">{candidates.length > 0 ? "选择任务导入…" : "暂无已完成的识别/配音任务"}</option>
                       {candidates.map((t) => (
                         <option key={t.id} value={t.id}>
-                          {t.created_at} · {t.id.slice(0, 8)}
+                          {taskOptionLabel(t)}
                         </option>
                       ))}
                     </Select>
