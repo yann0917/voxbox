@@ -1,9 +1,7 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -114,22 +112,7 @@ func (s *Server) applyPrompt(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Type", "text/event-stream; charset=utf-8")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-	w := c.Writer
-	writeEvent := func(v any) bool {
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return false
-		}
-		if _, err := w.Write([]byte("data: " + string(raw) + "\n\n")); err != nil {
-			return false
-		}
-		w.Flush()
-		return true
-	}
+	writeEvent := sseWriter(c)
 	err = s.svc.StreamApply(c.Request.Context(), resolved, func(delta string) {
 		// 客户端断开后写事件失败不中断循环：请求上下文取消会让上游读取尽快退出
 		_ = writeEvent(gin.H{"delta": delta})

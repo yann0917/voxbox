@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"time"
 
@@ -101,22 +100,7 @@ func (s *Server) refine(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Type", "text/event-stream; charset=utf-8")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-	w := c.Writer
-	writeEvent := func(v any) bool {
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return false
-		}
-		if _, err := w.Write([]byte("data: " + string(raw) + "\n\n")); err != nil {
-			return false
-		}
-		w.Flush()
-		return true
-	}
+	writeEvent := sseWriter(c)
 	var out strings.Builder
 	err = refineStream(c.Request.Context(), cfg, p, req.Model, system,
 		[]assistant.Message{{Role: "user", Content: user}}, func(delta string) {

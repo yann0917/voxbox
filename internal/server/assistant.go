@@ -1,10 +1,8 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -93,22 +91,7 @@ func (s *Server) assistantChat(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Type", "text/event-stream; charset=utf-8")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-	w := c.Writer
-	writeEvent := func(v any) bool {
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return false
-		}
-		if _, err := fmt.Fprintf(w, "data: %s\n\n", raw); err != nil {
-			return false
-		}
-		w.Flush()
-		return true
-	}
+	writeEvent := sseWriter(c)
 	err := assistantChatStream(c.Request.Context(), cfg, p, req.Model, assistant.ChatSystem(req.Context), msgs, func(delta string) {
 		// 客户端断开后写事件失败不中断循环：请求上下文取消会让上游读取尽快退出
 		_ = writeEvent(gin.H{"delta": delta})

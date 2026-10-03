@@ -5,7 +5,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -144,22 +143,7 @@ func (s *Server) translateSubtitles(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Type", "text/event-stream; charset=utf-8")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-	w := c.Writer
-	writeEvent := func(v any) bool {
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return false
-		}
-		if _, err := w.Write([]byte("data: " + string(raw) + "\n\n")); err != nil {
-			return false
-		}
-		w.Flush()
-		return true
-	}
+	writeEvent := sseWriter(c)
 	res, err := subtitleTranslate(c.Request.Context(), cfg, req.Segments, opts, func(done, total int) {
 		_ = writeEvent(gin.H{"progress": gin.H{"done": done, "total": total}})
 	})
