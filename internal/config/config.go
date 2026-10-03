@@ -40,6 +40,13 @@ type Config struct {
 	// Assistant AI 文本能力（悬浮助手/提示词库生成与润色）的共享设置：默认大模型
 	// "provider:model"，空=自动回落第一个已配置平台的第一个模型。
 	Assistant AssistantConfig
+	// Translate 字幕翻译的免费源设置：DeepLX 自建端点（可选，空=仅 Google 免费源）。
+	Translate TranslateConfig
+}
+
+// TranslateConfig 字幕翻译设置段。
+type TranslateConfig struct {
+	DeepLXURL string `mapstructure:"deeplx_url"`
 }
 
 // AssistantConfig AI 文本能力的共享设置段。
@@ -267,6 +274,9 @@ func configFromViper(v *viper.Viper) *Config {
 		Assistant: AssistantConfig{
 			DefaultModel: strings.TrimSpace(v.GetString("assistant.default_model")),
 		},
+		Translate: TranslateConfig{
+			DeepLXURL: strings.TrimSpace(v.GetString("translate.deeplx_url")),
+		},
 	}
 }
 
@@ -437,6 +447,7 @@ func List() ([]KV, error) {
 		{"zhipu.api_key", mask(cfg.Zhipu.APIKey)},
 		{"openrouter.api_key", mask(cfg.OpenRouter.APIKey)},
 		{"assistant.default_model", cfg.Assistant.DefaultModel},
+		{"translate.deeplx_url", cfg.Translate.DeepLXURL},
 	}
 	// 各通道段独立列出（bucket/AK/SK）；键即真实落盘布局，可直接指导 config set。
 	for _, name := range slices.Sorted(maps.Keys(cfg.StorageChannels)) {
