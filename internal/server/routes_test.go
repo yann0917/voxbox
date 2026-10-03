@@ -34,6 +34,20 @@ func getEnvelope(t *testing.T, ac *http.Client, url string) envelope {
 	return e
 }
 
+// TestMain 把 VOXBOX_HOME 钉进本次测试运行的临时目录：config.Set/Load 的落盘路径按
+// 该环境变量解析，不钉的话设置端点测试会把开发机真实的 ~/.voxbox/config.yaml 当沙盒
+// 写。需要相反语义的测试（如 datadir 显式 data_dir）用 t.Setenv 按测试覆盖，优先级更高。
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "voxbox-test-home")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("VOXBOX_HOME", dir)
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
 func newTestServer(t *testing.T) (*httptest.Server, *Server, *http.Client) {
 	t.Helper()
 	svc, err := service.NewWithHome(t.TempDir())

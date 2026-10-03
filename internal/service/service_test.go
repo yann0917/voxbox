@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -157,7 +158,23 @@ func TestReloadVolcFromDisk(t *testing.T) {
 	}
 }
 
+// TestMain 把 VOXBOX_HOME 钉进本次测试运行的临时目录：config.Set/Load 的落盘路径按
+// 该环境变量解析，不钉的话 Save*/设置端点测试会把开发机真实的 ~/.voxbox/config.yaml
+// 当沙盒写（TestSaveAssistantDefault 曾在每轮全量测试里清掉用户已保存的「AI 默认大
+// 模型」）。需要相反语义的测试（如显式 data_dir）用 t.Setenv 按测试覆盖，优先级更高。
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "voxbox-test-home")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("VOXBOX_HOME", dir)
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
 // newTestService 以临时目录构造 Service 并启动引擎（Engine() 未启动会 panic）。
+// VOXBOX_HOME 由 TestMain 统一隔离。
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 	svc, err := NewWithHome(t.TempDir())
@@ -259,7 +276,6 @@ func TestSaveStorageChannelSwitch(t *testing.T) {
 // SaveProviderFields：字段落盘、快照更新、secret 留空不改、未知字段拒绝、热重注册触发。
 func TestSaveProviderFields(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("VOXBOX_HOME", home)
 	svc, err := NewWithHome(home)
 	if err != nil {
 		t.Fatal(err)
