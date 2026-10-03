@@ -9,9 +9,10 @@ import (
 )
 
 type Segment struct {
-	Text    string `json:"text"`
-	StartMS int64  `json:"start_ms"`
-	EndMS   int64  `json:"end_ms"`
+	Text        string `json:"text"`
+	StartMS     int64  `json:"start_ms"`
+	EndMS       int64  `json:"end_ms"`
+	Translation string `json:"translation,omitempty"`
 }
 
 // ---- 时间格式 ----
@@ -307,6 +308,26 @@ func BuildSRT(segments []Segment) []byte {
 		fmt.Fprintf(&b, "%d\n%s --> %s\n%s\n\n", i+1,
 			formatSRTTime(seg.StartMS), formatSRTTime(seg.EndMS),
 			strings.TrimSpace(seg.Text))
+	}
+	return []byte(b.String())
+}
+
+// ---- 双语 SRT 导出 ----
+
+// BuildSRTBilingual 双语 SRT:原文在上、译文在下(Translation 为空的行退化为纯原文);
+// 序号与时间轴语义与 BuildSRT 一致。
+func BuildSRTBilingual(segments []Segment) []byte {
+	var b strings.Builder
+	for i, seg := range segments {
+		if seg.EndMS <= seg.StartMS || strings.TrimSpace(seg.Text) == "" {
+			continue
+		}
+		text := strings.TrimSpace(seg.Text)
+		if tr := strings.TrimSpace(seg.Translation); tr != "" {
+			text += "\n" + tr
+		}
+		fmt.Fprintf(&b, "%d\n%s --> %s\n%s\n\n", i+1,
+			formatSRTTime(seg.StartMS), formatSRTTime(seg.EndMS), text)
 	}
 	return []byte(b.String())
 }
