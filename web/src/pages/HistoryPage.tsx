@@ -301,6 +301,14 @@ export default function HistoryPage() {
                     {t.title && (
                       <span className="hidden min-w-0 max-w-48 shrink truncate text-sm sm:inline">{t.title}</span>
                     )}
+                    {t.tags?.map((tag) => (
+                      <span
+                        key={tag}
+                        className="hidden shrink-0 rounded-full bg-raise-2 px-1.5 py-px text-[10px] text-muted sm:inline"
+                      >
+                        {tag}
+                      </span>
+                    ))}
                     <StatusBadge status={t.status} />
                     <span className="min-w-0 flex-1 truncate text-xs text-muted">
                       {t.progress_note || t.error || "—"}

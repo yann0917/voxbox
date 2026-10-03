@@ -244,8 +244,8 @@ func TestLiveRelayVolcengineFlow(t *testing.T) {
 	if tk.Provider != "volcengine" || tk.Tool != "asr" || tk.Status != store.StatusSucceeded {
 		t.Errorf("task = %+v", tk)
 	}
-	if !strings.Contains(tk.Title, "实时字幕") {
-		t.Errorf("title = %q", tk.Title)
+	if tk.Title != "你好世界" {
+		t.Errorf("title = %q, want 识别文本前缀派生", tk.Title)
 	}
 	var params map[string]any
 	_ = json.Unmarshal([]byte(tk.Params), &params)

@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// searchTasks 转写全文搜索：LIKE 粗筛候选任务，解析 summary 后按分句/总结文本
-// 精确命中提取片段（含时间戳，前端可跳到对应同步回放位置）。
+// searchTasks 转写全文搜索：LIKE 粗筛候选任务（summary/title/tags），解析后按标题/
+// 标签/分句/总结文本精确命中提取片段（含时间戳，前端可跳到对应同步回放位置）。
 func (s *Server) searchTasks(c *gin.Context) {
 	q := strings.TrimSpace(c.Query("q"))
 	if q == "" {
@@ -39,6 +39,15 @@ func (s *Server) searchTasks(c *gin.Context) {
 		var matches []matchSeg
 		if strings.Contains(strings.ToLower(t.Title), lower) {
 			matches = append(matches, matchSeg{Text: t.Title})
+		}
+		// 标签命中（LIKE 粗筛含 tags 列）：整标签作为匹配片段展示
+		var tagList []string
+		_ = json.Unmarshal([]byte(t.Tags), &tagList)
+		for _, tag := range tagList {
+			if strings.Contains(strings.ToLower(tag), lower) {
+				matches = append(matches, matchSeg{Text: "标签：" + tag})
+				break
+			}
 		}
 		var sv summaryJSON
 		if json.Unmarshal([]byte(t.Summary), &sv) == nil {

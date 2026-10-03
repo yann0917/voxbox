@@ -22,6 +22,8 @@ func TestSearchEndpoint(t *testing.T) {
 			Summary: `{"segments":[{"text":"评审会议失败任务不应命中","start_ms":0,"end_ms":1000}]}`},
 		{ID: "srch-4", Provider: "mvsep", Tool: "separate", Title: "稻香 - 周杰伦", Status: store.StatusSucceeded, Params: "{}",
 			Summary: `{"algorithm":"BS Roformer","tracks":["vocals","other"]}`},
+		{ID: "srch-5", Provider: "volcengine", Tool: "asr", Status: store.StatusSucceeded, Params: "{}",
+			Tags: `["会议","粤语"]`, Summary: `{"segments":[{"text":"无关键词的分句","start_ms":0,"end_ms":1000}]}`},
 	}
 	for i := range tasks {
 		if err := s.svc.DB().CreateTask(&tasks[i]); err != nil {
@@ -94,6 +96,17 @@ func TestSearchEndpoint(t *testing.T) {
 	// 标题部分子串同样命中（LIKE 语义）
 	if !taskIDs(get("周杰伦"))["srch-4"] {
 		t.Error("按歌手名应命中")
+	}
+
+	// 标签命中：分句不含关键词、仅 tags 命中，匹配行展示命中的标签
+	data = get("粤语")
+	ids = taskIDs(data)
+	if !ids["srch-5"] || len(ids) != 1 {
+		t.Fatalf("期望仅 srch-5 按标签命中，得到 %v", ids)
+	}
+	m0 = data["items"].([]any)[0].(map[string]any)["matches"].([]any)[0].(map[string]any)
+	if m0["text"] != "标签：粤语" {
+		t.Errorf("标签匹配行不符: %v", m0)
 	}
 
 	// LIKE 键名误命中（"text" 出现在所有 summary JSON 键名中）应被二次校验过滤

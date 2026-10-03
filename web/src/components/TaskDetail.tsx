@@ -7,6 +7,7 @@ import { resolvePlaySrc } from "../lib/playback";
 import { useTranscriptSync } from "../lib/useTranscriptSync";
 import { TranscriptList } from "./TranscriptList";
 import { ArtifactRow } from "./ArtifactRow";
+import { TaskMetaEditor } from "./TaskMetaEditor";
 import { NotebookSection } from "./notebook/NotebookSection";
 import type { TaskDetail as TaskDetailData } from "../lib/types";
 
@@ -55,6 +56,9 @@ export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelPro
 
   return (
     <div className="space-y-3">
+      {/* 标题与标签（内联编辑）：手改置 title_edited，ASR 完成时的自动派生让位 */}
+      <TaskMetaEditor task={task} />
+
       {/* 参数回显 */}
       {params.length > 0 && (
         <div className="space-y-1">

@@ -117,7 +117,10 @@ func (e *Engine) createTask(userID, providerName, toolName string, params map[st
 		return nil, nil, err
 	}
 	raw, _ := json.Marshal(params)
-	title := deriveTitle(params, ref)
+	title := deriveTitle(params)
+	if title == "" && ref != nil && ref.ArtifactInput != "" {
+		title = e.artifactTitle(ref.ArtifactInput)
+	}
 	if title == "" {
 		title = uploadTitle(files)
 	}
@@ -140,9 +143,9 @@ func (e *Engine) createTask(userID, providerName, toolName string, params map[st
 const titleMaxRunes = 60
 
 // deriveTitle 提交时派生人类可读标题，供历史列表与搜索展示/命中：
-// URL 取文件名段；文本参数取首行摘要；上传文件由 uploadTitle 从落盘路径恢复原名；
-// 解析不出返回空串（前端回退工具名展示）。
-func deriveTitle(params map[string]any, ref *InputRef) string {
+// URL 取文件名段；文本参数取首行摘要；解析不出返回空串（交产物联动/上传文件名
+// 兜底，前端最后回退工具名展示）。
+func deriveTitle(params map[string]any) string {
 	for _, key := range []string{"url", "input_url"} {
 		if u := taskParamString(params, key); u != "" {
 			u = strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
@@ -157,13 +160,6 @@ func deriveTitle(params map[string]any, ref *InputRef) string {
 			return clipTitle(strings.Join(strings.Fields(s), " "))
 		}
 	}
-	if ref != nil && ref.ArtifactInput != "" {
-		short := ref.ArtifactInput
-		if len(short) > 8 {
-			short = short[:8]
-		}
-		return "产物 " + short
-	}
 	return ""
 }
 
@@ -173,6 +169,58 @@ func clipTitle(s string) string {
 		return string(runes[:titleMaxRunes]) + "…"
 	}
 	return string(runes)
+}
+
+// uploadTrackSuffixes 分离产物轨道后缀 → 中文标注（上传标题回源与产物联动标题共用）。
+var uploadTrackSuffixes = []struct{ suf, label string }{
+	{"_instrumental", "伴奏"}, {"_background", "背景"}, {"_vocals", "人声"}, {"_voice", "人声"},
+}
+
+// uploadStemBase 落盘文件名 → stem：剥扩展名与 <uuid>- 上传前缀（uploads.go 命名约定）。
+func uploadStemBase(p string) string {
+	stem := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
+	if len(stem) > 37 {
+		if _, err := uuid.Parse(stem[:36]); err == nil && stem[36] == '-' {
+			stem = stem[37:]
+		}
+	}
+	return stem
+}
+
+// artifactTitle 产物联动任务的标题（engine.go 此前为「产物 + id 前缀」，不可读）：
+// 产物文件名 stem（剥 uuid 上传前缀）+ 轨道后缀中文标注（「歌名 · 伴奏」式）；
+// stem 纯 uuid 无可读信息时回落源任务标题；再不行保持旧行为兜底。
+func (e *Engine) artifactTitle(id string) string {
+	short := id
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	fallback := "产物 " + short
+	a, err := e.db.GetArtifact(id)
+	if err != nil {
+		return fallback
+	}
+	stem := uploadStemBase(a.Filename)
+	label := ""
+	for _, s := range uploadTrackSuffixes {
+		if strings.HasSuffix(stem, s.suf) {
+			stem = strings.TrimSuffix(stem, s.suf)
+			label = " · " + s.label
+			break
+		}
+	}
+	if _, err := uuid.Parse(stem); err == nil {
+		stem = ""
+	}
+	if stem == "" {
+		if src, err := e.db.GetTask(a.TaskID); err == nil {
+			stem = src.Title
+		}
+	}
+	if stem == "" {
+		return fallback
+	}
+	return clipTitle(stem + label)
 }
 
 // uploadTitle 从输入文件路径恢复人类可读标题（URL/音乐/文本都解析不出时的兜底）。
@@ -185,16 +233,11 @@ func uploadTitle(files map[string]string) string {
 	if p == "" {
 		return ""
 	}
-	stem := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
-	if len(stem) > 37 {
-		if _, err := uuid.Parse(stem[:36]); err == nil && stem[36] == '-' {
-			stem = stem[37:]
-		}
-	}
+	stem := uploadStemBase(p)
 	// 轨道后缀剥离：分离产物再加工（mix/转码）的标题回源歌名
-	for _, suf := range []string{"_instrumental", "_background", "_vocals", "_voice"} {
-		if strings.HasSuffix(stem, suf) {
-			stem = strings.TrimSuffix(stem, suf)
+	for _, s := range uploadTrackSuffixes {
+		if strings.HasSuffix(stem, s.suf) {
+			stem = strings.TrimSuffix(stem, s.suf)
 			break
 		}
 	}
@@ -273,6 +316,14 @@ func (e *Engine) run(ctx context.Context, t *store.Task, tool provider.Tool, par
 		if out.Summary != nil {
 			raw, _ := json.Marshal(out.Summary)
 			t.Summary = string(raw)
+			// ASR 任务完成时用识别文本前缀替换机器标题（录音/URL 文件名在提交时无
+			// 文本可派生）；用户手改过标题（title_edited）则让位。实时字幕入库的
+			// 同类派生在 live_save.go。其他工具的 Summary 形状不同，天然不命中。
+			if t.Tool == "asr" && !t.TitleEdited {
+				if title := store.ASRTitleFromSummary(t.Summary); title != "" {
+					t.Title = title
+				}
+			}
 		}
 		ev = Event{Type: "done", TaskID: t.ID, Provider: t.Provider, Tool: t.Tool, Progress: 100, Artifacts: out.Artifacts}
 	case errors.Is(runErr, context.Canceled):

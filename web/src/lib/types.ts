@@ -8,6 +8,8 @@ export interface Task {
   tool: string;
   /** 人类可读标题（URL/文本摘要），列表与搜索展示 */
   title?: string;
+  /** 用户标签（PATCH /api/tasks/:id/meta 维护），历史搜索覆盖 */
+  tags?: string[];
   status: TaskStatus;
   progress: number;
   progress_note: string;

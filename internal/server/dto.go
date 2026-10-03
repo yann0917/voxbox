@@ -12,6 +12,7 @@ type taskDTO struct {
 	Provider  string          `json:"provider"`
 	Tool      string          `json:"tool"`
 	Title     string          `json:"title,omitempty"` // 人类可读标题（音乐=歌名 - 歌手；URL/文本摘要）
+	Tags      []string        `json:"tags,omitempty"`  // 用户标签；存量行 Tags 空 → nil，omitempty 不出键
 	Status    string          `json:"status"`
 	Progress  int             `json:"progress"`
 	Note      string          `json:"progress_note"`
@@ -34,8 +35,12 @@ type artifactDTO struct {
 }
 
 func toTaskDTO(t store.Task) taskDTO {
+	var tags []string
+	if t.Tags != "" {
+		_ = json.Unmarshal([]byte(t.Tags), &tags) // 损坏标签 JSON 视作无标签，不挡展示
+	}
 	return taskDTO{
-		ID: t.ID, Provider: t.Provider, Tool: t.Tool, Title: t.Title, Status: string(t.Status),
+		ID: t.ID, Provider: t.Provider, Tool: t.Tool, Title: t.Title, Tags: tags, Status: string(t.Status),
 		Progress: t.Progress, Note: t.ProgressNote, Error: t.Error,
 		CostMS: t.CostMS, Params: json.RawMessage(t.Params), Input: json.RawMessage(t.Input), Summary: json.RawMessage(t.Summary),
 		CreatedAt: t.CreatedAt.Format("2006-01-02 15:04:05"),

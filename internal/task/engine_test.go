@@ -134,25 +134,23 @@ func TestSubmitSyncFailure(t *testing.T) {
 	}
 }
 
-// TestDeriveTitle 提交时派生人类可读标题：URL 取文件名段；文本取首行摘要；解析不出为空。
+// TestDeriveTitle 提交时派生人类可读标题：URL 取文件名段；文本取首行摘要；
+// 解析不出为空（产物联动走 artifactTitle、上传文件名走 uploadTitle 兜底）。
 func TestDeriveTitle(t *testing.T) {
-	if got := deriveTitle(map[string]any{"url": "https://cdn.example.com/a/b/song file.mp3?sign=xyz"}, nil); got != "song file.mp3" {
+	if got := deriveTitle(map[string]any{"url": "https://cdn.example.com/a/b/song file.mp3?sign=xyz"}); got != "song file.mp3" {
 		t.Errorf("url title = %q", got)
 	}
-	if got := deriveTitle(map[string]any{"input_url": "https://example.com/x/track.flac"}, nil); got != "track.flac" {
+	if got := deriveTitle(map[string]any{"input_url": "https://example.com/x/track.flac"}); got != "track.flac" {
 		t.Errorf("input_url title = %q", got)
 	}
-	if got := deriveTitle(map[string]any{"text": "  你好\n世界  "}, nil); got != "你好 世界" {
+	if got := deriveTitle(map[string]any{"text": "  你好\n世界  "}); got != "你好 世界" {
 		t.Errorf("text title = %q", got)
 	}
-	if got := deriveTitle(nil, &InputRef{ArtifactInput: "01234567-9abc-def0-1234-56789abcdef0"}); got != "产物 01234567" {
-		t.Errorf("artifact title = %q", got)
-	}
-	if got := deriveTitle(map[string]any{"scene": "Audio"}, nil); got != "" {
+	if got := deriveTitle(map[string]any{"scene": "Audio"}); got != "" {
 		t.Errorf("unresolvable title = %q, want empty", got)
 	}
 	long := strings.Repeat("长", 70)
-	got := deriveTitle(map[string]any{"text": long}, nil)
+	got := deriveTitle(map[string]any{"text": long})
 	if !strings.HasSuffix(got, "…") || len([]rune(got)) != 61 {
 		t.Errorf("long title not clipped: %d runes", len([]rune(got)))
 	}
@@ -213,5 +211,100 @@ func TestUploadTitle(t *testing.T) {
 		if got := uploadTitle(tc.files); got != tc.want {
 			t.Errorf("%s: uploadTitle = %q, want %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+// asrTool 名为 asr 的桩工具：验证完成时识别文本前缀派生标题（引擎只对 Tool=="asr" 生效）。
+type asrTool struct{ summary map[string]any }
+
+func (asrTool) Meta() provider.ToolMeta {
+	return provider.ToolMeta{Provider: "fake", Name: "asr", Title: "ASR"}
+}
+func (asrTool) ParamSpecs() []provider.ParamSpec { return nil }
+func (t asrTool) Run(ctx context.Context, in provider.TaskInput, report provider.ProgressReporter) (provider.TaskOutput, error) {
+	return provider.TaskOutput{
+		Artifacts: []provider.Artifact{{Kind: "transcript", Path: "asr/a.txt", Format: "txt"}},
+		Summary:   t.summary,
+	}, nil
+}
+
+// TestArtifactTitle 产物联动任务标题：文件名 stem + 轨道中文标注；纯 uuid 文件名
+// 回源任务标题；查无产物保持旧行为兜底；createTask 经 ref.ArtifactInput 接线。
+func TestArtifactTitle(t *testing.T) {
+	e := newTestEngine(t, detailTool{}, nil)
+	if err := e.db.CreateTask(&store.Task{ID: "src-1", Provider: "mvsep", Tool: "separate", Status: store.StatusSucceeded, Title: "稻香 - 周杰伦"}); err != nil {
+		t.Fatal(err)
+	}
+	seed := []struct{ id, filename, want string }{
+		{"01234567-9abc-def0-1234-56789abcdef0", "稻香_instrumental.wav", "稻香 · 伴奏"},
+		{"11111111-2222-3333-4444-555555555555", "6ba7b810-9dad-11d1-80b4-00c04fd430c8.wav", "稻香 - 周杰伦"},
+		{"66666666-7777-8888-9999-aaaaaaaaaaaa", "6ba7b810-9dad-11d1-80b4-00c04fd430c8_vocals.wav", "稻香 - 周杰伦 · 人声"},
+	}
+	for _, tc := range seed {
+		if err := e.db.CreateArtifact(&store.Artifact{ID: tc.id, TaskID: "src-1", UserID: "", Kind: "audio", Path: "sep/" + tc.filename, Filename: tc.filename}); err != nil {
+			t.Fatal(err)
+		}
+		if got := e.artifactTitle(tc.id); got != tc.want {
+			t.Errorf("artifactTitle(%s) = %q, want %q", tc.filename, got, tc.want)
+		}
+	}
+	if got := e.artifactTitle("ffffffff-ffff-ffff-ffff-ffffffffffff"); got != "产物 ffffffff" {
+		t.Errorf("missing artifact fallback = %q", got)
+	}
+
+	// createTask 接线：URL/文本全无时产物联动标题入库
+	tk, _, err := e.createTask("", "fake", "detail", map[string]any{}, &InputRef{ArtifactInput: seed[0].id}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tk.Title != "稻香 · 伴奏" {
+		t.Errorf("createTask title = %q", tk.Title)
+	}
+}
+
+// TestASRCompletionTitle ASR 完成时识别文本前缀替换机器标题；用户手改（title_edited）让位。
+func TestASRCompletionTitle(t *testing.T) {
+	var events []Event
+	e := newTestEngine(t, asrTool{summary: map[string]any{
+		"text": "大家好,欢迎来到今晚的分享会,内容很长会被截断",
+	}}, &events)
+	tk, _, err := e.SubmitSync(context.Background(), "fake", "asr", map[string]any{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(tk.Title, "大家好") || !strings.HasSuffix(tk.Title, "…") || len([]rune(tk.Title)) != 21 {
+		t.Errorf("完成时标题未按 20 字截断派生: %q", tk.Title)
+	}
+
+	// segments 形状（火山系）：取首个非空分句
+	e2 := newTestEngine(t, asrTool{summary: map[string]any{
+		"segments": []map[string]any{{"text": "第一句话", "start_ms": 0}, {"text": "第二句话"}},
+	}}, &events)
+	tk2, _, err := e2.SubmitSync(context.Background(), "fake", "asr", map[string]any{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tk2.Title != "第一句话第二句话" {
+		t.Errorf("segments 标题 = %q, want 拼接前缀 第一句话第二句话", tk2.Title)
+	}
+
+	// 用户手改标题让位：createTask 后置 TitleEdited，直接驱动 run 走完成分支
+	e3 := newTestEngine(t, asrTool{summary: map[string]any{"text": "自动派生的文本"}}, &events)
+	t3, _, err := e3.createTask("", "fake", "asr", map[string]any{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t3.Title = "用户手改的标题"
+	t3.TitleEdited = true
+	tool, _ := e3.reg.Get("fake", "asr")
+	if _, _, err := e3.run(context.Background(), t3, tool, map[string]any{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	got3, err := e3.db.GetTask(t3.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got3.Title != "用户手改的标题" {
+		t.Errorf("手改标题被覆盖: %q", got3.Title)
 	}
 }

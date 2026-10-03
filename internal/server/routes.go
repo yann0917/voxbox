@@ -62,6 +62,8 @@ func (s *Server) Handler() http.Handler {
 		tasks.POST("/:id/rerun", s.rerunTask)
 		// 说话人改名（录音笔记本地覆盖层）：写 Summary.speaker_names，详见 speakers.go
 		tasks.PATCH("/:id/speakers", s.renameTaskSpeakers)
+		// 标题/标签编辑：标题手改置 title_edited，详见 task_meta.go
+		tasks.PATCH("/:id/meta", s.editTaskMeta)
 	}
 
 	artifacts := api.Group("/artifacts")

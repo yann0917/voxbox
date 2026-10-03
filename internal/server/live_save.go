@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -86,11 +85,16 @@ func (s *Server) liveSave(userID, engine, prov string, res liveResult) (string, 
 		"version": "live", "engine": engine, "duration_ms": res.DurationMS,
 	})
 	summaryRaw, _ := json.Marshal(summary)
+	// 标题取识别文本前缀（与 ASR 完成时派生同一实现）；全空文本兜底无时间戳的「实时字幕」。
+	title := store.ASRTitleFromSummary(string(summaryRaw))
+	if title == "" {
+		title = "实时字幕"
+	}
 	t := &store.Task{
 		ID: id, UserID: userID, Provider: prov, Tool: "asr",
 		Status: store.StatusSucceeded, Progress: 100,
 		Params: string(paramsRaw), Summary: string(summaryRaw),
-		Title: "实时字幕 " + time.Now().Format("2006-01-02 15:04"),
+		Title: title,
 	}
 	if err := s.svc.DB().CreateTask(t); err != nil {
 		return "", fmt.Errorf("任务落库失败: %w", err)

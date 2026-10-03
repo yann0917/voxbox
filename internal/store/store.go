@@ -3,6 +3,7 @@ package store
 
 import (
 	"errors"
+	"log"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -23,6 +24,10 @@ func Open(path string) (*DB, error) {
 	d := &DB{gorm: g}
 	if err := d.markRunningAsInterrupted(); err != nil {
 		return nil, err
+	}
+	// 存量机器标题回填（幂等，见 backfill.go）；失败不阻断启动——下次启动重试。
+	if err := d.backfillTaskTitles(); err != nil {
+		log.Printf("任务标题回填失败（下次启动重试）: %v", err)
 	}
 	return d, nil
 }

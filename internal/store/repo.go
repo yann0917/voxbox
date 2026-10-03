@@ -31,6 +31,33 @@ func (d *DB) UpdateTaskSummary(taskID, userID, summaryJSON string) error {
 	return nil
 }
 
+// UpdateTaskMeta 条件更新标题/标签（id+user_id 双条件同 UpdateTaskSummary：竞态窗口
+// 的属主二次把关）。title 提供时同时置 title_edited——ASR 完成时的自动派生标题据此让位；
+// tags 是序列化好的 JSON 数组字符串，两端只想改其一就只传其一。
+func (d *DB) UpdateTaskMeta(taskID, userID string, title, tags *string) error {
+	set := map[string]any{}
+	if title != nil {
+		set["title"] = *title
+		set["title_edited"] = true
+	}
+	if tags != nil {
+		set["tags"] = *tags
+	}
+	if len(set) == 0 {
+		return ErrNotFound
+	}
+	res := d.gorm.Model(&Task{}).
+		Where("id = ? AND user_id = ?", taskID, userID).
+		Updates(set)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (d *DB) GetTask(id string) (*Task, error) {
 	var t Task
 	if err := d.gorm.First(&t, "id = ?", id).Error; err != nil {
@@ -70,8 +97,8 @@ func (d *DB) ListTasks(provider, tool string, statuses []TaskStatus, limit, offs
 	return items, total, err
 }
 
-// SearchSucceededSummaries 全文搜索粗筛：summary（转写/总结内容）或 title（任务标题，
-// 如分离任务的「歌名 - 歌手」）LIKE 命中的成功任务，按创建时间倒序。
+// SearchSucceededSummaries 全文搜索粗筛：summary（转写/总结内容）、title（任务标题，
+// 如分离任务的「歌名 - 歌手」）或 tags（用户标签）LIKE 命中的成功任务，按创建时间倒序。
 // LIKE 只做候选集粗筛（转义 %/_/\\），精确命中与片段提取由上层解析后判定；
 // 个人工具量级（千级任务）全表 LIKE 足够，量大再上 FTS5。
 func (d *DB) SearchSucceededSummaries(keyword string, limit int, userID string) ([]Task, error) {
@@ -83,7 +110,8 @@ func (d *DB) SearchSucceededSummaries(keyword string, limit int, userID string) 
 	}
 	pattern := "%" + escapeLike(keyword) + "%"
 	q := d.gorm.Model(&Task{}).
-		Where("status = ? AND (summary LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\')", StatusSucceeded, pattern, pattern)
+		Where("status = ? AND (summary LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')",
+			StatusSucceeded, pattern, pattern, pattern)
 	if userID != "" {
 		q = q.Where("user_id = ?", userID)
 	}

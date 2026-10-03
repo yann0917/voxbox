@@ -46,9 +46,11 @@ type Task struct {
 	Tool         string     `gorm:"size:32;index"`
 	Status       TaskStatus `gorm:"size:16;index"`
 	Params       string     `gorm:"type:text"`
-	Input        string     `gorm:"type:text"` // 原始输入引用 JSON（file_ids/artifact_input），供重跑与回放溯源；CLI 直传本地路径时为空
-	Title        string     `gorm:"size:255"`  // 人类可读标题（URL/文本取摘要）：历史列表与搜索展示
-	Summary      string     `gorm:"type:text"` // 任务完成摘要 JSON（provider.TaskOutput.Summary 序列化）
+	Input        string     `gorm:"type:text"`              // 原始输入引用 JSON（file_ids/artifact_input），供重跑与回放溯源；CLI 直传本地路径时为空
+	Title        string     `gorm:"size:255"`               // 人类可读标题（URL/文本取摘要）：历史列表与搜索展示
+	TitleEdited  bool       `gorm:"not null;default:false"` // 用户手改过标题：ASR 完成时自动派生让位
+	Tags         string     `gorm:"size:512"`               // 用户标签 JSON 数组字符串（如 ["会议","粤语"]），搜索 LIKE 覆盖
+	Summary      string     `gorm:"type:text"`              // 任务完成摘要 JSON（provider.TaskOutput.Summary 序列化）
 	Progress     int
 	ProgressNote string
 	Error        string `gorm:"type:text"`
