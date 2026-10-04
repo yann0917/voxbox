@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -776,9 +777,150 @@ func contentRangeTotal(cr string) (int64, bool) {
 	return total, ok
 }
 
+// ── 下载端点选择 / 错误分类 / 有限重试(完整性加固)────────────────────────
+
+// dlSource 单文件候选端点:主源在前,镜像在后(可空)。
+type dlSource struct{ primary, mirror string }
+
+// hfMirrorForProd HF 直链的镜像派生:huggingface.co → hf-mirror.com,其余源无镜像。
+// hf-mirror 只镜像 HF 站内容——catalog 的魔搭直链与 GitHub 发布包上游不在 HF,无从镜像;
+// r2t2 等 HF 直链条目在主站被墙/限流时可自动切换。非大陆网络访问 hf-mirror 会 302 回主站,无害。
+func hfMirrorForProd(u string) string {
+	const hf = "https://huggingface.co/"
+	if strings.HasPrefix(u, hf) {
+		return "https://hf-mirror.com/" + strings.TrimPrefix(u, hf)
+	}
+	return ""
+}
+
+// hfMirrorFor 包级缝:测试注入假映射(fake 主源 → fake 镜像)。
+var hfMirrorFor = hfMirrorForProd
+
+func (m *Manager) sourcesFor(e Entry, file string) dlSource {
+	u := m.fileURLFor(e, file)
+	return dlSource{primary: u, mirror: hfMirrorFor(u)}
+}
+
+// httpStatusError 端点返回非预期 HTTP 状态(保留 code 供重试/换端点分类)。
+type httpStatusError struct {
+	code int
+	msg  string
+}
+
+func (e *httpStatusError) Error() string { return e.msg }
+
+// stallError 读取停滞:连接疑似半开,续传重试有意义。
+type stallError struct{}
+
+func (stallError) Error() string { return "读取停滞:远端长时间无数据,连接疑似中断" }
+
+// incompleteError 干净 EOF 但字节数不足:服务端系统性短响应,续传重试无意义。
+type incompleteError struct {
+	file      string
+	got, want int64
+}
+
+func (e *incompleteError) Error() string {
+	return fmt.Sprintf("下载不完整:%s 已收 %d 字节,预期 %d", e.file, e.got, e.want)
+}
+
+// blockedStatus 封锁类状态:同端点重试无意义,换端点(镜像)才有意义。
+func blockedStatus(code int) bool {
+	return code == 401 || code == 403 || code == 404 || code == 410 || code == 451
+}
+
+// retryableStatus 瞬时类状态:同端点续传重试有意义。
+func retryableStatus(code int) bool {
+	return code == 408 || code == 429 || code >= 500
+}
+
+// classifyDownloadErr 下载错误分类(封锁, 可重试):
+// 封锁=DNS 拒绝/连接拒绝/不可达/TLS 劫持类/封锁状态码 → 切镜像;
+// 可重试=超时/连接重置/EOF/停滞 → 同端点续传重试;
+// 其余(校验失败/超长响应/干净短响应等)→ 直接失败。
+// 用错误串匹配而非 syscall 常量,跨平台(darwin/windows/linux)口径一致。
+func classifyDownloadErr(err error) (blocked, retryable bool) {
+	var se *httpStatusError
+	if errors.As(err, &se) {
+		return blockedStatus(se.code), retryableStatus(se.code)
+	}
+	var stall stallError
+	if errors.As(err, &stall) {
+		return false, true
+	}
+	var inc *incompleteError
+	if errors.As(err, &inc) {
+		return false, false
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "connection refused"), strings.Contains(msg, "no route to host"),
+		strings.Contains(msg, "host unreachable"), strings.Contains(msg, "network is unreachable"),
+		strings.Contains(msg, "x509"), strings.Contains(msg, "certificate"),
+		strings.Contains(msg, "tls:"), strings.Contains(msg, "lookup "):
+		return true, false
+	case strings.Contains(msg, "timeout"), strings.Contains(msg, "connection reset"),
+		strings.Contains(msg, "connection aborted"), strings.Contains(msg, "broken pipe"),
+		strings.Contains(msg, "unexpected eof"), strings.Contains(msg, "eof"):
+		return false, true
+	}
+	return false, false
+}
+
+// retryBackoff 指数退避(1s/2s/4s 封顶);包级缝:测试注入零退避。
+var retryBackoff = func(attempt int) time.Duration {
+	d := time.Second << (attempt - 1)
+	if d > 4*time.Second {
+		d = 4 * time.Second
+	}
+	return d
+}
+
+// stallReadTimeout 空闲读超时:连续无数据判连接半开,取消本次尝试交由重试续传。
+const stallReadTimeout = 60 * time.Second
+
+// maxEndpointAttempts 每端点瞬时错误重试预算(probe 与 fetchOne 共用)。
+const maxEndpointAttempts = 3
+
 // probe 用 Range: bytes=0-0 探测单文件:取真实大小与 Range 支持,同时前置发现 404/下架。
+// 端点循环与 fetchOne 同口径:主源封锁类失败(DNS 拒绝/TLS 劫持/403/404/451)切镜像,
+// 瞬时失败(超时/5xx)按预算重试;其余失败即返(用户手动重试即续传)。
 func (m *Manager) probe(ctx context.Context, e Entry, file string) (int64, bool, error) {
-	fileURL := m.fileURLFor(e, file)
+	src := m.sourcesFor(e, file)
+	endpoints := []string{src.primary}
+	if src.mirror != "" {
+		endpoints = append(endpoints, src.mirror)
+	}
+	var lastErr error
+	for ei, u := range endpoints {
+		for attempt := 0; attempt < maxEndpointAttempts; attempt++ {
+			if ctx.Err() != nil {
+				return 0, false, ctx.Err()
+			}
+			size, canRange, err := m.probeURL(ctx, e, file, u)
+			if err == nil {
+				return size, canRange, nil
+			}
+			lastErr = err
+			blocked, retryable := classifyDownloadErr(err)
+			if blocked && ei == 0 && len(endpoints) > 1 {
+				break // 主源封锁:切镜像
+			}
+			if !retryable || attempt == maxEndpointAttempts-1 {
+				return 0, false, err
+			}
+			select {
+			case <-ctx.Done():
+				return 0, false, ctx.Err()
+			case <-time.After(retryBackoff(attempt + 1)):
+			}
+		}
+	}
+	return 0, false, lastErr
+}
+
+// probeURL 对单一端点探测,行为与原 probe 一致(文件名直链条目 403/404 直述地址)。
+func (m *Manager) probeURL(ctx context.Context, e Entry, file, fileURL string) (int64, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
 	if err != nil {
 		return 0, false, err
@@ -813,22 +955,29 @@ func (m *Manager) probe(ctx context.Context, e Entry, file string) (int64, bool,
 	case http.StatusForbidden, http.StatusNotFound:
 		if e.Repo == "" {
 			// 直链条目(Repo 为空)没有 repo 段可渲染:直述失败的具体文件地址
-			return 0, false, fmt.Errorf("模型文件不存在或已下架:%s(可打开 %s 确认)", fileURL, e.LicenseURL)
+			return 0, false, &httpStatusError{code: resp.StatusCode,
+				msg: fmt.Sprintf("模型文件不存在或已下架:%s(可打开 %s 确认)", fileURL, e.LicenseURL)}
 		}
-		return 0, false, fmt.Errorf("模型不存在或已下架:%s(可打开 %s 确认)", e.Repo, e.LicenseURL)
+		return 0, false, &httpStatusError{code: resp.StatusCode,
+			msg: fmt.Sprintf("模型不存在或已下架:%s(可打开 %s 确认)", e.Repo, e.LicenseURL)}
 	default:
-		return 0, false, fmt.Errorf("魔搭响应异常: HTTP %d", resp.StatusCode)
+		return 0, false, &httpStatusError{code: resp.StatusCode, msg: fmt.Sprintf("远端响应异常: HTTP %d", resp.StatusCode)}
 	}
 }
 
-// progressWriter 追加写 .part 并推进度(每次 Write 回调)。
+// progressWriter 追加写 .part 并推进度(每次 Write 回调);limit 为本段剩余预算,
+// 响应超出预算即中止(远端内容疑似变更,防乱流撑爆磁盘)。
 type progressWriter struct {
 	path    string
+	limit   int64
 	onN     func(totalWritten int64)
 	written int64
 }
 
 func (p *progressWriter) Write(b []byte) (int, error) {
+	if p.limit > 0 && p.written+int64(len(b)) > p.limit {
+		return 0, fmt.Errorf("响应超过预期大小(已收 %d,预算 %d),远端内容疑似变更", p.written+int64(len(b)), p.limit)
+	}
 	n, err := appendToFile(p.path, b)
 	p.written += int64(n)
 	p.onN(p.written)
@@ -844,12 +993,12 @@ func appendToFile(path string, b []byte) (int, error) {
 	return f.Write(b)
 }
 
-// regetFromZero 丢弃当前响应(排水后关闭),从零重发不带 Range 的普通 GET。
+// regetFromZero 丢弃当前响应(排水后关闭),对同一端点从零重发不带 Range 的普通 GET。
 // 续传被降级(非 206)与 206 起始偏移不符共用此降级路径;调用方负责把 offset 归零。
-func (m *Manager) regetFromZero(ctx context.Context, e Entry, file string, resp *http.Response) (*http.Response, error) {
+func (m *Manager) regetFromZero(ctx context.Context, fileURL string, resp *http.Response) (*http.Response, error) {
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	resp.Body.Close()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.fileURLFor(e, file), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -860,9 +1009,29 @@ func (m *Manager) regetFromZero(ctx context.Context, e Entry, file string, resp 
 	return r, nil
 }
 
-// fetchOne 单文件下载:全部写入 .part,完成后按声明校验字节数(+可选 sha256)再原子改名。
-// 最终文件已存在且大小吻合 → 跳过(跨重启续传);.part 大于远端(远端变更)→ 废弃重下;
-// Range 不可用/续传被降级(200)/206 起始偏移不符 → 从零重写。
+// partOffset .part 当前可信偏移:等于目标大小(半程完成)、超过(远端变更)或 Range
+// 不可用时归零重下,否则取 .part 实际大小续传。
+func partOffset(part string, size int64, rangeOK bool) int64 {
+	if !rangeOK {
+		return 0
+	}
+	fi, err := os.Stat(part)
+	if err != nil {
+		return 0
+	}
+	switch {
+	case fi.Size() == size:
+		return size
+	case fi.Size() > size:
+		return 0
+	default:
+		return fi.Size()
+	}
+}
+
+// fetchOne 单文件下载:端点循环(主源封锁切 hf-mirror 镜像)× 每端点有限重试
+// (瞬时错误指数退避,从 .part 续传;停滞/中断/短响应各有分类),完成后按声明
+// 校验字节数(+可选 sha256)再原子改名。最终文件已存在且大小吻合 → 跳过(跨重启续传)。
 func (m *Manager) fetchOne(ctx context.Context, e Entry, file string, size int64, rangeOK bool, base int64) error {
 	final := filepath.Join(m.modelDir(e.ID), filepath.FromSlash(file))
 	if fi, err := os.Stat(final); err == nil && fi.Size() == size {
@@ -870,84 +1039,48 @@ func (m *Manager) fetchOne(ctx context.Context, e Entry, file string, size int64
 		return nil
 	}
 	part := final + ".part"
-	offset := int64(0)
-	if rangeOK {
-		if fi, err := os.Stat(part); err == nil {
-			switch {
-			case fi.Size() == size:
-				offset = size
-			case fi.Size() > size:
-				offset = 0
-			default:
-				offset = fi.Size()
-			}
+	src := m.sourcesFor(e, file)
+	endpoint, attempts := 0, 0
+	for {
+		offset := partOffset(part, size, rangeOK)
+		if offset == size {
+			break // .part 已收齐:走校验改名
 		}
-	}
-	// .part 已齐或最终文件已齐:直接校验改名(offset==size 时无网络请求)
-	if offset != size {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.fileURLFor(e, file), nil)
-		if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		u := src.primary
+		if endpoint == 1 {
+			u = src.mirror
+		}
+		err := m.fetchAttempt(ctx, e, file, u, size, rangeOK, part, offset, base)
+		if err == nil {
+			break
+		}
+		if ctx.Err() != nil {
 			return err
 		}
-		if offset > 0 {
-			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+		blocked, retryable := classifyDownloadErr(err)
+		if blocked && endpoint == 0 && src.mirror != "" {
+			endpoint, attempts = 1, 0 // 主源封锁:切镜像,重试预算重置
+			continue
 		}
-		resp, err := downloadClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("网络错误: %w", err)
+		if !retryable {
+			return err
 		}
-		degrade := false
-		if resp.StatusCode == http.StatusPartialContent {
-			// 206 必须核对起始偏移与总长:损坏代理可能回起点错误的 206,事后字节数校验
-			// (offset+=downloaded)挡不住「长度恰好、起点错位」的内容入库安装。
-			start, total, ok := contentRangeStart(resp.Header.Get("Content-Range"))
-			degrade = !ok || start != offset || total != size
-		} else {
-			degrade = offset > 0 // 续传被降级(200 等):从零重写
-		}
-		if degrade {
-			// 从零重写:drain 后重发普通 GET
-			resp, err = m.regetFromZero(ctx, e, file, resp)
-			offset = 0
-			if err != nil {
-				return err
+		attempts++
+		if attempts >= maxEndpointAttempts {
+			if endpoint == 0 && src.mirror != "" {
+				endpoint, attempts = 1, 0 // 同端点重试耗尽:换镜像再试
+				continue
 			}
+			return err
 		}
-		switch {
-		case resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent:
-		default:
-			resp.Body.Close()
-			return fmt.Errorf("魔搭响应异常: HTTP %d", resp.StatusCode)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(retryBackoff(attempts)):
 		}
-		// 写入准备:全新写 = 截断;续传 = 校验 .part 基准未被并发改动
-		if offset == 0 {
-			// 目录条目允许子目录文件(如 speech_tokenizer/model.safetensors),落盘前补父目录
-			if err := os.MkdirAll(filepath.Dir(final), 0o755); err != nil {
-				resp.Body.Close()
-				return fmt.Errorf("创建文件目录失败: %w", err)
-			}
-			if err := os.WriteFile(part, nil, 0o644); err != nil {
-				resp.Body.Close()
-				return err
-			}
-		} else if fi, err := os.Stat(part); err != nil || fi.Size() != offset {
-			resp.Body.Close()
-			return fmt.Errorf("续传基准丢失:%s", file)
-		}
-		var downloaded int64
-		pw := &progressWriter{path: part, onN: func(n int64) {
-			downloaded = n
-			m.setProgress(e.ID, base+offset+n)
-		}}
-		_, err = io.Copy(pw, resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return fmt.Errorf("传输中断: %w", err)
-		}
-		offset += downloaded
-	}
-	if offset != size {
-		return fmt.Errorf("下载不完整:%s 已收 %d 字节,预期 %d", file, offset, size)
 	}
 	if want, ok := e.SHA256[file]; ok {
 		sum, err := fileSHA256(part)
@@ -959,6 +1092,103 @@ func (m *Manager) fetchOne(ctx context.Context, e Entry, file string, size int64
 		}
 	}
 	return os.Rename(part, final)
+}
+
+// fetchAttempt 单次端点尝试:GET(带续传 Range)→ 206 起始偏移/总长核对(损坏代理
+// 可能回起点错误的 206)→ 降级重发 → 流式写 .part(停滞看门狗 + 超长守卫)。
+// 干净收尾但字节数不足报 incompleteError(服务端系统性短响应,重试无意义)。
+func (m *Manager) fetchAttempt(ctx context.Context, e Entry, file, fileURL string, size int64, rangeOK bool, part string, offset, base int64) error {
+	attemptCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(attemptCtx, http.MethodGet, fileURL, nil)
+	if err != nil {
+		return err
+	}
+	if offset > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+	}
+	resp, err := downloadClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("网络错误: %w", err)
+	}
+	degrade := false
+	if resp.StatusCode == http.StatusPartialContent {
+		start, total, ok := contentRangeStart(resp.Header.Get("Content-Range"))
+		// 206 必须核对起始偏移与总长:损坏代理可能回起点错误的 206,事后字节数校验
+		// (offset+=downloaded)挡不住「长度恰好、起点错位」的内容入库安装。
+		degrade = !ok || start != offset || total != size
+	} else {
+		degrade = offset > 0 // 续传被降级(200 等):从零重写
+	}
+	if degrade {
+		// 从零重写:drain 后对同一端点重发普通 GET
+		resp, err = m.regetFromZero(attemptCtx, fileURL, resp)
+		offset = 0
+		if err != nil {
+			return err
+		}
+	}
+	switch {
+	case resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent:
+	default:
+		resp.Body.Close()
+		return &httpStatusError{code: resp.StatusCode, msg: fmt.Sprintf("远端响应异常: HTTP %d", resp.StatusCode)}
+	}
+	// 写入准备:全新写 = 截断;续传 = 校验 .part 基准未被并发改动
+	if offset == 0 {
+		// 目录条目允许子目录文件(如 speech_tokenizer/model.safetensors),落盘前补父目录
+		if err := os.MkdirAll(filepath.Dir(part), 0o755); err != nil {
+			resp.Body.Close()
+			return fmt.Errorf("创建文件目录失败: %w", err)
+		}
+		if err := os.WriteFile(part, nil, 0o644); err != nil {
+			resp.Body.Close()
+			return err
+		}
+	} else if fi, err := os.Stat(part); err != nil || fi.Size() != offset {
+		resp.Body.Close()
+		return fmt.Errorf("续传基准丢失:%s", file)
+	}
+	var downloaded int64
+	var lastActivity atomic.Int64
+	lastActivity.Store(time.Now().UnixNano())
+	pw := &progressWriter{path: part, limit: size - offset, onN: func(n int64) {
+		downloaded = n
+		lastActivity.Store(time.Now().UnixNano())
+		m.setProgress(e.ID, base+offset+n)
+	}}
+	// 停滞看门狗:连续 stallReadTimeout 无进展即取消本次尝试,交由重试从 .part 续传
+	watchdogDone := make(chan struct{})
+	go func() {
+		defer close(watchdogDone)
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-attemptCtx.Done():
+				return
+			case <-t.C:
+				if time.Since(time.Unix(0, lastActivity.Load())) > stallReadTimeout {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	_, copyErr := io.Copy(pw, resp.Body)
+	resp.Body.Close()
+	cancel()
+	<-watchdogDone
+	if copyErr != nil {
+		if time.Since(time.Unix(0, lastActivity.Load())) > stallReadTimeout && ctx.Err() == nil {
+			return stallError{}
+		}
+		return fmt.Errorf("传输中断: %w", copyErr)
+	}
+	if offset+downloaded != size {
+		return &incompleteError{file: file, got: offset + downloaded, want: size}
+	}
+	return nil
 }
 
 func (m *Manager) setProgress(id string, n int64) {

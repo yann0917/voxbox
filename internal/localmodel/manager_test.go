@@ -1220,3 +1220,132 @@ func TestInstalledModelFile(t *testing.T) {
 		t.Fatalf("应返回唯一文件绝对路径,实际 %s err=%v", got, err)
 	}
 }
+
+// ── 下载加固:端点镜像 / 有限重试 / 超长守卫(2026-10)────────────────────
+
+func TestHFMirrorForProd(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"https://huggingface.co/davidxifeng/Confucius4-R2T2-gguf/resolve/main/r2t2-q8_0.gguf",
+			"https://hf-mirror.com/davidxifeng/Confucius4-R2T2-gguf/resolve/main/r2t2-q8_0.gguf"},
+		{"https://modelscope.cn/models/HereIsMark/audio.cpp-gguf/resolve/master/Chatterbox-GGUF/chatterbox-q8_0.gguf", ""},
+		{"https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/x.tar.bz2", ""},
+	}
+	for _, c := range cases {
+		if got := hfMirrorForProd(c.in); got != c.want {
+			t.Fatalf("hfMirrorForProd(%s)=%q want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestClassifyDownloadErr(t *testing.T) {
+	// 封锁类:同端点重试无意义,换端点
+	for _, msg := range []string{
+		`网络错误: Get "http://x": dial tcp: lookup x: no such host`,
+		"网络错误: dial tcp 1.2.3.4:443: connect: connection refused",
+		"网络错误: tls: failed to verify certificate: x509: certificate signed by unknown authority",
+	} {
+		blocked, retryable := classifyDownloadErr(errors.New(msg))
+		if !blocked || retryable {
+			t.Fatalf("%q 应判封锁, got blocked=%v retryable=%v", msg, blocked, retryable)
+		}
+	}
+	if blocked, _ := classifyDownloadErr(&httpStatusError{code: 403, msg: "x"}); !blocked {
+		t.Fatal("403 应判封锁")
+	}
+	// 瞬时类:同端点续传重试
+	for _, e := range []error{
+		&httpStatusError{code: 500, msg: "x"}, &httpStatusError{code: 503, msg: "x"},
+		&httpStatusError{code: 429, msg: "x"}, &httpStatusError{code: 408, msg: "x"},
+		stallError{},
+		errors.New("传输中断: unexpected EOF"),
+		errors.New("网络错误: Get \"http://x\": context deadline exceeded (Client.Timeout)"),
+	} {
+		if _, retryable := classifyDownloadErr(e); !retryable {
+			t.Fatalf("%v 应判可重试", e)
+		}
+	}
+	// 直接失败:重试无意义
+	for _, e := range []error{
+		&incompleteError{file: "a", got: 1, want: 2},
+		errors.New("校验失败:a.bin sha256 不符(可能下载损坏)"),
+		errors.New("响应超过预期大小(已收 200,预算 100),远端内容疑似变更"),
+	} {
+		if blocked, retryable := classifyDownloadErr(e); blocked || retryable {
+			t.Fatalf("%v 不应重试, got blocked=%v retryable=%v", e, blocked, retryable)
+		}
+	}
+}
+
+func TestDownloadMirrorFallback(t *testing.T) {
+	// 主源 a.bin 404(封锁类)→ probe 与 fetch 均自动切镜像完成下载
+	primary := newFakeScope(t, fileMap("b.bin", []byte("ok"))) // a.bin 缺失 → 404
+	mirror := newFakeScope(t, fileMap("a.bin", []byte("aaa"), "b.bin", []byte("ok")))
+	m, base, _ := newTestManager(t, testEntries())
+	m.baseURL = primary.srv.URL
+	orig := hfMirrorFor
+	hfMirrorFor = func(u string) string {
+		if strings.HasPrefix(u, primary.srv.URL) {
+			return mirror.srv.URL + strings.TrimPrefix(u, primary.srv.URL)
+		}
+		return ""
+	}
+	t.Cleanup(func() { hfMirrorFor = orig })
+	if err := m.Start("asr-small"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, m, "asr-small", StatusInstalled)
+	got, err := os.ReadFile(filepath.Join(base, "asr-small", "a.bin"))
+	if err != nil || string(got) != "aaa" {
+		t.Fatalf("镜像下载应落地 a.bin: %v %q", err, got)
+	}
+}
+
+func TestDownloadTransientRetry(t *testing.T) {
+	// 前两次请求 500(瞬时)→ 同端点按预算重试直至成功,下载完成
+	orig := retryBackoff
+	retryBackoff = func(int) time.Duration { return 0 }
+	t.Cleanup(func() { retryBackoff = orig })
+	var hits atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) <= 2 {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+	m, _, _ := newTestManager(t, testEntries())
+	m.baseURL = srv.URL
+	if err := m.Start("asr-small"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, m, "asr-small", StatusInstalled)
+	if hits.Load() < 3 {
+		t.Fatalf("应至少重试到第 3 次请求,实际 %d", hits.Load())
+	}
+}
+
+func TestDownloadOverLengthGuard(t *testing.T) {
+	// probe 声称 100 字节,全量响应写 200:超长守卫中止,不得入库安装
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Range") != "" {
+			w.Header().Set("Content-Range", "bytes 0-0/100")
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write([]byte("x"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(bytes.Repeat([]byte("z"), 200))
+	}))
+	defer srv.Close()
+	m, base, _ := newTestManager(t, testEntries())
+	m.baseURL = srv.URL
+	_ = m.Start("asr-small")
+	v := waitFor(t, m, "asr-small", StatusFailed)
+	if !strings.Contains(v.Error, "超过预期大小") {
+		t.Fatalf("应触发超长守卫,实际: %s", v.Error)
+	}
+	if _, err := os.Stat(filepath.Join(base, "asr-small", "a.bin")); err == nil {
+		t.Fatal("超长响应不得产出最终文件")
+	}
+}

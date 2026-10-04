@@ -585,3 +585,33 @@ func TestArchiveForPlatform(t *testing.T) {
 		t.Error("未声明平台应返回 false")
 	}
 }
+
+// TestEmbeddedCatalogQwen3SHA 落实 qwen3 三条目的整文件哈希(2026-10 完整性加固补齐):
+// base/customvoice 为本机播种文件 shasum 实测,与魔搭 repo/files API 的 Sha256 一致;
+// 0.6b 未播种,取同 API 的 Sha256(同源两例已实测核验,提取可信)。
+// 至此 11 个条目全部具备 sha256(引擎按平台资产,模型逐文件/整包归档)。
+func TestEmbeddedCatalogQwen3SHA(t *testing.T) {
+	want := map[string]map[string]string{
+		"qwen3-tts-base-q8":        {"qwen3-tts-12hz-1.7b-base-q8_0_v2.gguf": "b55e06c7890d43c208d15aed8b4ed3f18215f295e47d5960e061b15bff338ab0"},
+		"qwen3-tts-customvoice-q8": {"qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf": "3cfaac8e9f13554f6daea3c5e0c53fede71ef5500cbaae7445e5fc3a5bb12e72"},
+		"qwen3-tts-base-0.6b-q8":   {"qwen3-tts-12hz-0.6b-base-q8_0.gguf": "771420bd20ff5f35407b4fa9cf9c5461e153800d3d772ef51c9febc0a520855d"},
+	}
+	seen := map[string]bool{}
+	for _, e := range catalog {
+		w, ok := want[e.ID]
+		if !ok {
+			continue
+		}
+		seen[e.ID] = true
+		for f, h := range w {
+			if e.SHA256[f] != h {
+				t.Errorf("%s 的 %s sha256 应为 %q,实际 %q", e.ID, f, h, e.SHA256[f])
+			}
+		}
+	}
+	for id := range want {
+		if !seen[id] {
+			t.Errorf("内嵌目录缺少 %s 条目", id)
+		}
+	}
+}
