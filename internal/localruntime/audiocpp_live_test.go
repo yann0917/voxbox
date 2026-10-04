@@ -7,6 +7,7 @@ package localruntime
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -309,9 +310,11 @@ func TestLiveASRSessionWriteAfterError(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("未收到 error 前增量")
 	}
-	// aftermath:错误事件后继续写(用户不知情继续说话),不得悬挂/panic。
-	if _, err := sess.Write([]byte("pcm-2")); err != nil {
-		t.Fatalf("error 后 write 应照常进入管道(服务端断流由 Finish/关闭收尾): %v", err)
+	// aftermath:错误事件后继续写(用户不知情继续说话),不得悬挂/panic。写结果视
+	// 读循环收尾竞速而定:写赢收尾 → nil(照常进管道,Finish 收尾);读循环已关响应体、
+	// 传输层随之回收请求体管道 → io.ErrClosedPipe。两者皆合法,契约是立即返回。
+	if _, err := sess.Write([]byte("pcm-2")); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("error 后 write 应立即返回(nil 或管道已关), got %v", err)
 	}
 	if err := sess.Finish(); err != nil {
 		t.Fatalf("finish: %v", err)
