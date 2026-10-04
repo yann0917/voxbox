@@ -168,6 +168,15 @@ func (s *Server) Handler() http.Handler {
 		promptRoutes.POST("/apply", s.applyPrompt)
 	}
 
+	// 翻译术语表：AI 自动沉淀 + 设置页人工增删改查共用一表
+	glossaryRoutes := api.Group("/glossary")
+	{
+		glossaryRoutes.GET("", s.listGlossary)
+		glossaryRoutes.POST("", s.createGlossaryTerm)
+		glossaryRoutes.PUT("/:id", s.updateGlossaryTerm)
+		glossaryRoutes.DELETE("/:id", s.deleteGlossaryTerm)
+	}
+
 	// MCP Streamable HTTP：独立组只受 mcpAuth 门控（仅 Bearer API token，客户端不携带
 	// Cookie），不与 requireAuth 叠加——否则无凭证请求会先被 Cookie 门拦下，401 响应体
 	// 变成业务包络而非 JSON-RPC 错误。GET(SSE)/POST/DELETE 全由 handler 处理，不套 JSON 包络。

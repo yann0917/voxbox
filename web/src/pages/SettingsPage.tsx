@@ -9,6 +9,7 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  Languages,
   PlugZap,
   Server,
   XCircle,
@@ -34,6 +35,7 @@ import {
 } from "../ui";
 import LocalModelsSection from "./LocalModelsSection";
 import PronunciationSection from "./PronunciationSection";
+import GlossarySection from "./GlossarySection";
 import AssistantModelCard from "./AssistantModelCard";
 import DataDirCard from "./DataDirCard";
 
@@ -209,7 +211,7 @@ function ProviderCardForm({ card, onSaved }: { card: ProviderShape; onSaved: () 
   );
 }
 
-type SettingsTab = "cloud" | "local" | "pronunciation";
+type SettingsTab = "cloud" | "local" | "pronunciation" | "glossary";
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<SettingsTab>("cloud");
@@ -221,6 +223,7 @@ export default function SettingsPage() {
     { value: "cloud", label: "云端服务", icon: <CloudUpload size={13} strokeWidth={1.75} /> },
     { value: "local", label: "本地环境", icon: <Server size={13} strokeWidth={1.75} /> },
     { value: "pronunciation", label: "发音词典", icon: <BookA size={13} strokeWidth={1.75} /> },
+    { value: "glossary", label: "翻译词汇表", icon: <Languages size={13} strokeWidth={1.75} /> },
   ];
   const refresh = () => {
     void refetch();
@@ -462,6 +465,8 @@ export default function SettingsPage() {
         </div>
       ) : tab === "pronunciation" ? (
         <PronunciationSection />
+      ) : tab === "glossary" ? (
+        <GlossarySection />
       ) : (
         <div className="space-y-4">
           {/* 数据保存位置置顶：改目录要停服务搬数据，先于本地模型区看到迁移口径 */}

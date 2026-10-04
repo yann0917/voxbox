@@ -90,14 +90,14 @@ type Prompt struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// TranslateGlossary AI 字幕翻译自动沉淀的术语表:按目标语言隔离,机器生成与维护,
-// 无 UI(区别于 config.yaml 手工 dicts 资产)。同 (target_lang, src) 唯一,重复学习
-// 覆盖译法并刷新 updated_at;修剪按最近使用保留 glossaryKeepMax 条。
+// TranslateGlossary AI 字幕翻译自动沉淀的术语表:按目标语言隔离,机器生成与
+// 人工增删改查共用一表(设置页可维护),同 (target_lang, src) 唯一,重复学习
+// 覆盖译法并刷新 updated_at;(target_lang, updated_at) 索引供最近使用预热查询。
 type TranslateGlossary struct {
-	ID         uint   `gorm:"primaryKey"`
-	TargetLang string `gorm:"size:16;uniqueIndex:idx_glossary_lang_src"`
-	Src        string `gorm:"size:128;uniqueIndex:idx_glossary_lang_src"`
-	Dst        string `gorm:"size:255"`
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID         uint   `gorm:"primaryKey" json:"id"`
+	TargetLang string `gorm:"size:16;uniqueIndex:idx_glossary_lang_src;index:idx_glossary_lang_updated,priority:1" json:"target_lang"`
+	Src        string `gorm:"size:128;uniqueIndex:idx_glossary_lang_src" json:"src"`
+	Dst        string `gorm:"size:255" json:"dst"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `gorm:"index:idx_glossary_lang_updated,priority:2" json:"updated_at"`
 }
