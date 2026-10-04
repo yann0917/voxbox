@@ -11,7 +11,6 @@ cmd/voxbox/webdist/*
 .DS_Store
 .agent/
 qingmusic-go/
-# SDD worktree 工作区（superpowers subagent-driven-development）
 .worktrees/
-# 计划/设计文档本地留存，不入库（用户 2026-10-02 指示）
 docs/superpowers/
+.zcode/
