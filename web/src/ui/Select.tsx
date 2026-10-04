@@ -1,6 +1,7 @@
 import {
   Children,
   isValidElement,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -10,6 +11,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import type { ButtonHTMLAttributes } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { control } from "./Field";
@@ -71,6 +73,13 @@ function parseOptions(children: ReactNode): OptionItem[] {
 
 const PANEL_MAX = 288; // max-h-72
 
+/** 弹层 fixed 定位（相对视口）。portal 到 body 后与触发器脱钩，滚动/缩放需重算。 */
+interface PanelPos {
+  top: number;
+  left: number;
+  minWidth: number;
+}
+
 export function Select({
   value,
   defaultValue,
@@ -86,8 +95,7 @@ export function Select({
   const [open, setOpen] = useState(false);
   const [uncontrolled, setUncontrolled] = useState(defaultValue ?? "");
   const [active, setActive] = useState(-1);
-  const [flipUp, setFlipUp] = useState(false);
-  const [shiftX, setShiftX] = useState(0);
+  const [pos, setPos] = useState<PanelPos | null>(null);
   const current = value !== undefined ? value : uncontrolled;
 
   const opts = useMemo(() => parseOptions(children), [children]);
@@ -118,7 +126,6 @@ export function Select({
     if (disabled || opts.length === 0) return;
     const idx = opts.findIndex((o) => o.value === current);
     setActive(idx >= 0 && !opts[idx].disabled ? idx : firstEnabled());
-    setFlipUp(false);
     setOpen(true);
   };
 
@@ -133,19 +140,40 @@ export function Select({
     setActive(-1);
   };
 
-  // 面板定位：下方放不下且上方更宽裕时向上翻；内容更宽时自适应宽度并避免溢出视口
-  useLayoutEffect(() => {
-    if (!open) return;
+  // 面板定位：以下方空间判定向上翻；水平夹取避免溢出视口。
+  const place = useCallback(() => {
     const trig = triggerRef.current;
     const panel = panelRef.current;
     if (!trig || !panel) return;
     const rect = trig.getBoundingClientRect();
+    const height = Math.min(panel.offsetHeight, PANEL_MAX);
     const below = window.innerHeight - rect.bottom;
-    const need = Math.min(panel.scrollHeight, PANEL_MAX) + 12;
-    setFlipUp(below < need && rect.top > below);
-    const box = panel.getBoundingClientRect();
-    setShiftX(Math.min(0, window.innerWidth - 8 - box.right));
-  }, [open]);
+    const flipUp = below < height + 12 && rect.top > below;
+    const top = flipUp ? Math.max(8, rect.top - height - 6) : rect.bottom + 6;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - 8 - panel.offsetWidth));
+    setPos((p) =>
+      p && p.top === top && p.left === left && p.minWidth === rect.width
+        ? p
+        : { top, left, minWidth: rect.width },
+    );
+  }, []);
+
+  // 挂载后先于首帧绘制定位（翻转不闪帧）
+  useLayoutEffect(() => {
+    if (open) place();
+  }, [open, place]);
+
+  // fixed 定位与触发器脱钩：页面滚动（含 main 内滚动容器）或窗口缩放时跟随重算。
+  // 不用 rAF 节流——place 很便宜且 setPos 值等即跳过，直接算更可靠。
+  useEffect(() => {
+    if (!open) return;
+    document.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      document.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, place]);
 
   // 活动项滚入可视区
   useEffect(() => {
@@ -155,11 +183,12 @@ export function Select({
       ?.scrollIntoView({ block: "nearest" });
   }, [open, active, listboxId]);
 
-  // 点击面板外关闭
+  // 点击面板外关闭（面板已 portal 到 body，须单查 panelRef）
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) close();
+      const t = e.target as Node;
+      if (!wrapRef.current?.contains(t) && !panelRef.current?.contains(t)) close();
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
@@ -297,20 +326,29 @@ export function Select({
           className={`shrink-0 text-muted transition-transform duration-200 ${open ? "rotate-180" : ""}`}
         />
       </button>
-      {open && (
-        <ul
-          ref={panelRef}
-          id={listboxId}
-          role="listbox"
-          aria-labelledby={id}
-          className={`rise absolute left-0 z-40 w-max min-w-full max-h-72 overflow-y-auto overflow-x-hidden rounded-[var(--radius-md)] border border-line-strong bg-panel p-1 shadow-[var(--shadow-3)] ${
-            flipUp ? "bottom-[calc(100%+6px)]" : "top-[calc(100%+6px)]"
-          }`}
-          style={{ transform: `translateX(${shiftX}px)`, maxWidth: "calc(100vw - 1rem)" }}
-        >
-          {nodes}
-        </ul>
-      )}
+      {open &&
+        // portal 到 body：玻璃卡片的 backdrop-filter 会创建 stacking context 并吞掉
+        // 后代 z-index——就地渲染的弹层被锁进所在卡片，DOM 在后的玻璃卡（结果区）
+        // 会整层盖住它。挂在根层以视口 fixed 定位，永远在最上（同 Modal 的先例）。
+        createPortal(
+          <ul
+            ref={panelRef}
+            id={listboxId}
+            role="listbox"
+            aria-labelledby={id}
+            className="rise fixed z-50 w-max max-h-72 overflow-y-auto overflow-x-hidden rounded-[var(--radius-md)] border border-line-strong bg-panel backdrop-blur-xl p-1 shadow-[var(--shadow-3)]"
+            style={{
+              top: pos?.top ?? 0,
+              left: pos?.left ?? 0,
+              minWidth: pos?.minWidth,
+              maxWidth: "calc(100vw - 1rem)",
+              visibility: pos ? "visible" : "hidden",
+            }}
+          >
+            {nodes}
+          </ul>,
+          document.body,
+        )}
     </div>
   );
 }
