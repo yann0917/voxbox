@@ -222,14 +222,14 @@ func TestAITranslateMemoryFlow(t *testing.T) {
 	store := newFakeGlossaryStore()
 	mem := newTranslationMemory(store, "en")
 	calls, prompts := setAICapture(t,
-		`{"translations":{"1":{"src":"你好","tr":"Hello"}},"summary":"开场问候","glossary":{"张三":"Zhang San"}}`,
-		`{"translations":{"1":{"src":"张三来了","tr":"Zhang San arrives"}},"summary":"张三登场","glossary":{}}`,
+		`{"translations":{"1":{"src":"张三来了","tr":"Zhang San arrives"}},"summary":"开场问候","glossary":{"张三":"Zhang San"}}`,
+		`{"translations":{"1":{"src":"张三走了","tr":"Zhang San leaves"}},"summary":"张三登场","glossary":{}}`,
 	)
 	// 两批同走一个 mem:首批学词,次批 prompt 注入
-	if _, _, err := aiTranslateLines(context.Background(), &config.Config{}, "", "m", []string{"你好"}, "", "en", mem); err != nil {
+	if _, _, err := aiTranslateLines(context.Background(), &config.Config{}, "", "m", []string{"张三来了"}, "", "en", mem); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := aiTranslateLines(context.Background(), &config.Config{}, "", "m", []string{"张三来了"}, "", "en", mem); err != nil {
+	if _, _, err := aiTranslateLines(context.Background(), &config.Config{}, "", "m", []string{"张三走了"}, "", "en", mem); err != nil {
 		t.Fatal(err)
 	}
 	if *calls != 2 {
@@ -249,6 +249,22 @@ func TestAITranslateMemoryFlow(t *testing.T) {
 	// 次批摘要应刷新会话记忆
 	if mem.Summary != "张三登场" {
 		t.Fatalf("摘要应被次批刷新: %q", mem.Summary)
+	}
+}
+
+func TestFilterGlossaryTerms(t *testing.T) {
+	lines := []string{"Zhang San boarded the ship.", "云帆号起航了"}
+	kept := filterGlossaryTerms([]GlossaryTerm{
+		{Src: "Zhang San", Dst: "张三"},  // 原文里有(大小写归一) → 保留
+		{Src: "云帆号", Dst: "Yunfan"},    // 原文里有 → 保留
+		{Src: "lighthouse", Dst: "灯塔"}, // 本批原文没有 → 滤掉(幻觉/凭空)
+		{Src: "", Dst: "x"},            // 空 → 滤掉
+	}, lines)
+	if len(kept) != 2 || kept[0].Src != "Zhang San" || kept[1].Src != "云帆号" {
+		t.Fatalf("存在性校验不符: %+v", kept)
+	}
+	if got := filterGlossaryTerms([]GlossaryTerm{{Src: "x", Dst: "y"}}, nil); got != nil {
+		t.Fatalf("空原文批应全滤: %v", got)
 	}
 }
 

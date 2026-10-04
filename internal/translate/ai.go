@@ -253,7 +253,7 @@ func aiTranslateLines(ctx context.Context, cfg *config.Config, provider, model s
 		return nil, diag, err
 	}
 	if mem != nil && !parsed.Simple {
-		mem.Learn(parsed.Summary, glossaryTerms(parsed.Glossary))
+		mem.Learn(parsed.Summary, filterGlossaryTerms(glossaryTerms(parsed.Glossary), lines))
 	}
 	verdict := validateAIResp(lines, parsed.Entries, parsed.Simple)
 	diag.EchoChecked += verdict.EchoChecked
@@ -325,6 +325,33 @@ func glossaryTerms(m map[string]string) []GlossaryTerm {
 	out := make([]GlossaryTerm, 0, len(m))
 	for k, v := range m {
 		out = append(out, GlossaryTerm{Src: k, Dst: v})
+	}
+	return out
+}
+
+// filterGlossaryTerms 存在性校验:只保留确实出现在本批原文行里的术语
+// (两侧小写归一的子串包含),挡模型幻觉词与凭空词;普通词由提示词口径约束,
+// 这里只做「词在原文里存在」这一可机械判定的门槛。
+func filterGlossaryTerms(terms []GlossaryTerm, lines []string) []GlossaryTerm {
+	if len(terms) == 0 || len(lines) == 0 {
+		return nil
+	}
+	hay := make([]string, len(lines))
+	for i, l := range lines {
+		hay[i] = strings.ToLower(l)
+	}
+	out := make([]GlossaryTerm, 0, len(terms))
+	for _, t := range terms {
+		needle := strings.ToLower(t.Src)
+		if needle == "" {
+			continue
+		}
+		for _, h := range hay {
+			if strings.Contains(h, needle) {
+				out = append(out, t)
+				break
+			}
+		}
 	}
 	return out
 }

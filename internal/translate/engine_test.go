@@ -121,8 +121,8 @@ func TestRunAIMemoryAcrossBatches(t *testing.T) {
 		lines[i] = subtitle.Segment{Text: fmt.Sprintf("line%d", i), StartMS: int64(i) * 1000, EndMS: int64(i+1) * 1000}
 	}
 	calls, prompts := setAICapture(t,
-		mkWrapperResp(lineTexts(lines[:20]), "上半场", `{"张三":"Zhang San"}`),
-		mkWrapperResp(lineTexts(lines[20:]), "下半场", `{"李四":"Li Si"}`),
+		mkWrapperResp(lineTexts(lines[:20]), "上半场", `{"line0":"Line Zero"}`),
+		mkWrapperResp(lineTexts(lines[20:]), "下半场", `{"line20":"Line Twenty"}`),
 	)
 	res, err := Run(context.Background(),
 		&config.Config{Zhipu: config.ZhipuConfig{APIKey: "test-key"}}, // 过 Run 的 AI 源凭证预检;调用走 mock 不出网
@@ -137,10 +137,10 @@ func TestRunAIMemoryAcrossBatches(t *testing.T) {
 	if !strings.Contains(firstUser, "旧词 → Old Term") {
 		t.Fatalf("首批 user 须注入 store 预热术语: %q", firstUser)
 	}
-	if !strings.Contains(secondUser, "张三 → Zhang San") || !strings.Contains(secondUser, "上半场") {
+	if !strings.Contains(secondUser, "line0 → Line Zero") || !strings.Contains(secondUser, "上半场") {
 		t.Fatalf("次批 user 须注入首批所学: %q", secondUser)
 	}
-	if store.terms["en"]["张三"] != "Zhang San" || store.terms["en"]["李四"] != "Li Si" {
+	if store.terms["en"]["line0"] != "Line Zero" || store.terms["en"]["line20"] != "Line Twenty" {
 		t.Fatalf("两批术语应都落库: %v", store.terms["en"])
 	}
 	if res.Segments[20].Translation != "译line20" {
