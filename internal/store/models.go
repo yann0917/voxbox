@@ -94,10 +94,10 @@ type Prompt struct {
 // 人工增删改查共用一表(设置页可维护),同 (target_lang, src) 唯一,重复学习
 // 覆盖译法并刷新 updated_at;(target_lang, updated_at) 索引供最近使用预热查询。
 type TranslateGlossary struct {
-	ID         uint   `gorm:"primaryKey" json:"id"`
-	TargetLang string `gorm:"size:16;uniqueIndex:idx_glossary_lang_src;index:idx_glossary_lang_updated,priority:1" json:"target_lang"`
-	Src        string `gorm:"size:128;uniqueIndex:idx_glossary_lang_src" json:"src"`
-	Dst        string `gorm:"size:255" json:"dst"`
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	TargetLang string    `gorm:"size:16;uniqueIndex:idx_glossary_lang_src;index:idx_glossary_lang_updated,priority:1" json:"target_lang"`
+	Src        string    `gorm:"size:128;uniqueIndex:idx_glossary_lang_src" json:"src"`
+	Dst        string    `gorm:"size:255" json:"dst"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `gorm:"index:idx_glossary_lang_updated,priority:2" json:"updated_at"`
 }

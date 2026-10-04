@@ -11,7 +11,9 @@ import (
 // 存储为 <dataDir>/pronunciation.json（internal/pronunciation 磁盘即真相），无 DB 表。
 
 func (s *Server) listPronunciation(c *gin.Context) {
-	ok(c, gin.H{"entries": pronunciation.Default().List()})
+	page, size := pageParams(c)
+	entries, total := pronunciation.Default().ListPaged(page, size)
+	ok(c, gin.H{"entries": entries, "total": total})
 }
 
 type pronunciationReq struct {

@@ -54,9 +54,9 @@ func (g glossaryStore) UpsertGlossary(targetLang string, terms []translate.Gloss
 
 // —— 人工维护(设置页)——
 
-// ListGlossary 术语全量列表(lang 空=全部语言),按最近使用在前。
-func (s *Service) ListGlossary(lang string) ([]store.TranslateGlossary, error) {
-	return s.db.ListGlossaryRows(lang)
+// ListGlossary 术语分页列表(lang 空=全部语言),按最近使用在前,返回当前页与总数。
+func (s *Service) ListGlossary(lang string, size, offset int) ([]store.TranslateGlossary, int64, error) {
+	return s.db.ListGlossaryRows(lang, size, offset)
 }
 
 // normalizeGlossaryInput 去空白并校验:目标语言须在 32 语种清单内,原文/译文非空且不超长。

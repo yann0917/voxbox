@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Languages, Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { fetchJSON } from "../lib/api";
@@ -11,6 +11,7 @@ import {
   EmptyState,
   Input,
   MicroLabel,
+  Pagination,
   Select,
   Skeleton,
   useToast,
@@ -44,19 +45,31 @@ const shortTime = (iso: string) => {
 export default function GlossarySection() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
-    queryKey: ["glossary"],
-    queryFn: () => fetchJSON<{ items: GlossaryTerm[] }>("/api/glossary"),
-  });
+  const PAGE_SIZE = 20;
+  const [page, setPage] = useState(1);
+  const [langFilter, setLangFilter] = useState("");
   const { data: langs } = useQuery({
     queryKey: ["subtitle-langs"],
     queryFn: () => fetchJSON<TranslateLang[]>("/api/subtitles/langs"),
     staleTime: Infinity,
   });
+  const { data, isLoading } = useQuery({
+    queryKey: ["glossary", page, langFilter],
+    queryFn: () =>
+      fetchJSON<{ items: GlossaryTerm[]; total: number }>(
+        `/api/glossary?page=${page}&size=${PAGE_SIZE}${langFilter ? `&lang=${encodeURIComponent(langFilter)}` : ""}`,
+      ),
+  });
   const terms = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 删除/筛选后当前页可能超界:落在空页上时回退到最后一页
+  useEffect(() => {
+    if (!isLoading && page > 1 && terms.length === 0 && total > 0) {
+      setPage(pageCount);
+    }
+  }, [isLoading, page, terms.length, total, pageCount]);
   const refresh = () => void qc.invalidateQueries({ queryKey: ["glossary"] });
-
-  const [langFilter, setLangFilter] = useState("");
   const [draft, setDraft] = useState(emptyDraft);
   const [editing, setEditing] = useState<number | null>(null);
 
@@ -88,7 +101,6 @@ export default function GlossarySection() {
     setDraft({ src: t.src, dst: t.dst, target_language: t.target_lang });
   };
 
-  const shown = langFilter === "" ? terms : terms.filter((t) => t.target_lang === langFilter);
   const langName = (code: string) => langs?.find((l) => l.code === code)?.name ?? code;
 
   return (
@@ -97,7 +109,7 @@ export default function GlossarySection() {
         <CardHeader
           title="翻译词汇表"
           icon={<Languages size={15} strokeWidth={1.75} />}
-          aside={<span className="micro">{shown.length} 条</span>}
+          aside={<span className="micro">共 {total} 条</span>}
         />
         <CardBody className="space-y-4">
           <p className="text-xs text-fg-2">
@@ -170,7 +182,13 @@ export default function GlossarySection() {
 
           {/* —— 语言筛选 + 词条表 —— */}
           <div className="w-44">
-            <Select value={langFilter} onChange={(e) => setLangFilter(e.target.value)}>
+            <Select
+              value={langFilter}
+              onChange={(e) => {
+                setLangFilter(e.target.value);
+                setPage(1);
+              }}
+            >
               <option value="">全部语言</option>
               {(langs ?? []).map((l) => (
                 <option key={l.code} value={l.code}>{l.name}</option>
@@ -179,10 +197,10 @@ export default function GlossarySection() {
           </div>
           {isLoading ? (
             <Skeleton className="h-24 w-full" />
-          ) : shown.length === 0 ? (
+          ) : terms.length === 0 ? (
             <EmptyState
               icon={<Languages size={18} strokeWidth={1.75} />}
-              title={terms.length === 0 ? "还没有词条" : "这个语言下还没有词条"}
+              title={total === 0 ? "还没有词条" : "这个语言下还没有词条"}
               description="跑一次字幕 AI 翻译会自动沉淀译名，也可以手动添加。"
             />
           ) : (
@@ -198,7 +216,7 @@ export default function GlossarySection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.map((t) => (
+                  {terms.map((t) => (
                     <tr key={t.id} className="border-b border-line/50 last:border-0">
                       <td className="py-2 pr-3 font-mono text-fg">{t.src}</td>
                       <td className="py-2 pr-3 font-mono text-fg-2">{t.dst}</td>
@@ -218,6 +236,7 @@ export default function GlossarySection() {
               </table>
             </div>
           )}
+          <Pagination page={page} pageCount={pageCount} total={total} onChange={setPage} />
         </CardBody>
       </Card>
     </div>

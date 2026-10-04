@@ -45,23 +45,34 @@ func TestGlossaryCRUDEndpoints(t *testing.T) {
 	if e3, _ := doJSON(http.MethodPost, "/api/glossary", `{"target_language":"klingon","src":"x","dst":"y"}`); e3.Code == 0 {
 		t.Fatalf("非法语言应报错: %v", e3)
 	}
-	// 列表(带 lang 过滤)
+	// 列表(带 lang 过滤):响应含 total;分页 size=1 翻页不重叠
 	e4, _ := doJSON(http.MethodGet, "/api/glossary?lang=en", "")
-	items := e4.Data.(map[string]any)["items"].([]any)
-	if len(items) != 2 {
-		t.Fatalf("en 应有 2 条, got %d", len(items))
+	listData := e4.Data.(map[string]any)
+	if got := len(listData["items"].([]any)); got != 2 {
+		t.Fatalf("en 应有 2 条, got %d", got)
+	}
+	if total, _ := listData["total"].(float64); total != 2 {
+		t.Fatalf("total 应为 2, got %v", listData["total"])
+	}
+	e5a, _ := doJSON(http.MethodGet, "/api/glossary?page=1&size=1", "")
+	e5b, _ := doJSON(http.MethodGet, "/api/glossary?page=2&size=1", "")
+	first := e5a.Data.(map[string]any)["items"].([]any)[0].(map[string]any)["src"]
+	second := e5b.Data.(map[string]any)["items"].([]any)[0].(map[string]any)["src"]
+	if first == second {
+		t.Fatalf("分页两页不应重叠: %v", first)
 	}
 	// 修改
-	e5, _ := doJSON(http.MethodPut, fmt.Sprintf("/api/glossary/%d", id), `{"target_language":"en","src":"张三","dst":"Zhang San II"}`)
-	if e5.Data.(map[string]any)["dst"] != "Zhang San II" {
-		t.Fatalf("修改应生效: %v", e5.Data)
+	putBody := `{"target_language":"en","src":"张三","dst":"Zhang San II"}`
+	e6, _ := doJSON(http.MethodPut, fmt.Sprintf("/api/glossary/%d", id), putBody)
+	if e6.Data.(map[string]any)["dst"] != "Zhang San II" {
+		t.Fatalf("修改应生效: %v", e6.Data)
 	}
 	// 删除 + 复删 NotFound
-	if e6, _ := doJSON(http.MethodDelete, fmt.Sprintf("/api/glossary/%d", id), ""); e6.Code != 0 {
-		t.Fatalf("删除应成功: %v", e6)
+	if e7, _ := doJSON(http.MethodDelete, fmt.Sprintf("/api/glossary/%d", id), ""); e7.Code != 0 {
+		t.Fatalf("删除应成功: %v", e7)
 	}
-	if e7, _ := doJSON(http.MethodDelete, fmt.Sprintf("/api/glossary/%d", id), ""); e7.Code != CodeNotFound {
-		t.Fatalf("复删应 code=%d(不存在), got %v", CodeNotFound, e7.Code)
+	if e8, _ := doJSON(http.MethodDelete, fmt.Sprintf("/api/glossary/%d", id), ""); e8.Code != CodeNotFound {
+		t.Fatalf("复删应 code=%d(不存在), got %v", CodeNotFound, e8.Code)
 	}
 	// 未登录访问被拦
 	resp, err := http.Get(ts.URL + "/api/glossary")

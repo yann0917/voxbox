@@ -76,17 +76,25 @@ func TestGlossaryManualCRUD(t *testing.T) {
 	if _, err := db.UpdateGlossaryTerm(9999, "en", "王五", "Wang Wu"); err != ErrNotFound {
 		t.Fatalf("不存在 id 应报 ErrNotFound, err=%v", err)
 	}
-	// 列表:lang 过滤与全量
-	rows, err := db.ListGlossaryRows("en")
-	if err != nil || len(rows) != 3 {
-		t.Fatalf("en 应有 3 条: %v err=%v", rows, err)
+	// 列表:lang 过滤与全量 + 分页(size=2 取最新两条,page 2 取剩余)
+	rows, total, err := db.ListGlossaryRows("en", 20, 0)
+	if err != nil || len(rows) != 3 || total != 3 {
+		t.Fatalf("en 应有 3 条: %v total=%d err=%v", rows, total, err)
 	}
-	all, _ := db.ListGlossaryRows("")
-	if len(all) != 3 {
-		t.Fatalf("全部语言应 3 条: %d", len(all))
+	all, totalAll, _ := db.ListGlossaryRows("", 20, 0)
+	if len(all) != 3 || totalAll != 3 {
+		t.Fatalf("全部语言应 3 条: %d/%d", len(all), totalAll)
 	}
-	if _, err := db.ListGlossaryRows("ja"); err != nil || len(all) != 3 {
-		t.Fatalf("ja 过滤应为空但不出错: err=%v", err)
+	if _, totalJa, err := db.ListGlossaryRows("ja", 20, 0); err != nil || totalJa != 0 {
+		t.Fatalf("ja 过滤应为空但不出错: total=%d err=%v", totalJa, err)
+	}
+	page1, totalP, _ := db.ListGlossaryRows("en", 2, 0)
+	page2, totalP2, _ := db.ListGlossaryRows("en", 2, 2)
+	if totalP != 3 || totalP2 != 3 || len(page1) != 2 || len(page2) != 1 {
+		t.Fatalf("分页应 2+1 共 3: p1=%d p2=%d totals=%d/%d", len(page1), len(page2), totalP, totalP2)
+	}
+	if page1[0].Src == page2[0].Src {
+		t.Fatalf("两页不应重叠: %q", page1[0].Src)
 	}
 	// 人工删除:后再改/删报 ErrNotFound
 	if err := db.DeleteGlossaryTerm(row.ID); err != nil {

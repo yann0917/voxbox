@@ -91,6 +91,30 @@ func (s *Store) List() []Entry {
 	return out
 }
 
+// ListPaged 分页快照（page 1 起始；size<1 归一 20）：返回该页词条与总数。
+func (s *Store) ListPaged(page, size int) ([]Entry, int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = 20
+	}
+	total := len(s.entries)
+	start := (page - 1) * size
+	if start >= total {
+		return []Entry{}, total
+	}
+	end := start + size
+	if end > total {
+		end = total
+	}
+	out := make([]Entry, end-start)
+	copy(out, s.entries[start:end])
+	return out, total
+}
+
 // Add 新增词条：term/replacement 非空，language 归一化（"*" 或二字母码），
 // 同一（词条小写折叠, 语言范围）组合不允许重复。成功返回入库后的完整词条。
 func (s *Store) Add(term, replacement, language string, enabled bool) (Entry, error) {

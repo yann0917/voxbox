@@ -197,3 +197,27 @@ func TestStoreValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestListPaged(t *testing.T) {
+	s := seed(t,
+		Entry{ID: "1", Term: "a", Replacement: "A", Language: "*"},
+		Entry{ID: "2", Term: "b", Replacement: "B", Language: "*"},
+		Entry{ID: "3", Term: "c", Replacement: "C", Language: "*"},
+	)
+	page1, total := s.ListPaged(1, 2)
+	page2, total2 := s.ListPaged(2, 2)
+	empty, total3 := s.ListPaged(3, 2)
+	if total != 3 || total2 != 3 || total3 != 3 {
+		t.Fatalf("总数应恒为 3: %d/%d/%d", total, total2, total3)
+	}
+	if len(page1) != 2 || len(page2) != 1 || len(empty) != 0 {
+		t.Fatalf("分页应 2+1+0: %d/%d/%d", len(page1), len(page2), len(empty))
+	}
+	if page1[0].ID == page2[0].ID {
+		t.Fatal("两页不应重叠")
+	}
+	// 越界页返回空;非法参数归一为 1/20(全量 3 条)
+	if got, _ := s.ListPaged(0, 0); len(got) != 3 {
+		t.Fatalf("page/size<1 应归一为 1/20: %d", len(got))
+	}
+}

@@ -54,14 +54,26 @@ func (d *DB) LoadGlossary(targetLang string, limit int) ([]GlossaryPair, error) 
 	return out, nil
 }
 
-// ListGlossaryRows 人工维护视图(带 id 全字段):lang 空=全部语言,按最近使用在前。
-func (d *DB) ListGlossaryRows(lang string) ([]TranslateGlossary, error) {
-	q := d.gorm.Order("updated_at DESC, id DESC")
+// ListGlossaryRows 人工维护视图(带 id 全字段):lang 空=全部语言,按最近使用在前,
+// 分页返回(size<=0 归一 20)与总数。同链复用:Find 后 Offset(-1) 取消分页偏移再
+// Count,总数须含被分页跳过的行(Limit 只截结果行,不影响聚合值)。
+func (d *DB) ListGlossaryRows(lang string, size, offset int) ([]TranslateGlossary, int64, error) {
+	if size <= 0 {
+		size = 20
+	}
+	q := d.gorm.Model(&TranslateGlossary{})
 	if lang != "" {
 		q = q.Where("target_lang = ?", lang)
 	}
 	var rows []TranslateGlossary
-	return rows, q.Find(&rows).Error
+	if err := q.Order("updated_at DESC, id DESC").Limit(size).Offset(offset).Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	var total int64
+	if err := q.Offset(-1).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
 }
 
 // CreateGlossaryTerm 人工新增:同语言同原文已存在时报 ErrGlossaryExists(不静默覆盖,

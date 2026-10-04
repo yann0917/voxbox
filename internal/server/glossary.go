@@ -12,12 +12,26 @@ import (
 )
 
 func (s *Server) listGlossary(c *gin.Context) {
-	items, err := s.svc.ListGlossary(c.Query("lang"))
+	page, size := pageParams(c)
+	items, total, err := s.svc.ListGlossary(c.Query("lang"), size, (page-1)*size)
 	if err != nil {
 		fail(c, CodeTaskFailed, err.Error())
 		return
 	}
-	ok(c, gin.H{"items": items})
+	ok(c, gin.H{"items": items, "total": total})
+}
+
+// pageParams 列表端点通用分页参数(page 1 起始,size 缺省 20),与 /api/tasks 同口径。
+func pageParams(c *gin.Context) (page, size int) {
+	page, _ = strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ = strconv.Atoi(c.DefaultQuery("size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = 20
+	}
+	return page, size
 }
 
 type glossaryReq struct {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookA, Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { fetchJSON } from "../lib/api";
@@ -11,6 +11,7 @@ import {
   EmptyState,
   Input,
   MicroLabel,
+  Pagination,
   Select,
   Skeleton,
   Textarea,
@@ -50,11 +51,22 @@ const emptyDraft: EntryDraft = { term: "", replacement: "", language: "*" };
 export default function PronunciationSection() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const PAGE_SIZE = 20;
+  const [page, setPage] = useState(1);
   const { data, isLoading } = useQuery({
-    queryKey: ["pronunciation"],
-    queryFn: () => fetchJSON<{ entries: PronunciationEntry[] }>("/api/pronunciation"),
+    queryKey: ["pronunciation", page],
+    queryFn: () =>
+      fetchJSON<{ entries: PronunciationEntry[]; total: number }>(`/api/pronunciation?page=${page}&size=${PAGE_SIZE}`),
   });
   const entries = data?.entries ?? [];
+  const total = data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 删除后当前页可能超界:落在空页上时回退到最后一页
+  useEffect(() => {
+    if (!isLoading && page > 1 && entries.length === 0 && total > 0) {
+      setPage(pageCount);
+    }
+  }, [isLoading, page, entries.length, total, pageCount]);
   const refresh = () => void qc.invalidateQueries({ queryKey: ["pronunciation"] });
 
   // —— 新增/编辑：editing 为正在编辑的词条 id（null = 新增模式）——
@@ -117,7 +129,7 @@ export default function PronunciationSection() {
         <CardHeader
           title="发音词典"
           icon={<BookA size={15} strokeWidth={1.75} />}
-          aside={<span className="micro">{entries.length} 条</span>}
+          aside={<span className="micro">共 {total} 条</span>}
         />
         <CardBody className="space-y-4">
           <p className="text-xs text-fg-2">
@@ -241,6 +253,7 @@ export default function PronunciationSection() {
               </table>
             </div>
           )}
+          <Pagination page={page} pageCount={pageCount} total={total} onChange={setPage} />
         </CardBody>
       </Card>
 
