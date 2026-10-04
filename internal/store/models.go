@@ -89,3 +89,15 @@ type Prompt struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
+
+// TranslateGlossary AI 字幕翻译自动沉淀的术语表:按目标语言隔离,机器生成与维护,
+// 无 UI(区别于 config.yaml 手工 dicts 资产)。同 (target_lang, src) 唯一,重复学习
+// 覆盖译法并刷新 updated_at;修剪按最近使用保留 glossaryKeepMax 条。
+type TranslateGlossary struct {
+	ID         uint   `gorm:"primaryKey"`
+	TargetLang string `gorm:"size:16;uniqueIndex:idx_glossary_lang_src"`
+	Src        string `gorm:"size:128;uniqueIndex:idx_glossary_lang_src"`
+	Dst        string `gorm:"size:255"`
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}

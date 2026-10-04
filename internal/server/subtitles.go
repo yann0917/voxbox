@@ -136,6 +136,8 @@ func (s *Server) translateSubtitles(c *gin.Context) {
 	opts := translate.Options{
 		Source: req.Source, SourceLang: req.SourceLanguage, TargetLang: req.TargetLanguage,
 		Provider: req.Provider, Model: req.Model,
+		// AI 源的跨批记忆:术语表经 SQLite 沉淀(AI 自动生成/维护,无 UI),失败降级纯内存
+		GlossaryStore: s.svc.TranslateGlossaryStore(),
 	}
 	// 预检源可用性（快速失败，不进流）
 	if _, err := translate.ResolveSource(cfg, opts.Source); err != nil {

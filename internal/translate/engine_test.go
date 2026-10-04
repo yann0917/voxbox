@@ -2,6 +2,7 @@ package translate
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -86,4 +87,63 @@ func TestTargetLangValidation(t *testing.T) {
 		t.Fatal("免费链 zh-Hant 目标应报错(经源调用透出)")
 	}
 	_ = strings.TrimSpace
+}
+
+// mkWrapperResp 造一份合法 wrapper 响应:按给定行文本逐条回显吻合 + summary + glossary。
+func mkWrapperResp(lines []string, summary, glossary string) string {
+	var b strings.Builder
+	b.WriteString(`{"translations":{`)
+	for i, l := range lines {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, `"%d":{"src":%q,"tr":"译%s"}`, i+1, l, l)
+	}
+	fmt.Fprintf(&b, `},"summary":%q,"glossary":%s}`, summary, glossary)
+	return b.String()
+}
+
+// lineTexts 取 segments 的行文本,供 mock 回显。
+func lineTexts(segs []subtitle.Segment) []string {
+	out := make([]string, len(segs))
+	for i, s := range segs {
+		out[i] = s.Text
+	}
+	return out
+}
+
+func TestRunAIMemoryAcrossBatches(t *testing.T) {
+	// 21 条 → 2 批:验证 Run 内跨批记忆(首批学词→次批 prompt 注入)与术语落库
+	store := newFakeGlossaryStore()
+	store.terms["en"] = map[string]string{"旧词": "Old Term"} // 预热注入首批
+	lines := make([]subtitle.Segment, 21)
+	for i := range lines {
+		lines[i] = subtitle.Segment{Text: fmt.Sprintf("line%d", i), StartMS: int64(i) * 1000, EndMS: int64(i+1) * 1000}
+	}
+	calls, prompts := setAICapture(t,
+		mkWrapperResp(lineTexts(lines[:20]), "上半场", `{"张三":"Zhang San"}`),
+		mkWrapperResp(lineTexts(lines[20:]), "下半场", `{"李四":"Li Si"}`),
+	)
+	res, err := Run(context.Background(),
+		&config.Config{Zhipu: config.ZhipuConfig{APIKey: "test-key"}}, // 过 Run 的 AI 源凭证预检;调用走 mock 不出网
+		lines, Options{Source: "ai", TargetLang: "en", Model: "m", GlossaryStore: store}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *calls != 2 || res.Stats.Source != "ai" {
+		t.Fatalf("calls=%d stats=%+v", *calls, res.Stats)
+	}
+	firstUser, secondUser := (*prompts)[0][1], (*prompts)[1][1]
+	if !strings.Contains(firstUser, "旧词 → Old Term") {
+		t.Fatalf("首批 user 须注入 store 预热术语: %q", firstUser)
+	}
+	if !strings.Contains(secondUser, "张三 → Zhang San") || !strings.Contains(secondUser, "上半场") {
+		t.Fatalf("次批 user 须注入首批所学: %q", secondUser)
+	}
+	if store.terms["en"]["张三"] != "Zhang San" || store.terms["en"]["李四"] != "Li Si" {
+		t.Fatalf("两批术语应都落库: %v", store.terms["en"])
+	}
+	if res.Segments[20].Translation != "译line20" {
+		t.Fatalf("末批译文应对齐: %+v", res.Segments[20])
+	}
 }

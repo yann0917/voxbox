@@ -21,13 +21,15 @@ const (
 	batchSizeFree = 16
 )
 
-// Options 翻译选项;Provider/Model 仅 Source=ai 时生效(空=AI 默认大模型)。
+// Options 翻译选项;Provider/Model 仅 Source=ai 时生效(空=AI 默认大模型);
+// GlossaryStore 仅 Source=ai 时生效(nil=纯内存,术语表不落库)。
 type Options struct {
-	Source     string // ai | volcengine | free;空=auto
-	SourceLang string // 空=自动检测
-	TargetLang string // 必填
-	Provider   string
-	Model      string
+	Source        string // ai | volcengine | free;空=auto
+	SourceLang    string // 空=自动检测
+	TargetLang    string // 必填
+	Provider      string
+	Model         string
+	GlossaryStore GlossaryStore
 }
 
 // Progress 每批完成回调:done 为累计已完成条数,total 为总条数。
@@ -120,6 +122,12 @@ func Run(ctx context.Context, cfg *config.Config, segs []subtitle.Segment, o Opt
 	}
 	out := make([]string, len(lines))
 	var diag AIDiag
+	var mem *TranslationMemory
+	if src == "ai" {
+		// 跨批记忆:store 预热术语表(失败降级纯内存),逐批 Learn 增量落库
+		mem = newTranslationMemory(o.GlossaryStore, o.TargetLang)
+		mem.load()
+	}
 	done := 0
 	for _, batch := range subtitle.BatchIndices(len(lines), size) {
 		batchLines := make([]string, len(batch))
@@ -133,7 +141,7 @@ func Run(ctx context.Context, cfg *config.Config, segs []subtitle.Segment, o Opt
 		switch src {
 		case "ai":
 			var d AIDiag
-			batchOut, d, batchErr = aiTranslateLines(ctx, cfg, o.Provider, o.Model, batchLines, o.SourceLang, o.TargetLang)
+			batchOut, d, batchErr = aiTranslateLines(ctx, cfg, o.Provider, o.Model, batchLines, o.SourceLang, o.TargetLang, mem)
 			diag.EchoChecked += d.EchoChecked
 			diag.Misaligned += d.Misaligned
 			diag.Repaired += d.Repaired
