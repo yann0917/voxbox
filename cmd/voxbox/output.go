@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yann0917/voxbox/internal/provider/minimax"
 	"github.com/yann0917/voxbox/internal/provider/openrouter"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
@@ -116,7 +117,8 @@ func exitCodeFor(err error) int {
 		errors.Is(err, qianwen.ErrNoCred),        // 千问凭证缺失 → 同为配置类问题
 		errors.Is(err, xiaomi.ErrNoCred),         // 小米凭证缺失 → 同为配置类问题
 		errors.Is(err, zhipu.ErrNoCred),          // 智谱凭证缺失 → 同为配置类问题
-		errors.Is(err, openrouter.ErrNoCred):     // OpenRouter 凭证缺失 → 同为配置类问题
+		errors.Is(err, openrouter.ErrNoCred),     // OpenRouter 凭证缺失 → 同为配置类问题
+		errors.Is(err, minimax.ErrNoCred):        // MiniMax 凭证缺失 → 同为配置类问题
 		return 4
 	default:
 		return 3

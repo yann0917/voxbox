@@ -22,6 +22,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider/audiotool"
 	"github.com/yann0917/voxbox/internal/provider/gsgc"
 	"github.com/yann0917/voxbox/internal/provider/local"
+	"github.com/yann0917/voxbox/internal/provider/minimax"
 	"github.com/yann0917/voxbox/internal/provider/mvsep"
 	"github.com/yann0917/voxbox/internal/provider/openrouter"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
@@ -108,6 +109,9 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 		return nil, err
 	}
 	if err := openrouter.RegisterAll(reg, *cfg, dataDir); err != nil {
+		return nil, err
+	}
+	if err := minimax.RegisterAll(reg, *cfg, dataDir); err != nil {
 		return nil, err
 	}
 	if err := gsgc.RegisterAll(reg, *cfg, dataDir); err != nil {

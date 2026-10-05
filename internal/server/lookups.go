@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/yann0917/voxbox/internal/config"
 	"github.com/yann0917/voxbox/internal/provider/local"
+	"github.com/yann0917/voxbox/internal/provider/minimax"
 	"github.com/yann0917/voxbox/internal/provider/openrouter"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
@@ -53,6 +54,20 @@ func (s *Server) listVoices(c *gin.Context) {
 	case "openrouter":
 		// OpenRouter 无音色列表端点，静态枚举（编译期常量表，与工具 ParamSpecs 同源）
 		ok(c, gin.H{"voices": openrouter.Voices()})
+		return
+	case "minimax":
+		// MiniMax：有 key 拉运行时接口（系统+复刻+文生音色），无 key 回落静态系统音色表
+		if key := s.svc.Config().Minimax.APIKey; key != "" {
+			voices, err := minimax.NewVoiceClient(key, minimax.BaseURL).List(c.Request.Context())
+			if err == nil && len(voices) > 0 {
+				ok(c, gin.H{"voices": voices})
+				return
+			}
+			// 配置了 key 但拉取失败：报错暴露凭证/网络问题，避免静默降级掩盖配置错误
+			failErr(c, err)
+			return
+		}
+		ok(c, gin.H{"voices": minimax.Voices()})
 		return
 	}
 	ok(c, gin.H{"voices": volcengine.Voices()})

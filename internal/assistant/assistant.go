@@ -1,6 +1,7 @@
-// Package assistant 悬浮 AI 助手的大模型对话客户端：智谱/千问/小米三家共用 OpenAI 兼容
-// chat/completions 流式协议，凭证直接复用各语音平台的 API Key（config.yaml 同名段），
-// 不新增设置卡。模型目录是后端单一事实来源：前端渲染与 chat 的 model 白名单都以此为准。
+// Package assistant 悬浮 AI 助手的大模型对话客户端：智谱/千问/小米/MiniMax 四家共用
+// OpenAI 兼容 chat/completions 流式协议，凭证直接复用各语音平台的 API Key
+// （config.yaml 同名段），不新增设置卡。模型目录是后端单一事实来源：前端渲染与
+// chat 的 model 白名单都以此为准。
 package assistant
 
 import (
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/yann0917/voxbox/internal/config"
+	"github.com/yann0917/voxbox/internal/provider/minimax"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/xiaomi"
 	"github.com/yann0917/voxbox/internal/provider/zhipu"
@@ -27,6 +29,7 @@ const (
 	ProviderZhipu   Provider = "zhipu"
 	ProviderQianwen Provider = "qianwen"
 	ProviderXiaomi  Provider = "xiaomi"
+	ProviderMinimax Provider = "minimax"
 )
 
 // Model 平台下的可选模型。
@@ -56,6 +59,12 @@ var catalog = []Platform{
 	{Provider: ProviderXiaomi, Label: "小米", Models: []Model{
 		{ID: "mimo-v2.6-flash", Label: "MiMo v2.6 Flash"},
 		{ID: "mimo-v2.6-pro", Label: "MiMo v2.6 Pro"},
+	}},
+	// MiniMax（2026-10-05 按 api-reference/text-chat-openai 校准）：highspeed 为优先准入
+	// 快档作默认；M3 为旗舰深度思考（输入输出价与 M2.7 相同，永久五折）。
+	{Provider: ProviderMinimax, Label: "MiniMax", Models: []Model{
+		{ID: "MiniMax-M2.7-highspeed", Label: "MiniMax-M2.7 Highspeed"},
+		{ID: "MiniMax-M3", Label: "MiniMax-M3（深度思考）"},
 	}},
 }
 
@@ -98,6 +107,8 @@ func apiKeyOf(cfg *config.Config, p Provider) string {
 		return cfg.Qianwen.APIKey
 	case ProviderXiaomi:
 		return cfg.Xiaomi.APIKey
+	case ProviderMinimax:
+		return cfg.Minimax.APIKey
 	}
 	return ""
 }
@@ -112,6 +123,8 @@ func errNoCredOf(p Provider) error {
 		return fmt.Errorf("%w：%s", qianwen.ErrNoCred, guide)
 	case ProviderXiaomi:
 		return fmt.Errorf("%w：%s", xiaomi.ErrNoCred, guide)
+	case ProviderMinimax:
+		return fmt.Errorf("%w：%s", minimax.ErrNoCred, guide)
 	}
 	return fmt.Errorf("平台 %s 不支持大模型对话", p)
 }
@@ -177,13 +190,15 @@ func endpoint(p Provider) string {
 		return qianwen.BaseURL + "/compatible-mode/v1/chat/completions"
 	case ProviderXiaomi:
 		return xiaomi.BaseURL + "/v1/chat/completions"
+	case ProviderMinimax:
+		return minimax.BaseURL + "/v1/chat/completions"
 	}
 	return ""
 }
 
 // systemPrompt 服务端注入的系统提示：限定助手角色与产品边界，客户端不可覆盖。
 const systemPrompt = "你是 voxbox 的内置 AI 助手。voxbox 是一个多引擎语音工作台，提供语音合成、语音识别、" +
-	"人声分离、播客生成、音频后期、音频剪辑、机器翻译、语音妙记、字幕工坊等工具，已接入火山引擎、千问、小米、智谱平台。" +
+	"人声分离、播客生成、音频后期、音频剪辑、机器翻译、语音妙记、字幕工坊等工具，已接入火山引擎、千问、小米、智谱、MiniMax 平台。" +
 	"回答默认使用简体中文，简洁直接；涉及 voxbox 使用的问题给出具体页面路径；不确定的功能不要编造。"
 
 // ChatSystem /api/assistant/chat 下发的系统提示：默认助手提示；extra 非空时以空行
@@ -211,8 +226,12 @@ type chatRequest struct {
 	Messages []chatMessage `json:"messages"`
 	Stream   bool          `json:"stream"`
 	// EnableThinking 关闭思考模式（千问兼容模式 wire，2026-09-26 真机校准）：悬浮助手以
-	// 快答为先。仅千问置位；智谱/小米的同类参数未经真机验证，不发送。
+	// 快答为先。仅千问置位；智谱/小米/MiniMax 的同类参数未经真机验证，不发送。
 	EnableThinking *bool `json:"enable_thinking,omitempty"`
+	// ReasoningSplit 思考内容拆到 reasoning_content 通道（MiniMax wire，2026-10-05 校准）：
+	// 不显式开启时思考可能以 <think> 标签内联在 content 里，助手会把思考过程当正文渲染。
+	// 仅 MiniMax 置位。
+	ReasoningSplit *bool `json:"reasoning_split,omitempty"`
 }
 
 type chatMessage struct {
@@ -327,11 +346,20 @@ func scanStream(ctx context.Context, p Provider, r io.Reader, onDelta func(strin
 // {"code","message"}；无错误详情时按 HTTP 状态 + 截断原文呈现。
 func decodeProviderError(p Provider, body []byte, status int) error {
 	var shape struct {
-		Err     *apiErrorBody `json:"error"`
-		Code    any           `json:"code"`
-		Message string        `json:"message"`
+		Err      *apiErrorBody `json:"error"`
+		Code     any           `json:"code"`
+		Message  string        `json:"message"`
+		BaseResp *struct {
+			StatusCode int64  `json:"status_code"`
+			StatusMsg  string `json:"status_msg"`
+		} `json:"base_resp"`
 	}
 	_ = json.Unmarshal(body, &shape)
+	// MiniMax 业务错误走 base_resp 包络（HTTP 仍 200，流式请求直接回 JSON 体），
+	// 其余平台无此字段，不命中
+	if shape.BaseResp != nil && shape.BaseResp.StatusCode != 0 {
+		return fmt.Errorf("%s API 错误: %s（code %d）", Label(p), shape.BaseResp.StatusMsg, shape.BaseResp.StatusCode)
+	}
 	msg := ""
 	switch {
 	case shape.Err != nil && shape.Err.Message != "":
@@ -362,6 +390,10 @@ func buildChatRequest(p Provider, model, system string, messages []Message) chat
 	if p == ProviderQianwen {
 		off := false
 		req.EnableThinking = &off
+	}
+	if p == ProviderMinimax {
+		on := true
+		req.ReasoningSplit = &on
 	}
 	return req
 }

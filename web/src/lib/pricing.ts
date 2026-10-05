@@ -47,6 +47,25 @@ export const MIMO_TTS_FREE_NOTE = "限时免费（截至快照日官方未列单
 /** mimo-v2.5-asr 单价：按输入音频时长折算小时计费（精确到秒），国内 0.5 元/小时。 */
 export const MIMO_ASR_PRICE_PER_HOUR = 0.5;
 
+/* ---------------- MiniMax（platform.minimax.cn，快照 2026-10-05） ---------------- */
+
+/** MiniMax 按量计费页快照日。 */
+export const MINIMAX_PRICE_SNAPSHOT_DATE = "2026-10-05";
+
+/** speech-2.8 语音合成单价（同步/异步同价）：hd 3.5、turbo 2.0 元/万计费字符。
+ *  计费口径：1 个汉字算 2 字符，字母/标点/空格各算 1（与千问同口径）。 */
+export const MINIMAX_TTS_PRICE = { hdPerWan: 3.5, turboPerWan: 2.0, cjkRatio: 2 };
+
+/** asr-1.0 语音识别单价：按输入音频时长（秒）折算小时计费，2.5 元/小时。 */
+export const MINIMAX_ASR_PRICE_PER_HOUR = 2.5;
+
+/** MiniMax 文本大模型单价（元/百万 token）：M2.7 与 M3 同价（M3 永久五折），
+ *  highspeed 优先准入档为 2 倍价。AI 助手/提示词库生成按此计费。 */
+export const MINIMAX_LLM_PRICE = {
+  "MiniMax-M3": { input: 2.1, output: 8.4 },
+  "MiniMax-M2.7-highspeed": { input: 4.2, output: 16.8 },
+} as const;
+
 /** 资源包档位：size 为计费单位数，price 为资源包价格（元）。 */
 export interface Pack {
   size: number;

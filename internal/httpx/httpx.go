@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yann0917/voxbox/internal/provider/minimax"
 	"github.com/yann0917/voxbox/internal/provider/openrouter"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
@@ -56,7 +57,8 @@ func FailErr(c *gin.Context, err error) {
 		Fail(c, CodeNotFound, msg)
 	case errors.Is(err, volcengine.ErrNoCred), errors.Is(err, volcengine.ErrAuth),
 		errors.Is(err, openrouter.ErrNoCred), errors.Is(err, qianwen.ErrNoCred),
-		errors.Is(err, xiaomi.ErrNoCred), errors.Is(err, zhipu.ErrNoCred):
+		errors.Is(err, xiaomi.ErrNoCred), errors.Is(err, zhipu.ErrNoCred),
+		errors.Is(err, minimax.ErrNoCred):
 		Fail(c, CodeBadCredential, msg)
 	case strings.Contains(msg, "缺少必填参数"), strings.Contains(msg, "未知工具"), strings.Contains(msg, "参数错误"):
 		Fail(c, CodeBadRequest, msg)
@@ -124,7 +126,8 @@ func SSEWriter(c *gin.Context) func(v any) bool {
 // StreamErrCode 流内错误 → 业务码（与 FailErr 同语义：凭证 4，其余任务失败 3）。
 func StreamErrCode(err error) int {
 	switch {
-	case errors.Is(err, zhipu.ErrNoCred), errors.Is(err, qianwen.ErrNoCred), errors.Is(err, xiaomi.ErrNoCred):
+	case errors.Is(err, zhipu.ErrNoCred), errors.Is(err, qianwen.ErrNoCred),
+		errors.Is(err, xiaomi.ErrNoCred), errors.Is(err, minimax.ErrNoCred):
 		return CodeBadCredential
 	}
 	return CodeTaskFailed

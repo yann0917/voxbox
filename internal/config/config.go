@@ -37,6 +37,9 @@ type Config struct {
 	// OpenRouter 聚合网关（openrouter.ai）凭证：Gemini 语音合成经网关调用，一个 API Key，
 	// BaseURL 固定官方，不提供覆写。
 	OpenRouter OpenRouterConfig
+	// Minimax MiniMax 开放平台（platform.minimax.cn）凭证：语音合成/识别/大模型共用一个
+	// API Key，BaseURL 固定官方，不提供覆写。
+	Minimax MinimaxConfig
 	// Assistant AI 文本能力（悬浮助手/提示词库生成与润色）的共享设置：默认大模型
 	// "provider:model"，空=自动回落第一个已配置平台的第一个模型。
 	Assistant AssistantConfig
@@ -93,6 +96,9 @@ type ZhipuConfig struct{ APIKey string }
 
 // OpenRouterConfig OpenRouter 聚合网关凭证：语音合成用一个 API Key。
 type OpenRouterConfig struct{ APIKey string }
+
+// MinimaxConfig MiniMax 开放平台凭证：语音合成/识别/大模型共用一个 API Key。
+type MinimaxConfig struct{ APIKey string }
 
 // StorageConfig 对象存储（大文件中转）：语音识别/人声分离/妙记等 URL-only 工具的本地文件
 // 会在任务执行时转存到该桶并取预签名 URL 提交上游。Provider 留空表示未启用；
@@ -270,6 +276,9 @@ func configFromViper(v *viper.Viper) *Config {
 		Zhipu:   ZhipuConfig{APIKey: strings.TrimSpace(v.GetString("zhipu.api_key"))},
 		OpenRouter: OpenRouterConfig{
 			APIKey: strings.TrimSpace(v.GetString("openrouter.api_key")),
+		},
+		Minimax: MinimaxConfig{
+			APIKey: strings.TrimSpace(v.GetString("minimax.api_key")),
 		},
 		Assistant: AssistantConfig{
 			DefaultModel: strings.TrimSpace(v.GetString("assistant.default_model")),

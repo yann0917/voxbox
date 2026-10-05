@@ -11,6 +11,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider/audiotool"
 	"github.com/yann0917/voxbox/internal/provider/gsgc"
 	"github.com/yann0917/voxbox/internal/provider/local"
+	"github.com/yann0917/voxbox/internal/provider/minimax"
 	"github.com/yann0917/voxbox/internal/provider/mvsep"
 	"github.com/yann0917/voxbox/internal/provider/openrouter"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
@@ -29,6 +30,7 @@ func providerCards() []provider.ProviderInfo {
 		xiaomi.ProviderCard(),
 		zhipu.ProviderCard(),
 		openrouter.ProviderCard(),
+		minimax.ProviderCard(),
 		audiotool.ProviderCard(),
 		gsgc.ProviderCard(),
 		local.ProviderCard(),

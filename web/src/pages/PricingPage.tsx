@@ -8,6 +8,9 @@ import {
   estimateMT,
   estimatePodcast,
   MINUTES_PRICE,
+  MINIMAX_ASR_PRICE_PER_HOUR,
+  MINIMAX_PRICE_SNAPSHOT_DATE,
+  MINIMAX_TTS_PRICE,
   MIMO_ASR_PRICE_PER_HOUR,
   MIMO_TTS_FREE_NOTE,
   MT_OUTPUT_PRICE,
@@ -559,11 +562,33 @@ export default function PricingPage() {
                     <td className="py-2 pr-3 text-muted">—</td>
                     <td className="py-2 text-muted">正式定价以官方后续公告为准</td>
                   </tr>
-                  <tr className="border-b border-line/60 last:border-0">
+                  <tr className="border-b border-line/60">
                     <td className="py-2 pr-3 text-fg">小米 mimo-v2.5-asr</td>
                     <td className="py-2 pr-3 font-mono tabular-nums text-fg-2">{MIMO_ASR_PRICE_PER_HOUR} 元/小时</td>
                     <td className="py-2 pr-3 text-muted">按输入音频时长折算小时，精确到秒</td>
                     <td className="py-2 text-muted">仅收 mp3/wav，base64 后 ≤10MB</td>
+                  </tr>
+                  <tr className="border-b border-line/60">
+                    <td className="py-2 pr-3 text-fg">MiniMax speech-2.8-hd / -turbo（同步/异步同价）</td>
+                    <td className="py-2 pr-3 font-mono tabular-nums text-fg-2">
+                      {MINIMAX_TTS_PRICE.hdPerWan} / {MINIMAX_TTS_PRICE.turboPerWan} 元/万字符
+                    </td>
+                    <td className="py-2 pr-3 text-muted">按输入文本字符，输出不计费</td>
+                    <td className="py-2 text-muted">汉字计 2 字符、其余 1 字符</td>
+                  </tr>
+                  <tr className="border-b border-line/60">
+                    <td className="py-2 pr-3 text-fg">MiniMax asr-1.0</td>
+                    <td className="py-2 pr-3 font-mono tabular-nums text-fg-2">{MINIMAX_ASR_PRICE_PER_HOUR} 元/小时</td>
+                    <td className="py-2 pr-3 text-muted">按输入音频时长折算小时</td>
+                    <td className="py-2 text-muted">自带说话人分离与时间戳，单次 ≤500 秒/50MB</td>
+                  </tr>
+                  <tr className="border-b border-line/60 last:border-0">
+                    <td className="py-2 pr-3 text-fg">MiniMax M3 / M2.7-highspeed（大模型）</td>
+                    <td className="py-2 pr-3 font-mono tabular-nums text-fg-2">
+                      输入 2.1 / 4.2，输出 8.4 / 16.8 元/百万token
+                    </td>
+                    <td className="py-2 pr-3 text-muted">按 token</td>
+                    <td className="py-2 text-muted">AI 助手/提示词库生成按所配模型计费</td>
                   </tr>
                 </tbody>
               </table>
@@ -576,7 +601,8 @@ export default function PricingPage() {
               语音识别（大模型流式·小时版）{PRICE_ASR_SAUC_HOUR.postpaid[0].price} 元/小时（豆包流式语音识别 2.0·API 调用后付费），AI 提炼与问答另按所配大模型计费，以账单为准；
               机器翻译按 token 计费（输入/输出分别计价，资源包按总量抵扣），
               人声分离属 AI MediaKit 音频工具计费体系，随文档更新于 2026.07；
-              千问/小米价格取自模型市场与 Pay-As-You-Go 页（快照 {CLOUD_PRICE_SNAPSHOT_DATE}）。
+              千问/小米价格取自模型市场与 Pay-As-You-Go 页（快照 {CLOUD_PRICE_SNAPSHOT_DATE}）；
+              MiniMax 价格取自按量计费页（快照 {MINIMAX_PRICE_SNAPSHOT_DATE}，M3 标注永久五折）。
             </p>
           </CardBody>
         </Card>

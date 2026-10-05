@@ -11,11 +11,12 @@ import QianwenTTSPanel from "./tts/QianwenTTSPanel";
 import XiaomiTTSPanel from "./tts/XiaomiTTSPanel";
 import ZhipuTTSPanel from "./tts/ZhipuTTSPanel";
 import OpenRouterTTSPanel from "./tts/OpenRouterTTSPanel";
+import MinimaxTTSPanel from "./tts/MinimaxTTSPanel";
 import LocalTTSPanel from "./tts/LocalTTSPanel";
 
 type TabKey = "sync" | "stream" | "long";
-/** 合成引擎：火山三通道 / 千问非流式 / 小米 MiMo / 智谱 / OpenRouter / 本地推理（/tts?engine=…，默认火山） */
-type Engine = "volcengine" | "qianwen" | "xiaomi" | "zhipu" | "openrouter" | "local";
+/** 合成引擎：火山三通道 / 千问非流式 / 小米 MiMo / 智谱 / OpenRouter / MiniMax / 本地推理（/tts?engine=…，默认火山） */
+type Engine = "volcengine" | "qianwen" | "xiaomi" | "zhipu" | "openrouter" | "minimax" | "local";
 
 const CHANNEL_ICONS: Record<TabKey, ReactNode> = {
   sync: <AudioLines size={13} strokeWidth={1.75} />,
@@ -35,6 +36,7 @@ const ENGINE_TABS: TabItem<Engine>[] = [
   { value: "xiaomi", label: "小米 MiMo" },
   { value: "zhipu", label: "智谱" },
   { value: "openrouter", label: "OpenRouter" },
+  { value: "minimax", label: "MiniMax" },
   { value: "local", label: "本地推理" },
 ];
 
@@ -45,7 +47,7 @@ export default function TTSPage() {
   const [params, setParams] = useSearchParams();
   const engineParam = params.get("engine");
   const engine: Engine =
-    engineParam === "qianwen" || engineParam === "xiaomi" || engineParam === "zhipu" || engineParam === "openrouter" || engineParam === "local"
+    engineParam === "qianwen" || engineParam === "xiaomi" || engineParam === "zhipu" || engineParam === "openrouter" || engineParam === "minimax" || engineParam === "local"
       ? engineParam
       : "volcengine";
   // undefined = 设置未加载完成，与未配置同走引导卡（保守态）
@@ -53,6 +55,7 @@ export default function TTSPage() {
   const xiaomiReady = useProviderConfigured("xiaomi");
   const zhipuReady = useProviderConfigured("zhipu");
   const openrouterReady = useProviderConfigured("openrouter");
+  const minimaxReady = useProviderConfigured("minimax");
 
   const tab: TabKey = TTS_CHANNELS.some((c) => c.key === params.get("tab"))
     ? (params.get("tab") as TabKey)
@@ -75,7 +78,7 @@ export default function TTSPage() {
     <>
       <PageHeader
         title="语音合成"
-        description="多引擎语音合成：火山引擎三通道 / 千问 / 小米 / 智谱 / OpenRouter"
+        description="多引擎语音合成：火山引擎三通道 / 千问 / 小米 / 智谱 / OpenRouter / MiniMax"
         actions={
           <Link
             to="/history"
@@ -139,6 +142,19 @@ export default function TTSPage() {
               <p className="text-sm text-fg-2">尚未配置 OpenRouter 凭证。</p>
               <Link to="/settings" className="text-xs text-accent hover:opacity-80">
                 去设置页配置 OpenRouter API Key →
+              </Link>
+            </CardBody>
+          </Card>
+        )
+      ) : engine === "minimax" ? (
+        minimaxReady ? (
+          <MinimaxTTSPanel />
+        ) : (
+          <Card>
+            <CardBody className="space-y-2">
+              <p className="text-sm text-fg-2">尚未配置 MiniMax 凭证。</p>
+              <Link to="/settings" className="text-xs text-accent hover:opacity-80">
+                去设置页配置 MiniMax API Key →
               </Link>
             </CardBody>
           </Card>
