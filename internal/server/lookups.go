@@ -10,6 +10,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider/openrouter"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/volcengine"
+	"github.com/yann0917/voxbox/internal/provider/xiaomi"
 	"github.com/yann0917/voxbox/internal/provider/zhipu"
 )
 
@@ -54,6 +55,10 @@ func (s *Server) listVoices(c *gin.Context) {
 	case "openrouter":
 		// OpenRouter 无音色列表端点，静态枚举（编译期常量表，与工具 ParamSpecs 同源）
 		ok(c, gin.H{"voices": openrouter.Voices()})
+		return
+	case "xiaomi":
+		// 小米 MiMo：静态预置音色表（官方无音色列表端点），供音色选择弹框使用
+		ok(c, gin.H{"voices": xiaomi.VoiceOptions()})
 		return
 	case "minimax":
 		// MiniMax：有 key 拉运行时接口（系统+复刻+文生音色），无 key 回落静态系统音色表

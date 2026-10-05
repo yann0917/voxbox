@@ -90,6 +90,20 @@ type Prompt struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+// FavoriteVoice 用户收藏的合成音色（跨云平台，按平台分类）：弹框式音色选择器的
+// 收藏数据源。音色元数据（名称/语种/显示标签）在收藏时快照入库，列表接口运行时
+// 不再回源各平台；同 (user_id, provider, voice_id) 唯一，重复收藏幂等。
+type FavoriteVoice struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    string    `gorm:"size:36;index:idx_fav_voice_user_unique;index:idx_fav_voice_user_created,priority:1" json:"-"` // 所有者，按人隔离
+	Provider  string    `gorm:"size:24;uniqueIndex:idx_fav_voice_user_unique" json:"provider"`
+	VoiceID   string    `gorm:"size:128;uniqueIndex:idx_fav_voice_user_unique" json:"voice_id"`
+	Name      string    `gorm:"size:128" json:"name"`  // 音色名（官方名/描述快照）
+	Label     string    `gorm:"size:255" json:"label"` // 下拉显示名（含语种附注等）
+	Lang      string    `gorm:"size:32" json:"lang"`   // 语种/分组快照（可空）
+	CreatedAt time.Time `gorm:"index:idx_fav_voice_user_created,priority:2" json:"created_at"`
+}
+
 // TranslateGlossary AI 字幕翻译自动沉淀的术语表:按目标语言隔离,机器生成与
 // 人工增删改查共用一表(设置页可维护),同 (target_lang, src) 唯一,重复学习
 // 覆盖译法并刷新 updated_at;(target_lang, updated_at) 索引供最近使用预热查询。

@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, AudioLines, Play, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, AudioLines, ChevronDown, Play, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { fetchJSON } from "../../lib/api";
 import type { TaskDetail } from "../../lib/types";
 import { useTaskEvents } from "../../lib/ws";
 import { AudioRow, ProgressBody, type Run } from "./TTSShared";
 import AIWrite from "./AIWrite";
+import VoicePickerModal from "../../components/VoicePickerModal";
 import {
   Button,
   Card,
@@ -19,6 +20,15 @@ import {
   Textarea,
   useToast,
 } from "../../ui";
+
+/** 音色特效（voice_modify.sound_effects，与后端同词表；指南「音色特效」）。 */
+const SOUND_EFFECTS = [
+  { value: "", label: "不启用" },
+  { value: "spacious_echo", label: "空旷回音" },
+  { value: "auditorium_echo", label: "礼堂广播" },
+  { value: "lofi_telephone", label: "电话失真" },
+  { value: "robotic", label: "电音" },
+];
 
 /** MiniMax 音色（/api/voices?provider=minimax）：有凭证拉运行时接口（系统+复刻+文生），
  *  未配置回落 327 个系统音色静态表。两形态同构：label 为显示名，lang 仅静态表携带。 */
@@ -66,6 +76,7 @@ export default function MinimaxTTSPanel() {
   const [pitch, setPitch] = useState("");
   const [emotion, setEmotion] = useState("");
   const [languageBoost, setLanguageBoost] = useState("");
+  const [soundEffects, setSoundEffects] = useState("");
   const [taskId, setTaskId] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [detail, setDetail] = useState<TaskDetail | null>(null);
@@ -76,27 +87,16 @@ export default function MinimaxTTSPanel() {
   const { toast } = useToast();
   const ev = useTaskEvents();
 
-  /* 音色列表：/api/voices?provider=minimax（运行时接口优先，静态表兜底） */
+  /* 音色列表：/api/voices?provider=minimax（运行时接口优先，静态表兜底）——
+     弹框选择器内浏览/收藏/选用，字段触发器只回显当前音色显示名 */
   const voicesQuery = useQuery({
     queryKey: ["voices", "minimax"],
     queryFn: () => fetchJSON<{ voices: MinimaxVoice[] }>("/api/voices?provider=minimax"),
     retry: 1,
   });
   const voiceList = voicesQuery.data?.voices ?? [];
-
-  /* 音色按语种分组渲染：中文在最前，运行时音色（无 lang）归入「其他」 */
-  const voiceGroups = useMemo(() => {
-    const groups = new Map<string, MinimaxVoice[]>();
-    for (const v of voiceList) {
-      const key = v.lang || "其他 / 复刻音色";
-      (groups.get(key) ?? groups.set(key, []).get(key)!).push(v);
-    }
-    const order = ["中文", "中文 (粤语)", "英文", "日文", "韩文"];
-    return [...groups.entries()].sort(([a], [b]) => {
-      const ia = order.indexOf(a), ib = order.indexOf(b);
-      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b, "zh");
-    });
-  }, [voiceList]);
+  const currentVoiceLabel = voiceList.find((v) => v.id === voice)?.label ?? voice;
+  const [voicePickerOpen, setVoicePickerOpen] = useState(false);
 
   /* WS 事件驱动当前任务进度；终态拉详情拿产物与最终状态 */
   useEffect(() => {
@@ -135,6 +135,7 @@ export default function MinimaxTTSPanel() {
       if (pitch.trim() !== "" && Number.isFinite(parseInt(pitch, 10))) params.pitch = parseInt(pitch, 10);
       if (emotion) params.emotion = emotion;
       if (languageBoost) params.language_boost = languageBoost;
+      if (soundEffects) params.sound_effects = soundEffects;
       return fetchJSON<{ task_id: string }>("/api/tasks", {
         method: "POST",
         body: JSON.stringify({ provider: "minimax", tool: "tts", params }),
@@ -170,6 +171,13 @@ export default function MinimaxTTSPanel() {
 
   return (
     <>
+      <VoicePickerModal
+        open={voicePickerOpen}
+        onClose={() => setVoicePickerOpen(false)}
+        valueProvider="minimax"
+        value={voice}
+        onPick={setVoice}
+      />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* 左：文本编辑区 */}
         <Card className="min-w-0">
@@ -223,20 +231,30 @@ export default function MinimaxTTSPanel() {
                 </Select>
               )}
             </Field>
-            <Field
-              label="音色"
-              hint="327 个系统音色（24 语种），配置凭证后含复刻音色"
-            >
+            <Field label="音色" hint="点击打开音色库：按平台浏览、收藏、试听">
               {() => (
-                <Select id="minimax-voice" value={voice} onChange={(e) => setVoice(e.target.value)}>
-                  {voiceGroups.map(([lang, list]) => (
-                    <optgroup key={lang} label={lang}>
-                      {list.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.label}
-                        </option>
-                      ))}
-                    </optgroup>
+                <button
+                  type="button"
+                  id="minimax-voice"
+                  onClick={() => setVoicePickerOpen(true)}
+                  className="flex w-full items-center justify-between gap-2 rounded-lg border border-line bg-transparent px-3 py-2 text-left text-sm text-fg outline-none transition-colors hover:border-accent"
+                >
+                  <span className="min-w-0 truncate">{currentVoiceLabel}</span>
+                  <ChevronDown size={14} strokeWidth={1.75} className="shrink-0 text-muted" />
+                </button>
+              )}
+            </Field>
+            <Field label="音色特效">
+              {() => (
+                <Select
+                  id="minimax-sound-effects"
+                  value={soundEffects}
+                  onChange={(e) => setSoundEffects(e.target.value)}
+                >
+                  {SOUND_EFFECTS.map((e) => (
+                    <option key={e.value} value={e.value}>
+                      {e.label}
+                    </option>
                   ))}
                 </Select>
               )}

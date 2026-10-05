@@ -29,15 +29,41 @@ var ttsEmotions = []provider.ParamOption{
 	{Value: "whisper", Label: "低语"},
 }
 
-// 语言增强枚举：空 = 不传（上游默认）；粤语音色官方要求 Chinese,Yue。
+// 语言增强枚举（官方 speech-t2a-http language_boost 全量 enum，2026-10-05）：
+// 空 = 不传（上游默认）；粤语音色官方要求 Chinese,Yue。
 var ttsLanguageBoosts = []provider.ParamOption{
 	{Value: "", Label: "不启用"},
 	{Value: "auto", Label: "auto（自动判断语种）"},
-	{Value: "Chinese", Label: "Chinese（中文增强）"},
-	{Value: "Chinese,Yue", Label: "Chinese,Yue（粤语增强）"},
-	{Value: "English", Label: "English"},
-	{Value: "Japanese", Label: "Japanese"},
-	{Value: "Korean", Label: "Korean"},
+	{Value: "Chinese", Label: "Chinese（中文）"},
+	{Value: "Chinese,Yue", Label: "Chinese,Yue（粤语）"},
+	{Value: "English", Label: "English（英语）"}, {Value: "Arabic", Label: "Arabic（阿拉伯语）"},
+	{Value: "Russian", Label: "Russian（俄语）"}, {Value: "Spanish", Label: "Spanish（西班牙语）"},
+	{Value: "French", Label: "French（法语）"}, {Value: "Portuguese", Label: "Portuguese（葡萄牙语）"},
+	{Value: "German", Label: "German（德语）"}, {Value: "Turkish", Label: "Turkish（土耳其语）"},
+	{Value: "Dutch", Label: "Dutch（荷兰语）"}, {Value: "Ukrainian", Label: "Ukrainian（乌克兰语）"},
+	{Value: "Vietnamese", Label: "Vietnamese（越南语）"}, {Value: "Indonesian", Label: "Indonesian（印尼语）"},
+	{Value: "Japanese", Label: "Japanese（日语）"}, {Value: "Italian", Label: "Italian（意大利语）"},
+	{Value: "Korean", Label: "Korean（韩语）"}, {Value: "Thai", Label: "Thai（泰语）"},
+	{Value: "Polish", Label: "Polish（波兰语）"}, {Value: "Romanian", Label: "Romanian（罗马尼亚语）"},
+	{Value: "Greek", Label: "Greek（希腊语）"}, {Value: "Czech", Label: "Czech（捷克语）"},
+	{Value: "Finnish", Label: "Finnish（芬兰语）"}, {Value: "Hindi", Label: "Hindi（印地语）"},
+	{Value: "Bulgarian", Label: "Bulgarian（保加利亚语）"}, {Value: "Danish", Label: "Danish（丹麦语）"},
+	{Value: "Hebrew", Label: "Hebrew（希伯来语）"}, {Value: "Malay", Label: "Malay（马来语）"},
+	{Value: "Persian", Label: "Persian（波斯语）"}, {Value: "Slovak", Label: "Slovak（斯洛伐克语）"},
+	{Value: "Swedish", Label: "Swedish（瑞典语）"}, {Value: "Croatian", Label: "Croatian（克罗地亚语）"},
+	{Value: "Filipino", Label: "Filipino（菲律宾语）"}, {Value: "Hungarian", Label: "Hungarian（匈牙利语）"},
+	{Value: "Norwegian", Label: "Norwegian（挪威语）"}, {Value: "Slovenian", Label: "Slovenian（斯洛文尼亚语）"},
+	{Value: "Catalan", Label: "Catalan（加泰罗尼亚语）"}, {Value: "Nynorsk", Label: "Nynorsk（挪威尼诺斯克语）"},
+	{Value: "Tamil", Label: "Tamil（泰米尔语）"}, {Value: "Afrikaans", Label: "Afrikaans（南非荷兰语）"},
+}
+
+// 音色特效枚举（voice_modify.sound_effects，单次仅能选一种；指南「音色特效」）。
+var ttsSoundEffects = []provider.ParamOption{
+	{Value: "", Label: "不启用"},
+	{Value: "spacious_echo", Label: "空旷回音"},
+	{Value: "auditorium_echo", Label: "礼堂广播"},
+	{Value: "lofi_telephone", Label: "电话失真"},
+	{Value: "robotic", Label: "电音"},
 }
 
 // TTSTool MiniMax 同步语音合成（speech-2.8 系列，非流式，响应为 JSON 内 hex 编码音频）。
@@ -82,6 +108,8 @@ func (t *TTSTool) ParamSpecs() []provider.ParamSpec {
 			Options: ttsEmotions},
 		{Key: "language_boost", Label: "语种增强", Type: provider.ParamEnum, Default: "", Group: "参数",
 			Options: ttsLanguageBoosts},
+		{Key: "sound_effects", Label: "音色特效", Type: provider.ParamEnum, Default: "", Group: "参数",
+			Options: ttsSoundEffects},
 	}
 }
 
@@ -103,6 +131,7 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	pitch := int(paramFloat(in.Params, "pitch"))
 	emotion := paramString(in.Params, "emotion")
 	languageBoost := paramString(in.Params, "language_boost")
+	soundEffects := paramString(in.Params, "sound_effects")
 
 	// 单次 ≤2000 字符：按句分段逐段合成，段间 wav 拼接，前端无感
 	segs := provider.SplitText(text, minimaxTTSMaxChars)
@@ -113,6 +142,7 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 			Text: seg, Voice: voice, Model: model,
 			Speed: speed, Volume: volume, Pitch: pitch,
 			Emotion: emotion, LanguageBoost: languageBoost,
+			SoundEffects: soundEffects,
 		})
 		if err != nil {
 			return provider.TaskOutput{}, err
@@ -161,6 +191,9 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	}
 	if languageBoost != "" {
 		summary["language_boost"] = languageBoost
+	}
+	if soundEffects != "" {
+		summary["sound_effects"] = soundEffects
 	}
 	return provider.TaskOutput{
 		Artifacts: []provider.Artifact{{

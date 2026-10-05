@@ -6,6 +6,7 @@ import (
 	"github.com/yann0917/voxbox/internal/module"
 	"github.com/yann0917/voxbox/internal/modules/glossary"
 	"github.com/yann0917/voxbox/internal/modules/prompts"
+	"github.com/yann0917/voxbox/internal/modules/voicefavorites"
 )
 
 // All 全部功能模块（挂载顺序即清单顺序）。
@@ -13,5 +14,6 @@ func All() []module.Module {
 	return []module.Module{
 		prompts.Module(),
 		glossary.Module(),
+		voicefavorites.Module(),
 	}
 }

@@ -27,6 +27,7 @@ type TTSReq struct {
 	Pitch         int     // [-12,12]，0 = 上游默认 0
 	Emotion       string  // happy/sad/…，空 = 模型自动匹配
 	LanguageBoost string  // auto/Chinese/Chinese,Yue/…，空 = 不传（粤语系音色需 Chinese,Yue）
+	SoundEffects  string  // voice_modify.sound_effects：spacious_echo/auditorium_echo/lofi_telephone/robotic，空 = 不传
 }
 
 // t2aResp 同步合成响应：data.audio 为 hex 编码音频，status 2 = 合成结束。
@@ -73,6 +74,10 @@ func (c *TTSClient) Synthesize(ctx context.Context, req TTSReq) ([]byte, error) 
 	}
 	if req.LanguageBoost != "" {
 		body["language_boost"] = req.LanguageBoost
+	}
+	// voice_modify 仅支持 mp3/wav/flac（voxbox 固定 wav）；单次仅能选一种特效
+	if req.SoundEffects != "" {
+		body["voice_modify"] = map[string]any{"sound_effects": req.SoundEffects}
 	}
 	raw, err := doBytes(ctx, c.baseURL+pathT2A, c.apiKey, body)
 	if err != nil {
