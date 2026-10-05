@@ -22,7 +22,7 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
-func TestSetAndLoadSecretMasked(t *testing.T) {
+func TestSetAndLoad(t *testing.T) {
 	setHome(t, t.TempDir())
 	if err := Set("volc.speech.app_id", "123456789"); err != nil {
 		t.Fatal(err)
@@ -33,22 +33,6 @@ func TestSetAndLoadSecretMasked(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0600 {
 		t.Errorf("perm = %v, want -rwx for 0600", info.Mode().Perm())
-	}
-	kvs, err := List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, kv := range kvs {
-		if kv.Key == "volc.speech.app_id" {
-			found = true
-			if kv.Value != "1******9" && !strings.Contains(kv.Value, "*") {
-				t.Errorf("secret not masked: %q", kv.Value)
-			}
-		}
-	}
-	if !found {
-		t.Error("app_id not listed")
 	}
 	cfg, _ := Load()
 	if cfg.Volc.Speech.AppID != "123456789" {
@@ -301,26 +285,9 @@ func TestLoadQianwen(t *testing.T) {
 	if cfg.Qianwen.APIKey != "sk-test-123" {
 		t.Errorf("Qianwen.APIKey = %q, 期望 sk-test-123", cfg.Qianwen.APIKey)
 	}
-	// List() 应列出 qianwen.api_key 行且打码（config list / 设置页可发现性）。
-	kvs, err := List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, kv := range kvs {
-		if kv.Key == "qianwen.api_key" {
-			found = true
-			if kv.Value == "sk-test-123" || !strings.Contains(kv.Value, "*") {
-				t.Errorf("qianwen.api_key 应打码列出, got %q", kv.Value)
-			}
-		}
-	}
-	if !found {
-		t.Error("List() 缺 qianwen.api_key 行")
-	}
 }
 
-// TestLoadXiaomi 读取 xiaomi.api_key 凭证并确认 List() 打码列出（同 TestLoadQianwen 口径）。
+// TestLoadXiaomi 读取 xiaomi.api_key 凭证。
 func TestLoadXiaomi(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("VOXBOX_HOME", dir)
@@ -338,25 +305,9 @@ func TestLoadXiaomi(t *testing.T) {
 	if cfg.Xiaomi.APIKey != "mi-key-456" {
 		t.Errorf("Xiaomi.APIKey = %q, 期望 mi-key-456", cfg.Xiaomi.APIKey)
 	}
-	kvs, err := List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, kv := range kvs {
-		if kv.Key == "xiaomi.api_key" {
-			found = true
-			if kv.Value == "mi-key-456" || !strings.Contains(kv.Value, "*") {
-				t.Errorf("xiaomi.api_key 应打码列出, got %q", kv.Value)
-			}
-		}
-	}
-	if !found {
-		t.Error("List() 缺 xiaomi.api_key 行")
-	}
 }
 
-// TestLoadZhipu 读取 zhipu.api_key 凭证并确认 List() 打码列出（同 TestLoadQianwen 口径）。
+// TestLoadZhipu 读取 zhipu.api_key 凭证。
 func TestLoadZhipu(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("VOXBOX_HOME", dir)
@@ -373,21 +324,5 @@ func TestLoadZhipu(t *testing.T) {
 	}
 	if cfg.Zhipu.APIKey != "zp-key-789" {
 		t.Errorf("Zhipu.APIKey = %q, 期望 zp-key-789", cfg.Zhipu.APIKey)
-	}
-	kvs, err := List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, kv := range kvs {
-		if kv.Key == "zhipu.api_key" {
-			found = true
-			if kv.Value == "zp-key-789" || !strings.Contains(kv.Value, "*") {
-				t.Errorf("zhipu.api_key 应打码列出, got %q", kv.Value)
-			}
-		}
-	}
-	if !found {
-		t.Error("List() 缺 zhipu.api_key 行")
 	}
 }

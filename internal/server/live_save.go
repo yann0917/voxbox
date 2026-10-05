@@ -86,7 +86,7 @@ func (s *Server) liveSave(userID, engine, prov string, res liveResult) (string, 
 	})
 	summaryRaw, _ := json.Marshal(summary)
 	// 标题取识别文本前缀（与 ASR 完成时派生同一实现）；全空文本兜底无时间戳的「实时字幕」。
-	title := store.ASRTitleFromSummary(string(summaryRaw))
+	title := provider.ASRTitleFromSummary(string(summaryRaw))
 	if title == "" {
 		title = "实时字幕"
 	}

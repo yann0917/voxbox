@@ -53,6 +53,11 @@ func (a *asrTool) Meta() provider.ToolMeta {
 		Description: "本地识别（SenseVoice / R2T2）：中英日韩粤或 30 语自动检测，自动标点与 ITN；支持常见音频格式，非 wav 自动转码。", Group: "识别"}
 }
 
+// ResultTitle 结果标题自描述:识别文本前缀派生(与火山 ASR 同一契约,provider 包实现)。
+func (a *asrTool) ResultTitle(summaryJSON string) string {
+	return provider.ASRTitleFromSummary(summaryJSON)
+}
+
 func (a *asrTool) ParamSpecs() []provider.ParamSpec {
 	return []provider.ParamSpec{
 		// 识别模型枚举选项取目录 kind=asr 条目(sensevoice-int8 / r2t2-q8_0);

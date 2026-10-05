@@ -316,12 +316,14 @@ func (e *Engine) run(ctx context.Context, t *store.Task, tool provider.Tool, par
 		if out.Summary != nil {
 			raw, _ := json.Marshal(out.Summary)
 			t.Summary = string(raw)
-			// ASR 任务完成时用识别文本前缀替换机器标题（录音/URL 文件名在提交时无
-			// 文本可派生）；用户手改过标题（title_edited）则让位。实时字幕入库的
-			// 同类派生在 live_save.go。其他工具的 Summary 形状不同，天然不命中。
-			if t.Tool == "asr" && !t.TitleEdited {
-				if title := store.ASRTitleFromSummary(t.Summary); title != "" {
-					t.Title = title
+			// 工具自描述结果标题派生（可选能力 ResultTitleer：ASR 类提交时无文本可派生，
+			// 用识别文本前缀替换机器标题）；用户手改过标题（title_edited）则让位。
+			// 实时字幕入库的同类派生在 live_save.go。
+			if !t.TitleEdited {
+				if rt, ok := tool.(provider.ResultTitleer); ok {
+					if title := rt.ResultTitle(t.Summary); title != "" {
+						t.Title = title
+					}
 				}
 			}
 		}

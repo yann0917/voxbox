@@ -62,6 +62,45 @@ func cardByName(t *testing.T, name string) provider.ProviderInfo {
 	return provider.ProviderInfo{}
 }
 
+// ProviderSettingRows 卡派生的配置清单行：厂商凭证键随卡声明出现，secret 打码、
+// text/select 明文（与设置页字段语义一致）。
+func TestProviderSettingRows(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Qianwen.APIKey = "sk-test-123"
+	cfg.Xiaomi.APIKey = "mi-key-456"
+	cfg.Volc.Speech.AppID = "123456789"
+	cfg.Volc.Speech.APIKey = "vk"
+	rows := ProviderSettingRows(cfg)
+	byKey := map[string]string{}
+	for _, kv := range rows {
+		byKey[kv.Key] = kv.Value
+	}
+	if got := byKey["qianwen.api_key"]; got == "sk-test-123" || !strings.Contains(got, "*") {
+		t.Errorf("qianwen.api_key 应打码列出, got %q", got)
+	}
+	if got := byKey["xiaomi.api_key"]; got == "mi-key-456" || !strings.Contains(got, "*") {
+		t.Errorf("xiaomi.api_key 应打码列出, got %q", got)
+	}
+	// app_id 是 text 字段：与设置页同语义，明文回显
+	if got := byKey["volc.speech.app_id"]; got != "123456789" {
+		t.Errorf("volc.speech.app_id 应明文, got %q", got)
+	}
+	if got := byKey["volc.speech.api_key"]; got == "vk" || !strings.Contains(got, "*") {
+		t.Errorf("volc.speech.api_key 应打码列出, got %q", got)
+	}
+	// 每张云端卡的全部字段都在场
+	want := []string{
+		"volc.speech.app_id", "volc.speech.access_token", "volc.speech.api_key",
+		"volc.mediakit.api_key", "mvsep.api_token", "mvsep.base_url",
+		"qianwen.api_key", "xiaomi.api_key", "zhipu.api_key", "openrouter.api_key",
+	}
+	for _, k := range want {
+		if _, ok := byKey[k]; !ok {
+			t.Errorf("缺配置行: %s", k)
+		}
+	}
+}
+
 // configured 判定：volcengine 声明了凭证对/单 API Key 双口径；单 secret 卡走
 // 「任一字段有值」默认口径（IsConfigured 兜底）。
 func TestCardConfigured(t *testing.T) {

@@ -431,21 +431,14 @@ func List() ([]KV, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 核心段键表(端口/目录/存储/AI/翻译)。厂商凭证键不再在此登记:由各凭证卡
+	// 自描述(ConfigKey+字段类型)派生,见 service.ProviderSettingRows——
+	// 新增厂商只写卡声明,config list 行随卡出现。
 	rows := []KV{
 		{"server.port", fmt.Sprint(cfg.Server.Port)},
 		{"server.host", cfg.Server.Host},
 		{"data_dir", cfg.DataDir},
-		{"volc.speech.app_id", mask(cfg.Volc.Speech.AppID)},
-		{"volc.speech.access_token", mask(cfg.Volc.Speech.AccessToken)},
-		{"volc.speech.api_key", mask(cfg.Volc.Speech.APIKey)},
-		{"volc.mediakit.api_key", mask(cfg.Volc.MediaKit.APIKey)},
 		{"storage.provider", cfg.Storage.Provider},
-		{"mvsep.api_token", mask(cfg.MVSep.APIToken)},
-		{"mvsep.base_url", cfg.MVSep.BaseURL},
-		{"qianwen.api_key", mask(cfg.Qianwen.APIKey)},
-		{"xiaomi.api_key", mask(cfg.Xiaomi.APIKey)},
-		{"zhipu.api_key", mask(cfg.Zhipu.APIKey)},
-		{"openrouter.api_key", mask(cfg.OpenRouter.APIKey)},
 		{"assistant.default_model", cfg.Assistant.DefaultModel},
 		{"translate.deeplx_url", cfg.Translate.DeepLXURL},
 	}
@@ -454,16 +447,17 @@ func List() ([]KV, error) {
 		ch := cfg.StorageChannels[name]
 		rows = append(rows,
 			KV{StorageChannelPrefix + name + ".bucket", ch.Bucket},
-			KV{StorageChannelPrefix + name + ".access_key", mask(ch.AccessKey)},
-			KV{StorageChannelPrefix + name + ".secret_key", mask(ch.SecretKey)},
+			KV{StorageChannelPrefix + name + ".access_key", MaskValue(ch.AccessKey)},
+			KV{StorageChannelPrefix + name + ".secret_key", MaskValue(ch.SecretKey)},
 		)
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Key < rows[j].Key })
 	return rows, nil
 }
 
-// mask 打码敏感值：保留首尾各 1 字符，其余以 * 填充；空值原样返回。
-func mask(s string) string {
+// MaskValue 打码敏感值：保留首尾各 1 字符，其余以 * 填充；空值原样返回。
+// 导出供卡派生的配置清单行(service.ProviderSettingRows)按字段类型打码。
+func MaskValue(s string) string {
 	if s == "" {
 		return ""
 	}

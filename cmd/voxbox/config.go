@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/spf13/cobra"
 	"github.com/yann0917/voxbox/internal/config"
+	"github.com/yann0917/voxbox/internal/service"
 )
 
 func newConfigCmd() *cobra.Command {
@@ -34,10 +36,18 @@ func newConfigListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "查看配置（密钥打码）",
 		RunE: func(c *cobra.Command, args []string) error {
+			// 核心段(config)+厂商凭证段(卡自描述派生)两路合并;厂商键随卡声明出现,
+			// 与设置页凭证卡同一事实源。
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
 			rows, err := config.List()
 			if err != nil {
 				return err
 			}
+			rows = append(rows, service.ProviderSettingRows(cfg)...)
+			sort.Slice(rows, func(i, j int) bool { return rows[i].Key < rows[j].Key })
 			for _, kv := range rows {
 				fmt.Printf("%-28s %s\n", kv.Key, kv.Value)
 			}

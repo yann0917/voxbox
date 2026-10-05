@@ -40,6 +40,27 @@ func providerCards() []provider.ProviderInfo {
 // ProviderCards 卡清单透出（server 的 test-connection 按卡自描述的 Test 逐卡探测）。
 func (s *Service) ProviderCards() []provider.ProviderInfo { return providerCards() }
 
+// ProviderSettingRows 云端卡凭证键的配置清单行（CLI `voxbox config list` 消费）：
+// 键=字段 ConfigKey、值=配置快照当前值、secret 按字段类型打码。派生自卡自描述，
+// 新增厂商无需再登记 config 的键表——config list 行随卡出现。
+func ProviderSettingRows(cfg *config.Config) []config.KV {
+	rows := []config.KV{}
+	for _, c := range providerCards() {
+		if c.Kind != provider.KindCloud || c.Values == nil {
+			continue
+		}
+		vals := c.Values(cfg)
+		for _, f := range c.Fields {
+			v := vals[f.Key]
+			if f.Kind == provider.FieldSecret {
+				v = config.MaskValue(v)
+			}
+			rows = append(rows, config.KV{Key: f.ConfigKey, Value: v})
+		}
+	}
+	return rows
+}
+
 // cardToolProvider 卡名 → 注册表 provider 名。个别卡与工具注册名历史不一致：
 // 本地音频剪辑卡叫 audiotool，其 12 个工具的 ToolMeta.Provider 却是 "audio"，
 // 按注册名取数才能让本地卡展示真实工具数；其余卡同名无需登记。

@@ -113,6 +113,11 @@ var asrLanguages = []provider.ParamOption{
 	{Value: "yue-CN", Label: "粤语"},
 }
 
+// ResultTitle 结果标题自描述:识别文本前缀派生(契约与实时字幕入库/存量回填共用)。
+func (t *ASRTool) ResultTitle(summaryJSON string) string {
+	return provider.ASRTitleFromSummary(summaryJSON)
+}
+
 func (t *ASRTool) ParamSpecs() []provider.ParamSpec {
 	return []provider.ParamSpec{
 		{Key: "version", Label: "识别版本", Type: provider.ParamEnum, Default: asrVersionSentence, Group: "输入",

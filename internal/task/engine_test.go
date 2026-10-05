@@ -220,6 +220,9 @@ type asrTool struct{ summary map[string]any }
 func (asrTool) Meta() provider.ToolMeta {
 	return provider.ToolMeta{Provider: "fake", Name: "asr", Title: "ASR"}
 }
+func (asrTool) ResultTitle(summaryJSON string) string {
+	return provider.ASRTitleFromSummary(summaryJSON)
+}
 func (asrTool) ParamSpecs() []provider.ParamSpec { return nil }
 func (t asrTool) Run(ctx context.Context, in provider.TaskInput, report provider.ProgressReporter) (provider.TaskOutput, error) {
 	return provider.TaskOutput{
