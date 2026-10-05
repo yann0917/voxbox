@@ -1,6 +1,9 @@
 package volcengine
 
-import "github.com/yann0917/voxbox/internal/provider"
+import (
+	"github.com/yann0917/voxbox/internal/config"
+	"github.com/yann0917/voxbox/internal/provider"
+)
 
 // ProviderCard 火山语音凭证卡（文案沿用现设置页：播客必须 APP ID+Token，TTS/ASR 双轨凭证）。
 func ProviderCard() provider.ProviderInfo {
@@ -19,6 +22,33 @@ func ProviderCard() provider.ProviderInfo {
 			{Key: "api_key", Label: "新版 API Key", Kind: provider.FieldSecret, ConfigKey: "volc.speech.api_key",
 				Placeholder: "留空表示不修改", Hint: "仅 TTS / 语音识别可用，播客不支持"},
 		},
+		Values: func(cfg *config.Config) map[string]string {
+			return map[string]string{
+				"app_id":       cfg.Volc.Speech.AppID,
+				"access_token": cfg.Volc.Speech.AccessToken,
+				"api_key":      cfg.Volc.Speech.APIKey,
+			}
+		},
+		// 播客必须凭证对（APP ID+Token），TTS/ASR 双轨：凭证对或单 API Key 任一可用即已配置。
+		Configured: func(vals map[string]string) bool {
+			return (vals["app_id"] != "" && vals["access_token"] != "") || vals["api_key"] != ""
+		},
+		// app_id 是 text 字段：提交值即生效，空串=清空（播客凭证对可整体撤销）；
+		// secret 字段保留「空串=不修改」守卫。
+		Apply: func(nc *config.Config, fields map[string]string) {
+			if v, ok := fields["app_id"]; ok {
+				nc.Volc.Speech.AppID = v
+			}
+			if v, ok := fields["access_token"]; ok && v != "" {
+				nc.Volc.Speech.AccessToken = v
+			}
+			if v, ok := fields["api_key"]; ok && v != "" {
+				nc.Volc.Speech.APIKey = v
+			}
+		},
+		ReRegister: ReRegisterAll,
+		Sync:       func(dst, src *config.Config) { dst.Volc = src.Volc },
+		Test:       ProbeSpeech,
 	}
 }
 
@@ -35,5 +65,17 @@ func MediaKitCard() provider.ProviderInfo {
 			{Key: "api_key", Label: "MediaKit API Key", Kind: provider.FieldSecret, Required: true,
 				ConfigKey: "volc.mediakit.api_key", Placeholder: "在 AI MediaKit 控制台创建"},
 		},
+		Values: func(cfg *config.Config) map[string]string {
+			return map[string]string{"api_key": cfg.Volc.MediaKit.APIKey}
+		},
+		// 分离工具在 volcengine 包（与语音卡共用工具集与 volc 配置段）：同重注册、同段同步。
+		Apply: func(nc *config.Config, fields map[string]string) {
+			if v, ok := fields["api_key"]; ok && v != "" {
+				nc.Volc.MediaKit.APIKey = v
+			}
+		},
+		ReRegister: ReRegisterAll,
+		Sync:       func(dst, src *config.Config) { dst.Volc = src.Volc },
+		Test:       ProbeMediaKit,
 	}
 }

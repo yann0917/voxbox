@@ -3,7 +3,10 @@
 // 音色列表/复刻/删除（复刻与删除仅对接接口，前端暂不展示页面），Bearer API Key 鉴权，BaseURL 固定官方。
 package zhipu
 
-import "github.com/yann0917/voxbox/internal/provider"
+import (
+	"github.com/yann0917/voxbox/internal/config"
+	"github.com/yann0917/voxbox/internal/provider"
+)
 
 // ProviderCard 设置页「智谱开放平台」凭证卡声明。
 func ProviderCard() provider.ProviderInfo {
@@ -19,5 +22,17 @@ func ProviderCard() provider.ProviderInfo {
 				ConfigKey: "zhipu.api_key", Placeholder: "bigmodel.cn 用户中心创建",
 				Hint: "语音合成/识别/音色管理共用，Bearer 鉴权"},
 		},
+		Values: func(cfg *config.Config) map[string]string {
+			return map[string]string{"api_key": cfg.Zhipu.APIKey}
+		},
+		// secret 留空=不修改。
+		Apply: func(nc *config.Config, fields map[string]string) {
+			if v, ok := fields["api_key"]; ok && v != "" {
+				nc.Zhipu.APIKey = v
+			}
+		},
+		ReRegister: ReRegisterAll,
+		Sync:       func(dst, src *config.Config) { dst.Zhipu = src.Zhipu },
+		Test:       ProbeZhipu,
 	}
 }

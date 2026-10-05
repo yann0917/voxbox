@@ -357,32 +357,6 @@ func TestSaveProviderFields(t *testing.T) {
 	}
 }
 
-// TestQianwenConnection：未配置直接报未配置。
-func TestQianwenConnectionUnconfigured(t *testing.T) {
-	svc, err := NewWithHome(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer svc.Close()
-	msg, ok := svc.TestQianwenConnection()
-	if ok || msg == "" {
-		t.Errorf("未配置应 (false, 提示), got (%v, %q)", ok, msg)
-	}
-}
-
-// TestXiaomiConnection：未配置直接报未配置（不发请求）。
-func TestXiaomiConnectionUnconfigured(t *testing.T) {
-	svc, err := NewWithHome(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer svc.Close()
-	msg, ok := svc.TestXiaomiConnection()
-	if ok || msg == "" {
-		t.Errorf("未配置应 (false, 提示), got (%v, %q)", ok, msg)
-	}
-}
-
 // TestSaveStorageOSSWhitelist oss 通道在白名单内可保存；未知 provider 拒绝并提示支持范围。
 func TestSaveStorageOSSWhitelist(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
@@ -404,18 +378,5 @@ func TestSaveStorageOSSWhitelist(t *testing.T) {
 	// 拒绝不得污染已生效配置
 	if got := svc.Config().Storage; got.Provider != "oss" {
 		t.Fatalf("被拒保存后生效视图被污染: %+v", got)
-	}
-}
-
-// TestZhipuConnection：未配置直接报未配置（不发请求）。
-func TestZhipuConnectionUnconfigured(t *testing.T) {
-	svc, err := NewWithHome(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer svc.Close()
-	msg, ok := svc.TestZhipuConnection()
-	if ok || msg == "" {
-		t.Errorf("未配置应 (false, 提示), got (%v, %q)", ok, msg)
 	}
 }

@@ -148,24 +148,18 @@ type providerTest struct {
 }
 
 func (s *Server) testConnection(c *gin.Context) {
-	// 按卡动态探测：volcengine 极短合成、mediakit 鉴权探测、mvsep token+免费额度、
-	// qianwen/xiaomi/zhipu 极短合成；storage 桶探活（HeadBucket 不计费）。
-	tests := []struct {
-		name string
-		fn   func() (string, bool)
-	}{
-		{"volcengine", s.svc.TestSpeechConnection},
-		{"mediakit", s.svc.TestMediaKitConnection},
-		{"mvsep", s.svc.TestMVSepConnection},
-		{"qianwen", s.svc.TestQianwenConnection},
-		{"xiaomi", s.svc.TestXiaomiConnection},
-		{"zhipu", s.svc.TestZhipuConnection},
-		{"openrouter", s.svc.TestOpenRouterConnection},
-	}
-	results := make([]providerTest, 0, len(tests))
-	for _, tt := range tests {
-		msg, okv := tt.fn()
-		results = append(results, providerTest{Name: tt.name, OK: okv, Message: msg})
+	// 按卡动态探测：探测行为是各卡自描述的一部分（卡声明的 Test 闭包——volcengine 极短
+	// 合成、mediakit 鉴权探测、mvsep token+免费额度、qianwen/xiaomi/zhipu/openrouter 极短
+	// 合成），未声明 Test 的卡不参与；storage 桶探活（HeadBucket 不计费）单独一段。
+	cfg := s.svc.Config()
+	cards := s.svc.ProviderCards()
+	results := make([]providerTest, 0, len(cards))
+	for _, card := range cards {
+		if card.Test == nil {
+			continue
+		}
+		msg, okv := card.Test(cfg)
+		results = append(results, providerTest{Name: card.Name, OK: okv, Message: msg})
 	}
 	stMsg, stOK := s.svc.TestStorageConnection()
 	ok(c, gin.H{

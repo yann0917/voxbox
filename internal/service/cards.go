@@ -1,5 +1,6 @@
-// 设置页「云端服务/本地环境」两分组的卡片装配：声明来自各 provider 包，
-// 当前值与已配置状态来自配置快照，工具数来自注册表。
+// 设置页「云端服务/本地环境」两分组的卡片装配：每张卡的声明与凭证行为（当前值读取/
+// 快照写入/热重注册/探活）全部自描述于各 provider 包，此处只维护卡清单与通用装配
+// （排序、工具计数、字段态渲染），不为任何厂商写 switch。
 package service
 
 import (
@@ -18,7 +19,7 @@ import (
 	"github.com/yann0917/voxbox/internal/provider/zhipu"
 )
 
-// providerCards 全部卡声明（按 Order 排序）。新增厂商 = 包内声明 + 此处加一行。
+// providerCards 全部卡声明（按 Order 排序）。新增厂商 = 新建包自描述卡 + 此处加一行。
 func providerCards() []provider.ProviderInfo {
 	cards := []provider.ProviderInfo{
 		volcengine.ProviderCard(),
@@ -36,38 +37,8 @@ func providerCards() []provider.ProviderInfo {
 	return cards
 }
 
-// cardFieldValues 各卡字段的当前值（来自配置快照）。键必须与卡声明 Fields 完全对齐
-// （cards_test 防呆）；secret 值只用于 configured/has_value 判定，不出 HTTP 响应。
-func cardFieldValues(cfg *config.Config) map[string]map[string]string {
-	return map[string]map[string]string{
-		"volcengine": {
-			"app_id":       cfg.Volc.Speech.AppID,
-			"access_token": cfg.Volc.Speech.AccessToken,
-			"api_key":      cfg.Volc.Speech.APIKey,
-		},
-		"mediakit": {"api_key": cfg.Volc.MediaKit.APIKey},
-		"mvsep":    {"api_token": cfg.MVSep.APIToken, "base_url": cfg.MVSep.BaseURL},
-		"qianwen":  {"api_key": cfg.Qianwen.APIKey},
-		"xiaomi":   {"api_key": cfg.Xiaomi.APIKey},
-		"zhipu":    {"api_key": cfg.Zhipu.APIKey},
-		"openrouter": {
-			"api_key": cfg.OpenRouter.APIKey,
-		},
-	}
-}
-
-// cardConfigured 卡级「已配置」判定，沿用各卡现口径。
-func cardConfigured(name string, vals map[string]string) bool {
-	switch name {
-	case "volcengine":
-		return (vals["app_id"] != "" && vals["access_token"] != "") || vals["api_key"] != ""
-	case "mediakit", "qianwen", "xiaomi", "zhipu", "openrouter":
-		return vals["api_key"] != ""
-	case "mvsep":
-		return vals["api_token"] != ""
-	}
-	return false
-}
+// ProviderCards 卡清单透出（server 的 test-connection 按卡自描述的 Test 逐卡探测）。
+func (s *Service) ProviderCards() []provider.ProviderInfo { return providerCards() }
 
 // cardToolProvider 卡名 → 注册表 provider 名。个别卡与工具注册名历史不一致：
 // 本地音频剪辑卡叫 audiotool，其 12 个工具的 ToolMeta.Provider 却是 "audio"，
@@ -101,15 +72,16 @@ type ProviderState struct {
 	Fields      []FieldState          `json:"fields"`
 }
 
-// ProviderStates 卡声明 + 配置快照 + 注册表工具计数 → HTTP 形态。
+// ProviderStates 卡自描述 + 配置快照 + 注册表工具计数 → HTTP 形态。
+// secret 值只用于 configured/has_value 判定，不出 HTTP 响应。
 func (s *Service) ProviderStates(cfg *config.Config) []ProviderState {
 	counts := map[string]int{}
 	for _, m := range s.reg.List() {
 		counts[m.Provider]++
 	}
-	vals := cardFieldValues(cfg)
-	out := make([]ProviderState, 0, len(providerCards()))
-	for _, c := range providerCards() {
+	cards := providerCards()
+	out := make([]ProviderState, 0, len(cards))
+	for _, c := range cards {
 		regName := c.Name
 		if alias := cardToolProvider[regName]; alias != "" {
 			regName = alias
@@ -119,8 +91,11 @@ func (s *Service) ProviderStates(cfg *config.Config) []ProviderState {
 			Kind: c.Kind, Order: c.Order, ToolsCount: counts[regName],
 			Fields: []FieldState{},
 		}
-		cv := vals[c.Name]
-		st.Configured = cardConfigured(c.Name, cv)
+		var cv map[string]string
+		if c.Values != nil {
+			cv = c.Values(cfg)
+		}
+		st.Configured = c.IsConfigured(cv)
 		for _, f := range c.Fields {
 			fs := FieldState{
 				Key: f.Key, Label: f.Label, Kind: f.Kind,

@@ -3,11 +3,24 @@ package provider
 import (
 	"strings"
 	"testing"
+
+	"github.com/yann0917/voxbox/internal/config"
 )
 
-// ValidateCard 卡声明约束：云端卡至少一个字段、每个字段 ConfigKey 非空、secret 字段必为 Required 语义基线、
-// select 字段必须给 Options、本地卡不允许带字段。
+// cloudDemoBehavior 云端卡必填行为闭包的最小满足集（Validate 只查非空）。
+func cloudDemoBehavior() (values func(*config.Config) map[string]string, apply func(*config.Config, map[string]string),
+	reRegister func(*Registry, config.Config, string), sync func(dst, src *config.Config)) {
+	values = func(*config.Config) map[string]string { return map[string]string{"api_key": ""} }
+	apply = func(*config.Config, map[string]string) {}
+	reRegister = func(*Registry, config.Config, string) {}
+	sync = func(dst, src *config.Config) {}
+	return
+}
+
+// ValidateCard 卡声明约束：云端卡至少一个字段、每个字段 ConfigKey 非空、行为闭包（Values/
+// Apply/ReRegister/Sync）必须给出、select 字段必须给 Options、本地卡不允许带字段。
 func TestValidateCard(t *testing.T) {
+	values, apply, reRegister, sync := cloudDemoBehavior()
 	cases := []struct {
 		name string
 		card ProviderInfo
@@ -18,7 +31,15 @@ func TestValidateCard(t *testing.T) {
 			Fields: []CredentialField{
 				{Key: "api_key", Label: "API Key", Kind: FieldSecret, ConfigKey: "demo.api_key"},
 			},
+			Values: values, Apply: apply, ReRegister: reRegister, Sync: sync,
 		}, ""},
+		{"云端卡缺行为声明", ProviderInfo{
+			Name: "demo", Title: "演示", Kind: KindCloud,
+			Fields: []CredentialField{
+				{Key: "api_key", Label: "API Key", Kind: FieldSecret, ConfigKey: "demo.api_key"},
+			},
+			Apply: apply, ReRegister: reRegister, Sync: sync,
+		}, "缺行为声明"},
 		{"云端卡无字段", ProviderInfo{Name: "demo", Title: "演示", Kind: KindCloud}, "至少需要 1 个凭证字段"},
 		{"字段缺 ConfigKey", ProviderInfo{
 			Name: "demo", Title: "演示", Kind: KindCloud,

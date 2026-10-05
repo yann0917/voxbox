@@ -1,6 +1,9 @@
 package mvsep
 
-import "github.com/yann0917/voxbox/internal/provider"
+import (
+	"github.com/yann0917/voxbox/internal/config"
+	"github.com/yann0917/voxbox/internal/provider"
+)
 
 // ProviderCard MVSep 凭证卡。
 func ProviderCard() provider.ProviderInfo {
@@ -22,5 +25,20 @@ func ProviderCard() provider.ProviderInfo {
 				},
 				Hint: "同一任务只能由接单节点出结果，须全程固定线路"},
 		},
+		Values: func(cfg *config.Config) map[string]string {
+			return map[string]string{"api_token": cfg.MVSep.APIToken, "base_url": cfg.MVSep.BaseURL}
+		},
+		// api_token 是 secret：留空=不修改；base_url 是 select 字段：空串=主站（合法取值），不设守卫。
+		Apply: func(nc *config.Config, fields map[string]string) {
+			if v, ok := fields["api_token"]; ok && v != "" {
+				nc.MVSep.APIToken = v
+			}
+			if v, ok := fields["base_url"]; ok {
+				nc.MVSep.BaseURL = v
+			}
+		},
+		ReRegister: ReRegisterAll,
+		Sync:       func(dst, src *config.Config) { dst.MVSep = src.MVSep },
+		Test:       ProbeMVSep,
 	}
 }

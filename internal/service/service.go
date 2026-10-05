@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -221,104 +220,36 @@ func (s *Service) SaveProviderFields(name string, fields map[string]string) erro
 		}
 	}
 	nc := *s.cfg.Load()
-	applyCardFields(&nc, name, fields)
+	card.Apply(&nc, fields)
 	s.cfg.Store(&nc)
-	s.reloadCard(name, nc)
+	card.ReRegister(s.reg, nc, nc.DataDir)
 	return nil
 }
 
-// applyCardFields 把提交字段套进内存快照。语义与落盘一致（SaveProviderFields）：
-// text/select 字段提交值即生效（空串=清空，如 app_id 留空、接入线路回落主站）；
-// 只有 secret 字段保留「空串=不修改」守卫。
-func applyCardFields(nc *config.Config, name string, fields map[string]string) {
-	get := func(k string) (string, bool) {
-		v, ok := fields[k]
-		return v, ok
-	}
-	switch name {
-	case "volcengine":
-		// app_id 是 text 字段：提交值即生效，空串=清空（播客凭证对可整体撤销）。
-		if v, ok := get("app_id"); ok {
-			nc.Volc.Speech.AppID = v
-		}
-		if v, ok := get("access_token"); ok && v != "" {
-			nc.Volc.Speech.AccessToken = v
-		}
-		if v, ok := get("api_key"); ok && v != "" {
-			nc.Volc.Speech.APIKey = v
-		}
-	case "mediakit":
-		if v, ok := get("api_key"); ok && v != "" {
-			nc.Volc.MediaKit.APIKey = v
-		}
-	case "mvsep":
-		if v, ok := get("api_token"); ok && v != "" {
-			nc.MVSep.APIToken = v
-		}
-		// base_url 是 select 字段：空串=主站（合法取值），不设守卫。
-		if v, ok := get("base_url"); ok {
-			nc.MVSep.BaseURL = v
-		}
-	case "qianwen":
-		if v, ok := get("api_key"); ok && v != "" {
-			nc.Qianwen.APIKey = v
-		}
-	case "xiaomi":
-		if v, ok := get("api_key"); ok && v != "" {
-			nc.Xiaomi.APIKey = v
-		}
-	case "zhipu":
-		if v, ok := get("api_key"); ok && v != "" {
-			nc.Zhipu.APIKey = v
-		}
-	case "openrouter":
-		if v, ok := get("api_key"); ok && v != "" {
-			nc.OpenRouter.APIKey = v
-		}
-	}
-}
-
-// reloadCard 卡 → 工具热重注册映射（mediakit 的分离工具在 volcengine 包，共用其重注册）。
-func (s *Service) reloadCard(name string, nc config.Config) {
-	switch name {
-	case "volcengine", "mediakit":
-		volcengine.ReRegisterAll(s.reg, nc, nc.DataDir)
-	case "mvsep":
-		mvsep.ReRegisterAll(s.reg, nc, nc.DataDir)
-	case "qianwen":
-		qianwen.ReRegisterAll(s.reg, nc, nc.DataDir)
-	case "xiaomi":
-		xiaomi.ReRegisterAll(s.reg, nc, nc.DataDir)
-	case "zhipu":
-		zhipu.ReRegisterAll(s.reg, nc, nc.DataDir)
-	case "openrouter":
-		openrouter.ReRegisterAll(s.reg, nc, nc.DataDir)
-	}
-}
-
-// ReloadDiskConfig 从磁盘配置热应用运行期可变段：火山/千问/小米/智谱凭证 + 对象存储。
+// ReloadDiskConfig 从磁盘配置热应用运行期可变段：各云端卡凭证段 + 对象存储 + AI 默认大模型。
 // 配置文件监听（config.Watch）的回调路径：服务运行中另一终端 voxbox config set、
 // 手工编辑 config.yaml 的变更即时生效，与 Web 设置保存（SaveProviderFields/SaveStorage
-// 同步热应用）殊途同归。仅替换这些段：端口与数据目录是启动期属性（监听已绑定、
-// DB 已打开），不跟随文件变更。
+// 同步热应用）殊途同归。卡管辖的段经卡自描述的 Sync 逐卡并入；Storage/StorageChannels/
+// Assistant 不属于任何卡，保留显式赋值。仅替换这些段：端口与数据目录是启动期属性
+// （监听已绑定、DB 已打开），不跟随文件变更。
 func (s *Service) ReloadDiskConfig(disk *config.Config) {
 	nc := *s.cfg.Load()
-	nc.Volc = disk.Volc
+	for _, c := range providerCards() {
+		if c.Sync != nil {
+			c.Sync(&nc, disk)
+		}
+	}
 	nc.Storage = disk.Storage
 	nc.StorageChannels = disk.StorageChannels
-	nc.MVSep = disk.MVSep
-	nc.Qianwen = disk.Qianwen
-	nc.Xiaomi = disk.Xiaomi
-	nc.Zhipu = disk.Zhipu
-	nc.OpenRouter = disk.OpenRouter
 	nc.Assistant = disk.Assistant
 	s.cfg.Store(&nc)
-	volcengine.ReRegisterAll(s.reg, nc, nc.DataDir)
-	mvsep.ReRegisterAll(s.reg, nc, nc.DataDir)
-	qianwen.ReRegisterAll(s.reg, nc, nc.DataDir)
-	xiaomi.ReRegisterAll(s.reg, nc, nc.DataDir)
-	zhipu.ReRegisterAll(s.reg, nc, nc.DataDir)
-	openrouter.ReRegisterAll(s.reg, nc, nc.DataDir)
+	// 逐卡热重注册：volcengine 与 mediakit 两卡共用 volcengine.ReRegisterAll 会重复执行
+	// 一次——Registry.Replace 幂等、重建实例无副作用，不为此去重。
+	for _, c := range providerCards() {
+		if c.ReRegister != nil {
+			c.ReRegister(s.reg, nc, nc.DataDir)
+		}
+	}
 	s.rebuildStorageClient(nc.Storage)
 }
 
@@ -471,27 +402,6 @@ func (s *Service) Close() error {
 	return nil
 }
 
-// TestMVSepConnection MVSep 连通性探测：GET /api/app/user 验证 token 并顺带取回
-// 账户名；未配置时直接报未配置，不发请求。
-func (s *Service) TestMVSepConnection() (string, bool) {
-	cfg := s.cfg.Load()
-	if cfg.MVSep.APIToken == "" {
-		return "未配置 MVSep API Token：请执行 voxbox config set mvsep.api_token 或在 Web 设置页配置", false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	c := mvsep.New(cfg.MVSep.APIToken, cfg.MVSep.BaseURL)
-	u, err := c.User(ctx)
-	if err != nil {
-		return err.Error(), false
-	}
-	qs, qerr := c.Queue(ctx)
-	if qerr == nil && qs.FreeMax > 0 {
-		return fmt.Sprintf("连接成功（%s，今日免费分离余量 %d/%d）", u.Name, qs.FreeLeft, qs.FreeMax), true
-	}
-	return fmt.Sprintf("连接成功（%s）", u.Name), true
-}
-
 // MVSepAlgorithms 拉取 MVSep 算法列表（带 token 才返回分组名），进程内缓存 1 小时。
 func (s *Service) MVSepAlgorithms(ctx context.Context, refresh bool) ([]mvsep.Algorithm, error) {
 	cfg := s.cfg.Load()
@@ -552,119 +462,4 @@ func (m *mvsepAlgoCacheT) get(ctx context.Context, token, baseURL string, refres
 	}
 	m.key, m.data, m.expires = key, algos, time.Now().Add(mvsepTTL)
 	return algos, nil
-}
-
-// TestSpeechConnection 用音色/凭证连通性检测：构造 TTS 客户端发 1 字合成请求。
-// 注意：真实调用会消耗少量合成配额，可接受。
-func (s *Service) TestSpeechConnection() (string, bool) {
-	cfg := s.cfg.Load()
-	cred := volcengine.SpeechCred{
-		AppID: cfg.Volc.Speech.AppID, AccessToken: cfg.Volc.Speech.AccessToken, APIKey: cfg.Volc.Speech.APIKey,
-	}
-	if err := cred.Validate(); err != nil {
-		return err.Error(), false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	client := volcengine.NewTTSClient(cred)
-	_, err := client.Synthesize(ctx, volcengine.TTSSynthesizeReq{Text: "测", VoiceType: "zh_female_cancan_mars_bigtts", Format: "mp3"})
-	if err != nil {
-		return err.Error(), false
-	}
-	return "连接成功", true
-}
-
-// TestMediaKitConnection MediaKit 连通性探测（与人声分离工具同域、同 Bearer 鉴权头）：
-// GET 一个必然不存在的任务 ID——404/400 表示鉴权通过（任务不存在属预期）→ 连接成功；
-// 401/403 → 凭证无效；网络错误透传错误信息。未配置 apiKey 时直接报未配置，不发起请求。
-func (s *Service) TestMediaKitConnection() (string, bool) {
-	if s.cfg.Load().Volc.MediaKit.APIKey == "" {
-		return "未配置 AI MediaKit API Key：请执行 voxbox config set volc.mediakit.api_key 或在 Web 设置页配置", false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		volcengine.MediaKitBaseURL+fmt.Sprintf(volcengine.MediaKitQueryPathFmt, "nonexistent-connectivity-probe"), nil)
-	if err != nil {
-		return err.Error(), false
-	}
-	req.Header.Set("Authorization", "Bearer "+s.cfg.Load().Volc.MediaKit.APIKey)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err.Error(), false
-	}
-	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return "凭证无效", false
-	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusBadRequest:
-		return "连接成功", true
-	default:
-		return fmt.Sprintf("MediaKit 探测异常(HTTP %d)", resp.StatusCode), false
-	}
-}
-
-// TestQianwenConnection 千问连通性探测：极短文本合成（消耗少量额度，同火山语音模式）。
-func (s *Service) TestQianwenConnection() (string, bool) {
-	key := s.cfg.Load().Qianwen.APIKey
-	if key == "" {
-		return "未配置千问 API Key：请执行 voxbox config set qianwen.api_key 或在 Web 设置页配置", false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	client := qianwen.NewTTSClient(key, qianwen.BaseURL)
-	if _, err := client.Synthesize(ctx, qianwen.TTSReq{
-		Model: "qwen3-tts-flash", Text: "测", Voice: qianwen.DefaultVoice,
-	}); err != nil {
-		return err.Error(), false
-	}
-	return "连接成功", true
-}
-
-// TestZhipuConnection 智谱连通性探测：极短文本合成（消耗少量额度，同千问/小米模式）。
-func (s *Service) TestZhipuConnection() (string, bool) {
-	key := s.cfg.Load().Zhipu.APIKey
-	if key == "" {
-		return "未配置智谱 API Key：请执行 voxbox config set zhipu.api_key 或在 Web 设置页配置", false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	if _, err := zhipu.NewTTSClient(key, zhipu.BaseURL).Synthesize(ctx, zhipu.TTSSynthesizeReq{
-		Text: "测", Voice: zhipu.DefaultVoice,
-	}); err != nil {
-		return err.Error(), false
-	}
-	return "连接成功", true
-}
-
-// TestOpenRouterConnection OpenRouter 连通性探测：极短文本合成（消耗少量额度，同千问/小米/智谱模式）。
-func (s *Service) TestOpenRouterConnection() (string, bool) {
-	key := s.cfg.Load().OpenRouter.APIKey
-	if key == "" {
-		return "未配置 OpenRouter API Key：请执行 voxbox config set openrouter.api_key 或在 Web 设置页配置", false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	if _, err := openrouter.NewTTSClient(key, openrouter.BaseURL).Synthesize(ctx, openrouter.TTSReq{
-		Text: "测", Voice: openrouter.DefaultVoice,
-	}); err != nil {
-		return err.Error(), false
-	}
-	return "连接成功", true
-}
-
-// TestXiaomiConnection 小米 MiMo 连通性探测：极短文本合成（消耗少量额度，同千问模式）。
-func (s *Service) TestXiaomiConnection() (string, bool) {
-	key := s.cfg.Load().Xiaomi.APIKey
-	if key == "" {
-		return "未配置小米 API Key：请执行 voxbox config set xiaomi.api_key 或在 Web 设置页配置", false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	if _, err := xiaomi.NewTTSClient(key, xiaomi.BaseURL).Synthesize(ctx, xiaomi.TTSReq{
-		Model: xiaomi.ModelPreset, Text: "测", Voice: xiaomi.DefaultVoice, Format: "wav",
-	}); err != nil {
-		return err.Error(), false
-	}
-	return "连接成功", true
 }
