@@ -23,22 +23,7 @@ const (
 	sessionCookieName = "tbx_session"
 	sessionTTL        = 7 * 24 * time.Hour
 	apiTokenPrefix    = "tbx_"
-
-	CodeUnauthorized = 7 // 未登录 / 会话或 token 失效（CLI 退出码同语义）
-	CodeForbidden    = 8 // 已登录但权限不足（非 admin 触碰 admin 端点）
 )
-
-const principalKey = "voxbox.principal"
-
-// Principal 当前请求身份：requireAuth 从 Cookie 会话或 Bearer token 解析后注入 gin context。
-type Principal struct {
-	ID                 string
-	Username           string
-	Role               string
-	MustChangePassword bool
-}
-
-func (p *Principal) IsAdmin() bool { return p.Role == "admin" }
 
 // searchScopeUserID 查询范围：admin 全量（含无主历史任务），普通用户仅本人。
 func searchScopeUserID(p *Principal) string {
@@ -46,12 +31,6 @@ func searchScopeUserID(p *Principal) string {
 		return ""
 	}
 	return p.ID
-}
-
-func principalFrom(c *gin.Context) *Principal {
-	p, _ := c.Get(principalKey)
-	pp, _ := p.(*Principal)
-	return pp
 }
 
 type userDTO struct {

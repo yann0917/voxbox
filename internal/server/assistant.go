@@ -1,15 +1,12 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yann0917/voxbox/internal/assistant"
-	"github.com/yann0917/voxbox/internal/provider/qianwen"
-	"github.com/yann0917/voxbox/internal/provider/xiaomi"
-	"github.com/yann0917/voxbox/internal/provider/zhipu"
+	"github.com/yann0917/voxbox/internal/httpx"
 )
 
 // ---- AI 助手（悬浮面板）：模型目录 + 流式对话 ----
@@ -107,10 +104,4 @@ func (s *Server) assistantChat(c *gin.Context) {
 }
 
 // assistantErrCode 流内错误 → 业务码（与 failErr 同语义：凭证 4，其余任务失败 3）。
-func assistantErrCode(err error) int {
-	switch {
-	case errors.Is(err, zhipu.ErrNoCred), errors.Is(err, qianwen.ErrNoCred), errors.Is(err, xiaomi.ErrNoCred):
-		return CodeBadCredential
-	}
-	return CodeTaskFailed
-}
+func assistantErrCode(err error) int { return httpx.StreamErrCode(err) }

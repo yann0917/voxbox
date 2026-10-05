@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yann0917/voxbox/internal/module"
+	"github.com/yann0917/voxbox/internal/modules"
 )
 
 // Handler 组装全部 HTTP 路由，只做注册不写业务逻辑；handler 按领域各归其文件：
@@ -12,8 +14,8 @@ import (
 // （产物流/下载与路径、越权防御）、settings.go（凭证/存储/连通性）、pronunciation.go、
 // subtitles.go、search.go（转写全文搜索）、lookups.go（工具/音色/词典清单）、
 // mvsep.go、minutes_export.go、local.go、models.go、voicelib.go、assistant.go、
-// prompts.go（提示词库+AI 写作）、refine.go（录音笔记加工）、mediaenv.go（gsgcHealth）、
-// hub.go（wsProgress）。
+// refine.go（录音笔记加工）、mediaenv.go（gsgcHealth）、hub.go（wsProgress）。
+// 新增功能优先走功能模块（internal/modules/<x> 自描述路由），存量域按此清单就地挂载。
 func (s *Server) Handler() http.Handler {
 	r := gin.Default()
 	gin.SetMode(gin.ReleaseMode)
@@ -158,23 +160,12 @@ func (s *Server) Handler() http.Handler {
 	// SSE 同助手协议，结果合并落任务 Summary.refined（详见 refine.go）
 	api.POST("/refine", s.refine)
 
-	// 提示词库（内置+用户自定义）：条目按登录用户隔离，AI 写作流式同助手协议
-	promptRoutes := api.Group("/prompts")
-	{
-		promptRoutes.GET("", s.listPrompts)
-		promptRoutes.POST("", s.createPrompt)
-		promptRoutes.PUT("/:id", s.updatePrompt)
-		promptRoutes.DELETE("/:id", s.deletePrompt)
-		promptRoutes.POST("/apply", s.applyPrompt)
-	}
-
-	// 翻译术语表：AI 自动沉淀 + 设置页人工增删改查共用一表
-	glossaryRoutes := api.Group("/glossary")
-	{
-		glossaryRoutes.GET("", s.listGlossary)
-		glossaryRoutes.POST("", s.createGlossaryTerm)
-		glossaryRoutes.PUT("/:id", s.updateGlossaryTerm)
-		glossaryRoutes.DELETE("/:id", s.deleteGlossaryTerm)
+	// 功能模块：自描述挂载（internal/modules/<x>；新增模块 = 包内实现 Module + 清单加一行）。
+	// Mount 同时给出无鉴权/登录/管理员三种已挂中间件的组与服务实例，模块按需取用。
+	admin := r.Group("/api", s.requireAuth(), s.requireAdmin())
+	mount := &module.Mount{Root: r.Group("/api"), API: api, Admin: admin, Svc: s.svc}
+	for _, m := range modules.All() {
+		m.Register(mount)
 	}
 
 	// MCP Streamable HTTP：独立组只受 mcpAuth 门控（仅 Bearer API token，客户端不携带
