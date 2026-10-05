@@ -5,30 +5,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Layout from "./components/Layout";
 import RequireAuth from "./components/RequireAuth";
 import { useMe } from "./lib/auth";
+import { features } from "./features";
 import { ToastProvider } from "./ui";
 
-// 页面路由级代码分割：每页独立 chunk 按需加载（Layout 壳与全局播放器保持常驻），
-// 加载期由 Layout 内的 Suspense 骨架占位。重页面（妙记/历史/字幕）不再进主包。
+// 公开页与旧路由重定向保持显式；应用内功能路由自功能清单（features.ts）派生——
+// 新增功能页面不改本文件。lazy 在模块级建一次，render 期不重建组件树。
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
-const WorkbenchPage = lazy(() => import("./pages/WorkbenchPage"));
-const TTSPage = lazy(() => import("./pages/TTSPage"));
-const PricingPage = lazy(() => import("./pages/PricingPage"));
-const ASRPage = lazy(() => import("./pages/ASRPage"));
-// oxlint-disable-next-line only-export-components 与同列 lazy 路由同款模式；本文件无导出，fast-refresh 规则逐行告警，此处压行保 lint 基线不涨
-const LivePage = lazy(() => import("./pages/LivePage"));
-const PodcastPage = lazy(() => import("./pages/PodcastPage"));
-const SeparatePage = lazy(() => import("./pages/SeparatePage"));
-const PostPage = lazy(() => import("./pages/post/PostPage"));
-const AudioEditorPage = lazy(() => import("./pages/AudioEditorPage"));
-const GsgcPage = lazy(() => import("./pages/GsgcPage"));
-const TranslatePage = lazy(() => import("./pages/TranslatePage"));
-const MinutesPage = lazy(() => import("./pages/MinutesPage"));
-const SubtitlesPage = lazy(() => import("./pages/SubtitlesPage"));
-const PromptLibraryPage = lazy(() => import("./pages/PromptLibraryPage"));
-const AboutPage = lazy(() => import("./pages/AboutPage"));
-const HistoryPage = lazy(() => import("./pages/HistoryPage"));
-const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const featureRoutes = features.map((f) => ({ id: f.id, path: f.path, Page: lazy(f.component) }));
+
 // 自托管字体（离线可用，不依赖 Google CDN）；仅 latin 子集，中文走系统回退
 import "@fontsource/fira-sans/latin-400.css";
 import "@fontsource/fira-sans/latin-500.css";
@@ -67,37 +52,25 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/" element={<DesktopGate><LandingPage /></DesktopGate>} />
             <Route path="/login" element={<DesktopGate><LoginPage /></DesktopGate>} />
             {/* 应用路由：登录门 + 首启强制改密 */}
-            <Route
-              element={
-                <RequireAuth>
-                  <Layout />
-                </RequireAuth>
-              }
-            >
-              <Route path="/workbench" element={<WorkbenchPage />} />
-              <Route path="/tts" element={<TTSPage />} />
-              <Route path="/tts-long" element={<Navigate to="/tts?tab=long" replace />} />
-              <Route path="/tts-stream" element={<Navigate to="/tts?tab=stream" replace />} />
-              <Route path="/pricing" element={<PricingPage />} />
-              <Route path="/asr" element={<ASRPage />} />
-              <Route path="/live" element={<LivePage />} />
-              <Route path="/podcast" element={<PodcastPage />} />
-              <Route path="/separate" element={<SeparatePage />} />
-              <Route path="/post" element={<PostPage />} />
-              {/* 旧三页路由并入 /post 的 Tab：查询参数整体搬迁，深链（?task=/?artifact=/?vocal=）不失效 */}
-              <Route path="/mixer" element={<LegacyPostRedirect tab="mixer" />} />
-              <Route path="/clip" element={<LegacyPostRedirect tab="clip" />} />
-              <Route path="/duck" element={<LegacyPostRedirect tab="duck" />} />
-              <Route path="/audio-edit" element={<AudioEditorPage />} />
-              <Route path="/gsgc" element={<GsgcPage />} />
-              <Route path="/translate" element={<TranslatePage />} />
-              <Route path="/minutes" element={<MinutesPage />} />
-              <Route path="/subtitles" element={<SubtitlesPage />} />
-              <Route path="/prompts" element={<PromptLibraryPage />} />
-              <Route path="/about" element={<AboutPage />} />
-              <Route path="/history" element={<HistoryPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Route>
+              <Route
+                element={
+                  <RequireAuth>
+                    <Layout />
+                  </RequireAuth>
+                }
+              >
+                {/* 应用功能路由:自功能清单派生(路径/懒加载组件都在 features.ts) */}
+                {featureRoutes.map(({ id, path, Page }) => (
+                  <Route key={id} path={path} element={<Page />} />
+                ))}
+                {/* 旧三页路由并入 /post 的 Tab：查询参数整体搬迁，深链（?task=/?artifact=/?vocal=）不失效 */}
+                <Route path="/mixer" element={<LegacyPostRedirect tab="mixer" />} />
+                <Route path="/clip" element={<LegacyPostRedirect tab="clip" />} />
+                <Route path="/duck" element={<LegacyPostRedirect tab="duck" />} />
+                {/* 旧 TTS 子路由并入 /tts 的 Tab */}
+                <Route path="/tts-long" element={<Navigate to="/tts?tab=long" replace />} />
+                <Route path="/tts-stream" element={<Navigate to="/tts?tab=stream" replace />} />
+              </Route>
           </Routes>
         </BrowserRouter>
       </ToastProvider>

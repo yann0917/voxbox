@@ -3,61 +3,28 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
-  AudioLines,
-  AudioWaveform,
-  Calculator,
-  Captions,
-  History,
-  Info,
-  Languages,
-  LayoutDashboard,
-  LibraryBig,
   LogOut,
   Menu,
-  Mic,
   Monitor,
   Moon,
-  NotebookPen,
   PanelLeftClose,
   PanelLeftOpen,
-  Podcast,
-  Settings,
-  SlidersHorizontal,
   Sun,
-  Waves,
-  Wrench,
   X,
-  Scissors,
 } from "lucide-react";
 import { useTheme, type ThemePref } from "../lib/theme";
 import { logout, useMe } from "../lib/auth";
 import { usePlayer } from "../lib/player";
 import { useWSStatus } from "../lib/ws";
+import { features } from "../features";
 import PlayerBar from "./PlayerBar";
 import TaskToasts from "./TaskToasts";
 import AssistantWidget from "./AssistantWidget";
 import BrandMark from "./BrandMark";
 import { IconButton, Skeleton, useToast, ConfirmDialog } from "../ui";
 
-const nav = [
-  { to: "/workbench", label: "工作台", desc: "工具总览与最近任务", icon: LayoutDashboard },
-  { to: "/tts", label: "语音合成", desc: "同步/流式/长文本三通道", icon: AudioLines },
-  { to: "/asr", label: "语音识别", desc: "音频转文字与字幕", icon: Mic },
-  { to: "/live", label: "实时语音识别", desc: "边说边出字与一键存纪要", icon: AudioWaveform },
-  { to: "/podcast", label: "播客工坊", desc: "生成双人播客", icon: Podcast },
-  { to: "/separate", label: "人声分离", desc: "人声与背景音分轨", icon: Waves },
-  { to: "/post", label: "音频后期", desc: "混音台 · 切高潮 · 口播闪避", icon: SlidersHorizontal },
-  { to: "/audio-edit", label: "音频剪辑", desc: "切割合并变调与乐调 BPM 查询", icon: Scissors },
-  { to: "/gsgc", label: "格式工厂", desc: "音视频/图片在线转换与压缩", icon: Wrench },
-  { to: "/translate", label: "机器翻译", desc: "32 语种互译与术语定制", icon: Languages },
-  { to: "/minutes", label: "语音妙记", desc: "音视频转结构化纪要", icon: NotebookPen },
-  { to: "/subtitles", label: "字幕工坊", desc: "字幕样式与 SRT/ASS 导出", icon: Captions },
-  { to: "/prompts", label: "提示词库", desc: "AI 写作主题与自定义提示词", icon: LibraryBig },
-  { to: "/history", label: "任务", desc: "提交记录与产物", icon: History },
-  { to: "/pricing", label: "计费测算", desc: "刊例价用量估算", icon: Calculator },
-  { to: "/settings", label: "设置", desc: "凭证与连接", icon: Settings },
-  { to: "/about", label: "关于", desc: "产品与使用指南", icon: Info },
-];
+// 侧栏即功能清单(features.ts):路由/标题/图标随清单派生,新增功能不用改本文件。
+const nav = features;
 
 const themeOrder: ThemePref[] = ["system", "dark", "light"];
 
@@ -197,21 +164,21 @@ function NavItems({
           <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-accent" />
         </div>
       )}
-      {nav.map(({ to, label, icon: Icon }, i) => (
+      {nav.map(({ path, title, icon: Icon }, i) => (
         <NavLink
-          key={to}
+          key={path}
           ref={(el) => {
             itemRefs.current[i] = el;
           }}
-          to={to}
+          to={path}
           onClick={onNavigate}
-          title={collapsed ? label : undefined}
+          title={collapsed ? title : undefined}
           className={`relative flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm transition-colors duration-150 ${
             i === activeIdx ? "text-fg" : "text-fg-2 hover:bg-raise-2 hover:text-fg"
           }`}
         >
           <Icon size={18} strokeWidth={1.75} className={i === activeIdx ? "text-accent shrink-0" : "shrink-0"} />
-          <span className={collapsed ? "hidden" : "hidden truncate lg:inline"}>{label}</span>
+          <span className={collapsed ? "hidden" : "hidden truncate lg:inline"}>{title}</span>
         </NavLink>
       ))}
     </div>
@@ -230,7 +197,7 @@ export default function Layout() {
   const { toast } = useToast();
   const { data: me } = useMe();
   // 子页面按前缀归属父导航项，面包屑不落到「工作台」
-  const current = nav.find((n) => pathname === n.to || pathname.startsWith(n.to + "/")) ?? nav[0];
+  const current = nav.find((n) => pathname === n.path || pathname.startsWith(n.path + "/")) ?? nav[0];
   const activeIdx = nav.indexOf(current);
   const ThemeIcon = themeMeta[pref].icon;
 
@@ -319,7 +286,7 @@ export default function Layout() {
           <nav aria-label="当前位置" className="micro flex min-w-0 items-center gap-1.5 truncate">
             <span>voxbox</span>
             <span className="text-line-strong">/</span>
-            <span className="text-fg-2">{current.label}</span>
+            <span className="text-fg-2">{current.title}</span>
           </nav>
           <div className="ml-auto flex items-center gap-3">
             <HealthIndicator />

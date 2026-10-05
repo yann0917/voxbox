@@ -1,20 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, AudioLines, Clock, Languages, Mic, NotebookPen, Podcast, Waves, Scissors } from "lucide-react";
+import { ArrowUpRight, Clock } from "lucide-react";
 import { fetchJSON } from "../lib/api";
 import type { Task } from "../lib/types";
 import { toolLabel } from "../lib/toolNames";
+import { features } from "../features";
 import { Card, CardHeader, EmptyState, PageHeader, Skeleton, StatusBadge } from "../ui";
 
-const tools = [
-  { to: "/tts", name: "语音合成", desc: "同步/流式/长文本三通道，按费用选", icon: AudioLines, tool: "tts" },
-  { to: "/asr", name: "语音识别", desc: "音频转文字，分句时间戳与字幕", icon: Mic, tool: "asr" },
-  { to: "/podcast", name: "播客工坊", desc: "生成双人对话播客", icon: Podcast, tool: "podcast" },
-  { to: "/separate", name: "人声分离", desc: "人声与背景音分轨输出", icon: Waves, tool: "separate" },
-  { to: "/audio-edit", name: "音频剪辑", desc: "切割/合并/变调/调BPM查询", icon: Scissors, tool: "trim" },
-  { to: "/translate", name: "机器翻译", desc: "32 语种互译，术语定制", icon: Languages, tool: "translate" },
-  { to: "/minutes", name: "语音妙记", desc: "音视频转纪要：总结/待办/章节", icon: NotebookPen, tool: "minutes" },
-];
+// 快捷入口卡自功能清单派生:声明了 workbench 的功能按清单顺序入卡。
+const tools = features.flatMap((f) =>
+  f.workbench
+    ? [
+        {
+          to: f.path,
+          name: f.workbench.name ?? f.title,
+          desc: f.workbench.desc ?? f.desc,
+          icon: f.icon,
+          tool: f.workbench.tool,
+        },
+      ]
+    : [],
+);
 
 function StatTile({ label, value, hint, loading }: { label: string; value: string; hint?: string; loading?: boolean }) {
   return (
