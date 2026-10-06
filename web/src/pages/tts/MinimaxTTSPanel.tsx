@@ -30,6 +30,46 @@ const SOUND_EFFECTS = [
   { value: "robotic", label: "电音" },
 ];
 
+/** 语气词标签（官方 speech-2.8 系列文本标记，与文档同词表 19 个）。 */
+const INTERJECTIONS: { tag: string; label: string }[] = [
+  { tag: "laughs", label: "笑声" }, { tag: "chuckle", label: "轻笑" },
+  { tag: "coughs", label: "咳嗽" }, { tag: "clear-throat", label: "清嗓子" },
+  { tag: "groans", label: "呻吟" }, { tag: "breath", label: "正常换气" },
+  { tag: "pant", label: "喘气" }, { tag: "inhale", label: "吸气" },
+  { tag: "exhale", label: "呼气" }, { tag: "gasps", label: "倒吸气" },
+  { tag: "sniffs", label: "吸鼻子" }, { tag: "sighs", label: "叹气" },
+  { tag: "snorts", label: "喷鼻息" }, { tag: "burps", label: "打嗝" },
+  { tag: "lip-smacking", label: "咂嘴" }, { tag: "humming", label: "哼唱" },
+  { tag: "hissing", label: "嘶嘶声" }, { tag: "emm", label: "嗯" },
+  { tag: "sneezes", label: "喷嚏" },
+];
+
+/** 停顿标记 <#x#> 预检（与后端 validatePauseMarkers 同规则）：数值/精度/连续/首尾。
+ *  返回错误文案，合法返回空串——即时反馈，省一次注定失败的付费请求。 */
+function pauseMarkerError(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed.includes("<#")) return "";
+  if (/<#[^#\n]*#>\s*<#[^#\n]*#>/.test(trimmed)) {
+    return "停顿标记不可连续使用（两个 <#x#> 之间需要有可发音的文本）";
+  }
+  const matches = [...trimmed.matchAll(/<#([^#\n]*)#>/g)];
+  if (matches.length > 0) {
+    const first = matches[0].index ?? 0;
+    const lastEnd = (matches[matches.length - 1].index ?? 0) + matches[matches.length - 1][0].length;
+    if (first === 0 || lastEnd === trimmed.length) {
+      return "停顿标记不能位于文本开头或结尾（需夹在两段可发音文本之间）";
+    }
+  }
+  for (const m of matches) {
+    const v = m[1];
+    const f = parseFloat(v);
+    if (Number.isNaN(f) || f < 0.01 || f > 99.99 || (v.includes(".") && v.split(".")[1].length > 2)) {
+      return `停顿标记 <#${v}#> 数值需在 0.01-99.99 之间（最多两位小数）`;
+    }
+  }
+  return "";
+}
+
 /** MiniMax 音色（/api/voices?provider=minimax）：有凭证拉运行时接口（系统+复刻+文生），
  *  未配置回落 327 个系统音色静态表。两形态同构：label 为显示名，lang 仅静态表携带。 */
 interface MinimaxVoice {
@@ -83,6 +123,42 @@ export default function MinimaxTTSPanel() {
   const [submitError, setSubmitError] = useState("");
   const textWrapRef = useRef<HTMLDivElement>(null);
   const focusText = () => textWrapRef.current?.querySelector("textarea")?.focus();
+  const [interjectionOpen, setInterjectionOpen] = useState(false);
+  const interjectionRef = useRef<HTMLDivElement>(null);
+
+  /* 语气词弹层：点外关闭 */
+  useEffect(() => {
+    if (!interjectionOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!interjectionRef.current?.contains(e.target as Node)) setInterjectionOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setInterjectionOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [interjectionOpen]);
+
+  /** insertAtCursor 在文本框光标处插入标记并保持焦点（选区被替换时同理）。 */
+  const insertAtCursor = (snippet: string) => {
+    const ta = textWrapRef.current?.querySelector("textarea");
+    if (!ta) {
+      setText((t) => t + snippet);
+      return;
+    }
+    const start = ta.selectionStart ?? ta.value.length;
+    const end = ta.selectionEnd ?? start;
+    setText(ta.value.slice(0, start) + snippet + ta.value.slice(end));
+    requestAnimationFrame(() => {
+      ta.focus();
+      const pos = start + snippet.length;
+      ta.setSelectionRange(pos, pos);
+    });
+  };
   const qc = useQueryClient();
   const { toast } = useToast();
   const ev = useTaskEvents();
@@ -161,7 +237,8 @@ export default function MinimaxTTSPanel() {
   const volumeInvalid = volume.trim() !== "" && (!Number.isFinite(volumeNum) || volumeNum <= 0 || volumeNum > 10);
   const pitchInvalid = pitch.trim() !== "" && (!Number.isFinite(pitchNum) || pitchNum < -12 || pitchNum > 12);
   const hasInvalid = speedInvalid || volumeInvalid || pitchInvalid;
-  const canSubmit = text.trim() !== "" && !hasInvalid;
+  const markerError = pauseMarkerError(text.trim());
+  const canSubmit = text.trim() !== "" && !hasInvalid && !markerError;
 
   const artifacts = detail?.artifacts ?? [];
   const audioArtifacts = artifacts.filter((a) => a.kind === "audio");
@@ -183,7 +260,7 @@ export default function MinimaxTTSPanel() {
             }
           />
           <CardBody className="space-y-3">
-            {/* 包裹层仅用于「去输入文本」聚焦：Textarea 组件不透传 ref */}
+            {/* 包裹层仅用于「去输入文本」聚焦与光标插入：Textarea 组件不透传 ref */}
             <div ref={textWrapRef}>
               <Field hint="长文本由服务端自动分段合成后拼接（wav）。">
                 {({ id, ...rest }) => (
@@ -199,6 +276,49 @@ export default function MinimaxTTSPanel() {
                   />
                 )}
               </Field>
+            </div>
+            {/* 文本标记辅助：官方标记语法（停顿/语气词）一键插入，行内发音与换行分段见提示 */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => insertAtCursor("<#1#>")}
+                className="rounded-lg border border-line px-2.5 py-1 text-xs text-fg-2 transition-colors hover:border-accent hover:text-accent"
+              >
+                插入停顿 &lt;#1#&gt;
+              </button>
+              <div className="relative" ref={interjectionRef}>
+                <button
+                  type="button"
+                  onClick={() => setInterjectionOpen((o) => !o)}
+                  className="rounded-lg border border-line px-2.5 py-1 text-xs text-fg-2 transition-colors hover:border-accent hover:text-accent"
+                >
+                  语气词（19 种）
+                </button>
+                {interjectionOpen && (
+                  <div className="absolute left-0 top-full z-10 mt-1.5 w-64 rounded-xl border border-line bg-panel p-2 shadow-lg">
+                    <div className="grid grid-cols-3 gap-1">
+                      {INTERJECTIONS.map((it) => (
+                        <button
+                          key={it.tag}
+                          type="button"
+                          title={`插入 (${it.tag})`}
+                          onClick={() => {
+                            insertAtCursor(`(${it.tag})`);
+                            setInterjectionOpen(false);
+                          }}
+                          className="rounded-lg px-2 py-1.5 text-left text-xs text-fg-2 transition-colors hover:bg-raise-2 hover:text-fg"
+                        >
+                          {it.label}
+                          <span className="ml-1 font-mono text-[10px] text-muted">{it.tag}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <span className="text-[11px] leading-relaxed text-muted">
+                换行分段；停顿 &lt;#秒#&gt;；行内发音 (he2)/(lɪv)；语气词 (laughs) 等
+              </span>
             </div>
           </CardBody>
         </Card>
@@ -331,6 +451,9 @@ export default function MinimaxTTSPanel() {
               </Button>
               {!canSubmit && text.trim() !== "" && hasInvalid && (
                 <p className="mt-2 text-[11px] text-muted">参数超出范围：语速 0.5-2、音量 0.1-10、音调 -12 到 12</p>
+              )}
+              {!canSubmit && markerError && (
+                <p className="mt-2 text-[11px] text-warn">{markerError}</p>
               )}
               {!canSubmit && text.trim() === "" && (
                 <p className="mt-2 text-[11px] text-muted">请先输入要合成的文本</p>

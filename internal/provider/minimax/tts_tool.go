@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -66,6 +69,57 @@ var ttsSoundEffects = []provider.ParamOption{
 	{Value: "robotic", Label: "电音"},
 }
 
+// 停顿标记 <#x#>（官方文本标记语法：x 为秒，[0.01,99.99]，最多两位小数，
+// 须夹在两段可发音文本之间、不可连续使用）。标记与行内发音 (pinyin)、语气词
+// 标签 (laughs) 均随文本透传，发音词典按整词替换不会命中；这里只做位置与
+// 数值校验，以及分段边界的粘合修正。
+var pauseMarkerRe = regexp.MustCompile(`<#([^#\n]*)#>`)
+
+// leadingPauseRe 段首连续停顿标记（含前导空白）。
+var leadingPauseRe = regexp.MustCompile(`^(?:\s*<#[^#]*#>)+`)
+
+// consecutivePauseRe 连续停顿标记（标记间仅空白）。
+var consecutivePauseRe = regexp.MustCompile(`<#[^#\n]*#>\s*<#[^#\n]*#>`)
+
+// validatePauseMarkers 停顿标记预检：数值/精度/连续/首尾位置。出错即参数类错误，
+// 在发起合成请求前拦截（重试无意义，不消耗配额）。
+func validatePauseMarkers(text string) error {
+	trimmed := strings.TrimSpace(text)
+	if !strings.Contains(trimmed, "<#") {
+		return nil
+	}
+	if consecutivePauseRe.MatchString(trimmed) {
+		return fmt.Errorf("参数错误：停顿标记不可连续使用（两个 <#x#> 之间需要有可发音的文本）")
+	}
+	locs := pauseMarkerRe.FindAllStringIndex(trimmed, -1)
+	if len(locs) > 0 && (locs[0][0] == 0 || locs[len(locs)-1][1] == len(trimmed)) {
+		return fmt.Errorf("参数错误：停顿标记不能位于文本开头或结尾（需夹在两段可发音文本之间）")
+	}
+	for _, m := range pauseMarkerRe.FindAllStringSubmatch(trimmed, -1) {
+		v := m[1]
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil || f < 0.01 || f > 99.99 || (strings.Contains(v, ".") && len(strings.SplitN(v, ".", 2)[1]) > 2) {
+			return fmt.Errorf("参数错误：停顿标记 <#%s#> 数值需在 0.01-99.99 之间（最多两位小数）", v)
+		}
+	}
+	return nil
+}
+
+// gluePauseMarkers 分段边界的停顿标记粘合：SplitText 切句会把紧跟句号的标记归入
+// 下一句，跨段时标记就孤立在段首（该请求里标记前没有可发音文本，上游拒绝）。
+// 官方语义是「两段可发音文本之间的间隔」，把段首标记挪到前段尾部语义等价。
+// 首段段首的标记属文本开头，由 validatePauseMarkers 拦截。
+func gluePauseMarkers(segs []string) []string {
+	for i := 1; i < len(segs); i++ {
+		m := leadingPauseRe.FindString(segs[i])
+		if m != "" {
+			segs[i-1] += m
+			segs[i] = segs[i][len(m):]
+		}
+	}
+	return segs
+}
+
 // TTSTool MiniMax 同步语音合成（speech-2.8 系列，非流式，响应为 JSON 内 hex 编码音频）。
 type TTSTool struct {
 	client *TTSClient
@@ -119,6 +173,9 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	if utf8.RuneCountInString(text) == 0 {
 		return provider.TaskOutput{}, fmt.Errorf("缺少必填参数: text")
 	}
+	if err := validatePauseMarkers(text); err != nil {
+		return provider.TaskOutput{}, err
+	}
 	if t.apiKey == "" {
 		return provider.TaskOutput{}, fmt.Errorf("%w：请在设置页「云端服务」配置 MiniMax API Key，或 voxbox config set minimax.api_key", ErrNoCred)
 	}
@@ -133,8 +190,9 @@ func (t *TTSTool) Run(ctx context.Context, in provider.TaskInput, report provide
 	languageBoost := paramString(in.Params, "language_boost")
 	soundEffects := paramString(in.Params, "sound_effects")
 
-	// 单次 ≤2000 字符：按句分段逐段合成，段间 wav 拼接，前端无感
-	segs := provider.SplitText(text, minimaxTTSMaxChars)
+	// 单次 ≤2000 字符：按句分段逐段合成，段间 wav 拼接，前端无感；
+	// 段首停顿标记粘合回前段尾部（官方要求标记前有可发音文本）
+	segs := gluePauseMarkers(provider.SplitText(text, minimaxTTSMaxChars))
 	chunks := make([][]byte, 0, len(segs))
 	for i, seg := range segs {
 		report(90*i/len(segs), fmt.Sprintf("正在合成第 %d/%d 段", i+1, len(segs)), nil)

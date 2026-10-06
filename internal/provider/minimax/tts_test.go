@@ -293,3 +293,90 @@ func TestTTSLongTooLong(t *testing.T) {
 		t.Fatalf("err = %v, want 超出长度限制", err)
 	}
 }
+
+// TestValidatePauseMarkers 停顿标记预检：数值/精度/连续/首尾位置四类拦截。
+func TestValidatePauseMarkers(t *testing.T) {
+	ok := []string{
+		"今天<#0.5#>真好",             // 正常
+		"今天<#1#>真好。<#99.99#>是的",   // 边界值
+		"多段\n\n换行<#0.01#>正常",      // 换行后标记
+		"语气词(laughs)与发音(he2)不受影响", // 非停顿标记
+		"没有标记的普通文本",
+	}
+	for _, s := range ok {
+		if err := validatePauseMarkers(s); err != nil {
+			t.Errorf("%q 应通过, got %v", s, err)
+		}
+	}
+	bad := map[string]string{
+		"开头<#x#>标记":          "数值",    // 非数值
+		"超范围<#100#>标记":       "数值",    // >99.99
+		"过小<#0.001#>标记":      "数值",    // <0.01
+		"三位小数<#1.234#>标记":    "数值",    // 精度超两位
+		"连续<#1#><#2#>标记":     "连续",    // 紧邻
+		"连续带空白<#1#> <#2#>标记": "连续",    // 仅空白相隔
+		"<#1#>开头标记":          "开头或结尾", // 文本开头
+		"结尾标记<#1#>":          "开头或结尾", // 文本结尾
+	}
+	for s, want := range bad {
+		err := validatePauseMarkers(s)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q 应报 %s 类错误, got %v", s, want, err)
+		}
+		if !strings.HasPrefix(err.Error(), "参数错误") {
+			t.Errorf("校验错误应是参数类（业务码 2）: %v", err)
+		}
+	}
+}
+
+// TestGluePauseMarkers 分段边界的标记粘合：段首标记挪到前段尾部，语义等价。
+func TestGluePauseMarkers(t *testing.T) {
+	segs := gluePauseMarkers([]string{"第一段。", "<#2#>第二段。", "第三段。"})
+	if segs[0] != "第一段。<#2#>" || segs[1] != "第二段。" {
+		t.Fatalf("粘合结果 = %#v", segs)
+	}
+	// 多个连续段首标记全部前移
+	segs = gluePauseMarkers([]string{"A。", " <#1#><#2#>B"})
+	if segs[0] != "A。 <#1#><#2#>" || segs[1] != "B" {
+		t.Fatalf("连续段首标记粘合 = %#v", segs)
+	}
+	// 无标记时原样
+	segs = gluePauseMarkers([]string{"A。", "B。"})
+	if segs[0] != "A。" || segs[1] != "B。" {
+		t.Fatalf("无标记不应改动 = %#v", segs)
+	}
+}
+
+// TestTTSToolPauseGlueEndToEnd 分段+粘合全链路：mock 捕获各段请求体，确认没有请求
+// 以停顿标记开头（官方要求标记前有可发音文本）。
+func TestTTSToolPauseGlueEndToEnd(t *testing.T) {
+	var bodies []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		bodies = append(bodies, body["text"].(string))
+		_, _ = w.Write([]byte(t2aHexResp(miniWAV(8, 1))))
+	}))
+	defer ts.Close()
+
+	tool := NewTTSTool("sk-test", t.TempDir())
+	tool.client.baseURL = ts.URL
+	// 2050 字符文本，跨段放置停顿标记：段边界恰好落在标记所在的下一句
+	text := strings.Repeat("长", 1044) + "。<#1.5#>" + strings.Repeat("短", 1000) + "。"
+	if _, err := tool.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{"text": text},
+	}, func(int, string, map[string]any) {}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(bodies) < 2 {
+		t.Fatalf("应分段合成, got %d 段", len(bodies))
+	}
+	for i, b := range bodies {
+		if strings.HasPrefix(b, "<#") {
+			t.Errorf("第 %d 段以停顿标记开头（应粘合到前段尾部）: %.20q", i+1, b)
+		}
+	}
+	if !strings.Contains(bodies[0], "<#1.5#>") {
+		t.Errorf("粘合后前段尾部应含标记: %.40q", bodies[0])
+	}
+}
