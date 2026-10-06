@@ -22,8 +22,8 @@ func TestAssistantModels(t *testing.T) {
 		t.Fatalf("code = %d, msg = %s", e.Code, e.Message)
 	}
 	plats, ok := e.Data.([]any)
-	if !ok || len(plats) != 3 {
-		t.Fatalf("platforms = %#v, want 3 项", e.Data)
+	if !ok || len(plats) != 4 {
+		t.Fatalf("platforms = %#v, want 4 项", e.Data)
 	}
 }
 

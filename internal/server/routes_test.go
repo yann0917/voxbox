@@ -166,7 +166,7 @@ func TestToolsAndTaskSubmit(t *testing.T) {
 	ts, _, ac := newTestServer(t)
 	e := getEnvelope(t, ac, ts.URL+"/api/tools")
 	tools, _ := e.Data.([]any)
-	if len(tools) != 44 { // 火山 8 + MVSep 1 + 千问 2 + 小米 2 + 智谱 4 + OpenRouter 1 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12 + 本地推理 2
+	if len(tools) != 47 { // 火山 8 + MVSep 1 + 千问 2 + 小米 2 + 智谱 4 + OpenRouter 1 + MiniMax 3 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12 + 本地推理 2
 		t.Fatalf("tools = %v", e.Data)
 	}
 	// Registry().List() 基于 map 遍历，顺序不定：按 name 断言而非下标。
