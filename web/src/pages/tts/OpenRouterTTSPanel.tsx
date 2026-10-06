@@ -6,6 +6,7 @@ import type { TaskDetail } from "../../lib/types";
 import { useTaskEvents } from "../../lib/ws";
 import { AudioRow, ProgressBody, type Run } from "./TTSShared";
 import AIWrite from "./AIWrite";
+import VoicePickerField from "../../components/VoicePickerField";
 import {
   Button,
   Card,
@@ -164,17 +165,14 @@ export default function OpenRouterTTSPanel() {
                 </Select>
               )}
             </Field>
-            <Field label="音色" hint="30 个预置英文音色，响应为 mp3">
-              {() => (
-                <Select id="openrouter-voice" value={voice} onChange={(e) => setVoice(e.target.value)}>
-                  {voiceList.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.label}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
+            <VoicePickerField
+              provider="openrouter"
+              value={voice}
+              onChange={setVoice}
+              voices={voiceList}
+              defaultVoiceId="Zephyr"
+              hint="30 个预置英文音色，响应为 mp3"
+            />
 
             <div className="border-t border-line pt-3">
               <Button

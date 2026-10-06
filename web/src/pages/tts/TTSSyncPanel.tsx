@@ -15,7 +15,7 @@ import {
 import { apiBase, fetchJSON } from "../../lib/api";
 import type { Artifact, TaskDetail, TaskStatus, Voice } from "../../lib/types";
 import { useTaskEvents } from "../../lib/ws";
-import { VoicePicker } from "../../components/VoicePicker";
+import VoicePickerField from "../../components/VoicePickerField";
 import AIWrite from "./AIWrite";
 import {
   Button,
@@ -244,11 +244,15 @@ export default function TTSSyncPanel() {
             aside={<span className="micro">volcengine · tts</span>}
           />
           <CardBody className="space-y-4">
-            <VoicePicker
+            <VoicePickerField
+              provider="volcengine"
+              value={voice}
+              onChange={setVoice}
               voices={voiceList}
               loading={voicesQuery.isLoading}
               defaultVoiceId={DEFAULT_VOICE}
-              onEffectiveVoiceChange={setVoice}
+              allowCustomID
+              hint="点击打开音色库：按场景浏览、收藏；复刻音色用自定义 ID"
             />
 
             <Field label="音频格式" aside={format === "mp3" ? "推荐" : undefined}>

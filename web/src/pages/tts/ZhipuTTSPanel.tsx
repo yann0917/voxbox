@@ -4,7 +4,7 @@ import { AlertTriangle, AudioLines, Play, RefreshCw, SlidersHorizontal } from "l
 import { fetchJSON } from "../../lib/api";
 import type { TaskDetail } from "../../lib/types";
 import { useTaskEvents } from "../../lib/ws";
-import ZhipuVoicePicker, { type ZhipuVoice } from "../../components/ZhipuVoicePicker";
+import VoicePickerField from "../../components/VoicePickerField";
 import { AudioRow, ProgressBody, type Run } from "./TTSShared";
 import AIWrite from "./AIWrite";
 import {
@@ -22,6 +22,14 @@ import {
 
 /** 智谱 glm-tts 非流式合成：单请求整段返回 wav；超单次上限由服务端按句自动分段拼 Wav，前端不设上限。 */
 const ZHIPU_SPLIT_CHARS = 1024;
+
+/** 智谱音色（/api/voices?provider=zhipu）：官方 + 复刻，运行时拉取。 */
+interface ZhipuVoice {
+  voice: string;
+  voice_name: string;
+  voice_type?: "OFFICIAL" | "PRIVATE";
+  download_url?: string;
+}
 
 /** 智谱语音合成面板：官方/复刻音色（运行时列表，含试听），语速/音量可选。 */
 export default function ZhipuTTSPanel() {
@@ -158,28 +166,15 @@ export default function ZhipuTTSPanel() {
             aside={<span className="micro">zhipu · tts</span>}
           />
           <CardBody className="space-y-4">
-            <Field
-              label="音色"
-              hint="官方音色与复刻音色（复刻为 PRIVATE 标记）；点击喇叭可试听"
-              aside={
-                <button
-                  type="button"
-                  onClick={() => void voicesQuery.refetch()}
-                  className="text-[11px] text-muted transition-colors duration-150 hover:text-accent"
-                >
-                  刷新
-                </button>
-              }
-            >
-              {() => (
-                <ZhipuVoicePicker
-                  voices={voiceList}
-                  loading={voicesQuery.isLoading}
-                  value={voice}
-                  onChange={setVoice}
-                />
-              )}
-            </Field>
+            <VoicePickerField
+              provider="zhipu"
+              value={voice}
+              onChange={setVoice}
+              voices={voiceList.map((v) => ({ id: v.voice, label: v.voice_name }))}
+              loading={voicesQuery.isLoading}
+              defaultVoiceId="tongtong"
+              hint="点击打开音色库：官方与复刻音色，可试听；配置凭证后含最新复刻"
+            />
 
             <div className="grid grid-cols-2 gap-2">
               <Field label="语速" aside="可选" hint="0.5-2.0，默认 1.0">

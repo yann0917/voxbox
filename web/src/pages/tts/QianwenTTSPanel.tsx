@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, AudioLines, Play, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { fetchJSON } from "../../lib/api";
 import type { TaskDetail } from "../../lib/types";
-import QianwenVoicePicker, { type QianwenVoice } from "../../components/QianwenVoicePicker";
+import VoicePickerField from "../../components/VoicePickerField";
 import { useTaskEvents } from "../../lib/ws";
 import { AudioRow, ProgressBody, type Run } from "./TTSShared";
 import AIWrite from "./AIWrite";
@@ -24,6 +24,16 @@ import {
 /** 合成模型：instruct 版额外支持自然语言风格指令（instructions 仅其生效） */
 type QianwenModel = "qwen3-tts-flash" | "qwen3-tts-instruct-flash";
 const DEFAULT_MODEL: QianwenModel = "qwen3-tts-flash";
+
+/** 千问音色（/api/voices?provider=qianwen）：含官方试听 URL 与模型支持矩阵。 */
+interface QianwenVoice {
+  id: string;
+  desc?: string;
+  gender?: string;
+  languages?: string[];
+  models: string[];
+  preview?: string;
+}
 
 /** 千问非流式语音合成面板：单请求整段返回（无分段/流式），instruct 模型可带风格指令。 */
 export default function QianwenTTSPanel() {
@@ -167,17 +177,19 @@ export default function QianwenTTSPanel() {
               )}
             </Field>
 
-            <Field label="音色" hint="点击喇叭可试听官方样本">
-              {() => (
-                <QianwenVoicePicker
-                  voices={voiceList}
-                  loading={voicesQuery.isLoading}
-                  value={voice}
-                  model={model}
-                  onChange={setVoice}
-                />
-              )}
-            </Field>
+            <VoicePickerField
+              provider="qianwen"
+              value={voice}
+              onChange={setVoice}
+              voices={voiceList}
+              loading={voicesQuery.isLoading}
+              defaultVoiceId="Cherry"
+              annotate={(v) => {
+                const models = (v.raw as { models?: string[] }).models;
+                return models && !models.includes(model) ? "不支持当前模型" : undefined;
+              }}
+              hint="点击打开音色库，可试听官方样本；先选音色再切模型不受限"
+            />
 
             <Field label="语言" aside="可选" hint="主要发音语种，方言音色可留空">
               {({ id, ...rest }) => (

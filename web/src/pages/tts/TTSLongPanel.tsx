@@ -12,7 +12,7 @@ import {
 import { fetchJSON } from "../../lib/api";
 import type { TaskDetail, TaskStatus, Voice } from "../../lib/types";
 import { useTaskEvents } from "../../lib/ws";
-import { VoicePicker } from "../../components/VoicePicker";
+import VoicePickerField from "../../components/VoicePickerField";
 import { ArtifactRow } from "../../components/ArtifactRow";
 import AIWrite from "./AIWrite";
 import {
@@ -226,12 +226,16 @@ export default function TTSLongPanel() {
             aside={<span className="micro">volcengine · tts_long</span>}
           />
           <CardBody className="space-y-4">
-            <VoicePicker
+            <VoicePickerField
+              provider="volcengine"
+              value={voice}
+              onChange={setVoice}
               voices={voiceList}
               loading={voicesQuery.isLoading}
-              generation="2.0"
               defaultVoiceId={DEFAULT_VOICE}
-              onEffectiveVoiceChange={setVoice}
+              allowCustomID
+              voiceFilter={(v) => (v.raw as { generation?: string }).generation === "2.0"}
+              hint="点击打开音色库：本通道仅 2.0 代际音色可用；复刻音色用自定义 ID"
             />
 
             <div className="grid grid-cols-2 gap-2">

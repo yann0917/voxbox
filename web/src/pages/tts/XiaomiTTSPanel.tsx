@@ -6,6 +6,7 @@ import type { TaskDetail } from "../../lib/types";
 import { useTaskEvents } from "../../lib/ws";
 import { AudioRow, ProgressBody, type Run } from "./TTSShared";
 import AIWrite from "./AIWrite";
+import VoicePickerField from "../../components/VoicePickerField";
 import {
   Button,
   Card,
@@ -175,17 +176,14 @@ export default function XiaomiTTSPanel() {
             </Field>
 
             {!isVoiceDesign && (
-              <Field label="音色" hint="9 官方预置音色，支持中英文">
-                {({ id, ...rest }) => (
-                  <Select id={id} value={voice} onChange={(e) => setVoice(e.target.value)} {...rest}>
-                    {PRESET_VOICES.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.id} · {v.desc}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
+              <VoicePickerField
+                provider="xiaomi"
+                value={voice}
+                onChange={setVoice}
+                voices={PRESET_VOICES.map((v) => ({ id: v.id, label: `${v.id} · ${v.desc}` }))}
+                defaultVoiceId="mimo_default"
+                hint="9 官方预置音色，支持中英文"
+              />
             )}
 
             <Field

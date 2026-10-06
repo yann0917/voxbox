@@ -33,6 +33,8 @@ interface PickerVoice {
   group?: string;
   /** 试听 URL（仅千问/智谱带） */
   preview?: string;
+  /** 平台原始条目：面板钩子（代际过滤/模型兼容附注）消费 */
+  raw: unknown;
 }
 
 /** 各平台音色 → 归一化条目的适配（与后端 lookups.go 的音色 JSON 形状一一对应）。 */
@@ -42,7 +44,7 @@ function adaptVoices(provider: string, raw: unknown[]): PickerVoice[] {
       // {id, name, lang?, label}
       return raw.map((v) => {
         const r = v as { id: string; name: string; lang?: string; label: string };
-        return { id: r.id, label: r.label || r.name || r.id, group: r.lang || "其他 / 复刻音色" };
+        return { id: r.id, label: r.label || r.name || r.id, group: r.lang || "其他 / 复刻音色", raw: r };
       });
     case "volcengine":
       // {id, name, gender, scenes[], languages[], ...}
@@ -52,6 +54,7 @@ function adaptVoices(provider: string, raw: unknown[]): PickerVoice[] {
           id: r.id,
           label: [r.name, (r.languages ?? []).join("/")].filter(Boolean).join(" · ") || r.id,
           group: r.scenes?.[0] || "通用场景",
+          raw: r,
         };
       });
     case "qianwen":
@@ -63,6 +66,7 @@ function adaptVoices(provider: string, raw: unknown[]): PickerVoice[] {
           label: [r.desc || r.id, r.gender].filter(Boolean).join(" · "),
           group: r.gender || "音色",
           preview: r.preview,
+          raw: r,
         };
       });
     case "zhipu":
@@ -74,6 +78,7 @@ function adaptVoices(provider: string, raw: unknown[]): PickerVoice[] {
           label: r.voice_name || r.voice,
           group: r.voice_type === "PRIVATE" ? "复刻音色" : "官方音色",
           preview: r.download_url,
+          raw: r,
         };
       });
     case "xiaomi":
@@ -81,7 +86,7 @@ function adaptVoices(provider: string, raw: unknown[]): PickerVoice[] {
       // xiaomi/openrouter 后端直接吐 {value,label} 枚举形态
       return raw.map((v) => {
         const r = v as { value?: string; id?: string; label: string };
-        return { id: r.value ?? r.id ?? "", label: r.label };
+        return { id: r.value ?? r.id ?? "", label: r.label, raw: r };
       });
     default:
       return [];
@@ -97,6 +102,8 @@ export default function VoicePickerModal({
   valueProvider,
   value,
   onPick,
+  voiceFilter,
+  annotate,
 }: {
   open: boolean;
   onClose: () => void;
@@ -105,6 +112,10 @@ export default function VoicePickerModal({
   /** 当前已选音色 ID */
   value: string;
   onPick: (voiceID: string) => void;
+  /** 可选：归一化后的音色过滤（如火山流式/长文本仅 2.0 代际音色可用） */
+  voiceFilter?: (v: PickerVoice) => boolean;
+  /** 可选：行内附注（如千问音色不支持当前模型）；附注不阻断选用 */
+  annotate?: (v: PickerVoice) => string | undefined;
 }) {
   const [tab, setTab] = useState<TabKey>(valueProvider);
   const [query, setQuery] = useState("");
@@ -210,9 +221,9 @@ export default function VoicePickerModal({
   /* 平台页签：按分组归并 + 搜索过滤（客户端过滤，列表量 ≤ 数百） */
   const grouped = useMemo(() => {
     const kw = query.trim().toLowerCase();
-    const filtered = voices.filter(
-      (v) => !kw || v.label.toLowerCase().includes(kw) || v.id.toLowerCase().includes(kw),
-    );
+    const filtered = voices
+      .filter((v) => !voiceFilter || voiceFilter(v))
+      .filter((v) => !kw || v.label.toLowerCase().includes(kw) || v.id.toLowerCase().includes(kw));
     const groups = new Map<string, PickerVoice[]>();
     for (const v of filtered) {
       const g = v.group ?? "";
@@ -405,6 +416,9 @@ export default function VoicePickerModal({
                           <p className="truncate text-sm text-fg">
                             {v.label}
                             {isCurrent && <span className="ml-1.5 text-[11px] text-accent">当前</span>}
+                            {annotate && (
+                              <span className="ml-1.5 text-[11px] text-warn">{annotate(v)}</span>
+                            )}
                           </p>
                           {v.label !== v.id && (
                             <p className="truncate font-mono text-[11px] text-muted">{v.id}</p>

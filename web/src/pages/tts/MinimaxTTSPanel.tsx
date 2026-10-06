@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, AudioLines, ChevronDown, Play, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, AudioLines, Play, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { fetchJSON } from "../../lib/api";
 import type { TaskDetail } from "../../lib/types";
 import { useTaskEvents } from "../../lib/ws";
 import { AudioRow, ProgressBody, type Run } from "./TTSShared";
 import AIWrite from "./AIWrite";
-import VoicePickerModal from "../../components/VoicePickerModal";
+import VoicePickerField from "../../components/VoicePickerField";
 import {
   Button,
   Card,
@@ -95,8 +95,6 @@ export default function MinimaxTTSPanel() {
     retry: 1,
   });
   const voiceList = voicesQuery.data?.voices ?? [];
-  const currentVoiceLabel = voiceList.find((v) => v.id === voice)?.label ?? voice;
-  const [voicePickerOpen, setVoicePickerOpen] = useState(false);
 
   /* WS 事件驱动当前任务进度；终态拉详情拿产物与最终状态 */
   useEffect(() => {
@@ -171,13 +169,6 @@ export default function MinimaxTTSPanel() {
 
   return (
     <>
-      <VoicePickerModal
-        open={voicePickerOpen}
-        onClose={() => setVoicePickerOpen(false)}
-        valueProvider="minimax"
-        value={voice}
-        onPick={setVoice}
-      />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* 左：文本编辑区 */}
         <Card className="min-w-0">
@@ -231,19 +222,14 @@ export default function MinimaxTTSPanel() {
                 </Select>
               )}
             </Field>
-            <Field label="音色" hint="点击打开音色库：按平台浏览、收藏、试听">
-              {() => (
-                <button
-                  type="button"
-                  id="minimax-voice"
-                  onClick={() => setVoicePickerOpen(true)}
-                  className="flex w-full items-center justify-between gap-2 rounded-lg border border-line bg-transparent px-3 py-2 text-left text-sm text-fg outline-none transition-colors hover:border-accent"
-                >
-                  <span className="min-w-0 truncate">{currentVoiceLabel}</span>
-                  <ChevronDown size={14} strokeWidth={1.75} className="shrink-0 text-muted" />
-                </button>
-              )}
-            </Field>
+            <VoicePickerField
+              provider="minimax"
+              value={voice}
+              onChange={setVoice}
+              voices={voiceList}
+              defaultVoiceId="male-qn-qingse"
+              hint="点击打开音色库：327 系统音色（24 语种），配置凭证后含复刻音色"
+            />
             <Field label="音色特效">
               {() => (
                 <Select
