@@ -218,7 +218,9 @@ export default function VoicePickerModal({
     onClose();
   };
 
-  /* 平台页签：按分组归并 + 搜索过滤（客户端过滤，列表量 ≤ 数百） */
+  /* 平台页签：按分组归并 + 搜索过滤（客户端过滤，列表量 ≤ 数百）。
+     分组排序：主语种优先（中文/粤语/英文/日文/韩文），其余按中文序，
+     「其他 / 复刻音色」恒垫底——不依赖上游返回顺序。 */
   const grouped = useMemo(() => {
     const kw = query.trim().toLowerCase();
     const filtered = voices
@@ -231,8 +233,15 @@ export default function VoicePickerModal({
       list.push(v);
       groups.set(g, list);
     }
-    return [...groups.entries()];
-  }, [voices, query]);
+    const preferred = ["中文", "中文 (粤语)", "英文", "日文", "韩文"];
+    return [...groups.entries()].sort(([a], [b]) => {
+      if (a === "其他 / 复刻音色") return 1;
+      if (b === "其他 / 复刻音色") return -1;
+      const ia = preferred.indexOf(a);
+      const ib = preferred.indexOf(b);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b, "zh");
+    });
+  }, [voices, query, voiceFilter]);
 
   /* 收藏页签：客户端过滤当前页 + 平台筛选 */
   const filteredFavs = useMemo(() => {

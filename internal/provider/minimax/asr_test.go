@@ -283,3 +283,34 @@ func TestGetVoiceVoiceOptions(t *testing.T) {
 		t.Errorf("labels = %q %q %q", opts[0].Label, opts[1].Label, opts[2].Label)
 	}
 }
+
+// TestGetVoiceLangInference 运行时音色语种标注：快照 ID 直查、新增音色按官方
+// 命名前缀推断、无命名规律的 UUID 归空（前端落「其他」组）——get_voice 不返回
+// 语种，缺了它 327 个音色会挤进一个不分语言的组。
+func TestGetVoiceLangInference(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"system_voice":[` +
+			`{"voice_id":"male-qn-qingse","voice_name":"青涩青年音色"},` +
+			`{"voice_id":"English_NewVoice_X","voice_name":"New Voice"},` +
+			`{"voice_id":"Cantonese_NewLady","voice_name":"粤语新声"},` +
+			`{"voice_id":"moss_audio_ce44fc67-7ce3-11f0","voice_name":"莫斯声"}],` +
+			`"base_resp":{"status_code":0}}`))
+	}))
+	defer ts.Close()
+
+	voices, err := NewVoiceClient("sk-test", ts.URL).List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	want := map[string]string{
+		"male-qn-qingse":                "中文",      // 静态快照直查
+		"English_NewVoice_X":            "英文",      // 命名前缀推断
+		"Cantonese_NewLady":             "中文 (粤语)", // 命名前缀推断
+		"moss_audio_ce44fc67-7ce3-11f0": "",        // 无规律 UUID 不猜
+	}
+	for _, v := range voices {
+		if want[v.ID] != v.Lang {
+			t.Errorf("音色 %s 语种 = %q, want %q", v.ID, v.Lang, want[v.ID])
+		}
+	}
+}

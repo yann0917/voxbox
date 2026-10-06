@@ -36,6 +36,48 @@ var systemVoices = func() []Voice {
 // DefaultVoice 默认音色（官方文档示例同款，青涩青年音色）。
 const DefaultVoice = "male-qn-qingse"
 
+// langByVoiceID 静态快照的 音色 ID → 语种 映射：运行时接口（get_voice）不返回
+// 语种，系统音色的语言标注以此为准。
+var langByVoiceID = func() map[string]string {
+	m := make(map[string]string, len(systemVoices))
+	for _, v := range systemVoices {
+		m[v.ID] = v.Lang
+	}
+	return m
+}()
+
+// langPrefixes 官方命名约定的语种前缀（system-voice-id 表的命名规律）：
+// 快照之外的新增系统音色按前缀推断语种，推断不出归「其他」。
+var langPrefixes = []struct {
+	prefix string
+	lang   string
+}{
+	{"Chinese (Mandarin)_", "中文"}, {"Cantonese_", "中文 (粤语)"},
+	{"English_", "英文"}, {"Japanese_", "日文"}, {"Korean_", "韩文"},
+	{"Spanish_", "西班牙文"}, {"Portuguese_", "葡萄牙文"}, {"French_", "法文"},
+	{"German_", "德文"}, {"Russian_", "俄文"}, {"Italian_", "意大利文"},
+	{"Indonesian_", "印尼文"}, {"Arabic_", "阿拉伯文"}, {"Turkish_", "土耳其文"},
+	{"Ukrainian_", "乌克兰文"}, {"Vietnamese_", "越南文"}, {"Thai_", "泰文"},
+	{"Polish_", "波兰文"}, {"Romanian_", "罗马尼亚文"},
+	{"Greek_", "希腊文"}, {"greek_", "希腊文"},
+	{"czech_", "捷克文"}, {"finnish_", "芬兰文"}, {"hindi_", "印地文"},
+	{"Dutch_", "荷兰文"},
+}
+
+// inferVoiceLang 音色语种：静态快照优先，缺失按官方命名前缀推断，仍缺返回空
+// （前端归入「其他 / 复刻音色」组，moss_audio_* 类无命名规律的 UUID 音色落这里）。
+func inferVoiceLang(voiceID string) string {
+	if lang, ok := langByVoiceID[voiceID]; ok {
+		return lang
+	}
+	for _, p := range langPrefixes {
+		if strings.HasPrefix(voiceID, p.prefix) {
+			return p.lang
+		}
+	}
+	return ""
+}
+
 // Voices 返回官方系统音色静态表。
 func Voices() []Voice { return systemVoices }
 
@@ -88,7 +130,8 @@ func (c *VoiceClient) List(ctx context.Context) ([]Voice, error) {
 		len(resp.SystemVoice)+len(resp.VoiceCloning)+len(resp.VoiceGeneration))
 	for _, v := range resp.SystemVoice {
 		name := firstNonEmpty(v.VoiceName, firstDesc(v.Description))
-		voices = append(voices, Voice{ID: v.VoiceID, Name: name, Label: voiceLabel(name, v.VoiceID, "")})
+		lang := inferVoiceLang(v.VoiceID)
+		voices = append(voices, Voice{ID: v.VoiceID, Name: name, Lang: lang, Label: voiceLabel(name, v.VoiceID, lang)})
 	}
 	for _, v := range resp.VoiceCloning {
 		name := firstDesc(v.Description)
