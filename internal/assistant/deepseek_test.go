@@ -13,7 +13,8 @@ import (
 )
 
 // 离线校准 /responses 协议与联网工具回路：deepseekBaseURL 指向 httptest 假上游，
-// 事件形态按 2026-10-17 api-docs 文档口径构造；真机冒烟由用户配置 key 后补。
+// 事件形态按 2026-10-17 api-docs 文档口径构造；thinking 模式续轮必须回传 reasoning
+// 输出项（真机冒烟暴露，官方校验直接报错）。真机回归由用户配置 key 后补。
 
 // writeSSE 按 SSE 帧格式写出事件（data: JSON + 空行）。
 func writeSSE(t *testing.T, w http.ResponseWriter, events ...any) {
@@ -28,26 +29,30 @@ func writeSSE(t *testing.T, w http.ResponseWriter, events ...any) {
 }
 
 func TestScanResponsesStreamDeltas(t *testing.T) {
-	// 思考通道增量不回调；正文增量按序回调；completed 终止
+	// 思考通道增量不回调；正文增量按序回调；completed 终止并携带完整 response
 	body := "data: {\"type\":\"response.reasoning_text.delta\",\"delta\":\"思考\"}\n\n" +
 		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"你\"}\n\n" +
 		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"好\"}\n\n" +
-		"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"
+		"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"," +
+		"\"output\":[{\"type\":\"reasoning\",\"id\":\"rs_1\"}]}}\n\n"
 	var got []string
-	err := scanResponsesStream(context.Background(), strings.NewReader(body), func(d string) {
+	resp, err := scanResponsesStream(context.Background(), strings.NewReader(body), func(d string) {
 		got = append(got, d)
-	}, func(responsesOutputItem) {})
+	})
 	if err != nil {
 		t.Fatalf("scanResponsesStream: %v", err)
 	}
 	if strings.Join(got, "") != "你好" {
 		t.Fatalf("deltas = %q, want 你好", got)
 	}
+	if resp.Status != "completed" || len(resp.Output) != 1 {
+		t.Fatalf("resp = %+v, want completed 且携带 output", resp)
+	}
 }
 
 func TestScanResponsesStreamFailedEvent(t *testing.T) {
 	body := "data: {\"type\":\"response.failed\",\"error\":{\"code\":402,\"message\":\"余额不足\"}}\n\n"
-	err := scanResponsesStream(context.Background(), strings.NewReader(body), func(string) {}, func(responsesOutputItem) {})
+	_, err := scanResponsesStream(context.Background(), strings.NewReader(body), func(string) {})
 	if err == nil || !strings.Contains(err.Error(), "余额不足") {
 		t.Fatalf("err = %v, want 含余额不足", err)
 	}
@@ -56,7 +61,7 @@ func TestScanResponsesStreamFailedEvent(t *testing.T) {
 func TestScanResponsesStreamRawJSONError(t *testing.T) {
 	// 流式请求直接回 JSON 错误体、无任何 data 行
 	body := "{\"error\":{\"message\":\"鉴权失败\"}}"
-	err := scanResponsesStream(context.Background(), strings.NewReader(body), func(string) {}, func(responsesOutputItem) {})
+	_, err := scanResponsesStream(context.Background(), strings.NewReader(body), func(string) {})
 	if err == nil || !strings.Contains(err.Error(), "鉴权失败") {
 		t.Fatalf("err = %v, want 含鉴权失败", err)
 	}
@@ -81,8 +86,25 @@ func setDeepseekBaseURL(t *testing.T, url string) {
 	t.Cleanup(func() { deepseekBaseURL = orig })
 }
 
+// fakeReasoningItem 思考项原文（含 reasoning_text 内容块，回传校验用）。
+func fakeReasoningItem() map[string]any {
+	return map[string]any{
+		"type": "reasoning", "id": "rs_1", "status": "completed",
+		"content": []map[string]any{{"type": "reasoning_text", "text": "需要先搜一下"}},
+		"summary": []any{},
+	}
+}
+
+// fakeCallItem function_call 输出项（completed 载荷内的完整形态）。
+func fakeCallItem(callID string) map[string]any {
+	return map[string]any{
+		"type": "function_call", "call_id": callID, "name": "web_search", "status": "completed",
+		"arguments": `{"query":"voxbox 最新版本","count":3}`,
+	}
+}
+
 // TestStreamResponsesToolLoop 工具回路端到端：首轮发起 web_search → 本地执行（校验
-// 鉴权/搜索词）→ 次轮回传 function_call + function_call_output 并产出正文。
+// 鉴权/搜索词）→ 次轮按序回传 reasoning 原文 + function_call + function_call_output。
 func TestStreamResponsesToolLoop(t *testing.T) {
 	cfg := &config.Config{Deepseek: config.DeepseekConfig{APIKey: "sk-test"}}
 	round := 0
@@ -131,34 +153,49 @@ func TestStreamResponsesToolLoop(t *testing.T) {
 				}
 				writeSSE(t, w,
 					map[string]any{"type": "response.reasoning_text.delta", "delta": "思考"},
-					map[string]any{"type": "response.output_item.done", "item": map[string]any{
-						"type": "function_call", "call_id": "fc1", "name": "web_search", "status": "completed",
-						"arguments": `{"query":"voxbox 最新版本","count":3}`,
+					map[string]any{"type": "response.completed", "response": map[string]any{
+						"status": "completed",
+						"output": []any{fakeReasoningItem(), fakeCallItem("fc1")},
 					}},
-					map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed"}},
 				)
 				return
 			}
-			// 次轮：input 应含回传的调用项与工具结果
-			var hasCall, hasOutput bool
-			for _, item := range req.Input {
-				if item["type"] == "function_call" && item["call_id"] == "fc1" {
-					hasCall = true
-				}
-				if item["type"] == "function_call_output" && item["call_id"] == "fc1" &&
-					strings.Contains(fmt.Sprint(item["output"]), "voxbox V4 发布了") {
-					hasOutput = true
+			// 次轮：input 应按序含回传的思考项原文、调用项、工具结果
+			reasoningIdx, callIdx, outIdx := -1, -1, -1
+			for i, item := range req.Input {
+				switch item["type"] {
+				case "reasoning":
+					reasoningIdx = i
+					if fmt.Sprint(item["id"]) != "rs_1" {
+						t.Errorf("reasoning 应原文回传, got %+v", item)
+					}
+				case "function_call":
+					if item["call_id"] == "fc1" {
+						callIdx = i
+					}
+				case "function_call_output":
+					if item["call_id"] == "fc1" &&
+						strings.Contains(fmt.Sprint(item["output"]), "voxbox V4 发布了") {
+						outIdx = i
+					}
 				}
 			}
-			if !hasCall || !hasOutput {
-				t.Errorf("次轮 input 缺回传项: hasCall=%v hasOutput=%v input=%+v", hasCall, hasOutput, req.Input)
+			if reasoningIdx < 0 || callIdx < 0 || outIdx < 0 {
+				t.Fatalf("次轮 input 缺回传项: reasoning=%d call=%d output=%d input=%+v",
+					reasoningIdx, callIdx, outIdx, req.Input)
+			}
+			if !(reasoningIdx < callIdx && callIdx < outIdx) {
+				t.Errorf("回传顺序应 reasoning→function_call→function_call_output: %d %d %d",
+					reasoningIdx, callIdx, outIdx)
 			}
 			if req.ToolChoice != nil {
 				t.Errorf("续轮不应强制 tool_choice")
 			}
 			writeSSE(t, w,
 				map[string]any{"type": "response.output_text.delta", "delta": "答案"},
-				map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed"}},
+				map[string]any{"type": "response.completed", "response": map[string]any{
+					"status": "completed", "output": []any{},
+				}},
 			)
 		default:
 			t.Errorf("unexpected path %s", r.URL.Path)
@@ -208,11 +245,10 @@ func TestStreamResponsesForceTextAfterMaxRounds(t *testing.T) {
 				t.Errorf("第 %d 轮应携带工具", round)
 			}
 			writeSSE(t, w,
-				map[string]any{"type": "response.output_item.done", "item": map[string]any{
-					"type": "function_call", "call_id": fmt.Sprintf("fc%d", round), "name": "web_search", "status": "completed",
-					"arguments": `{"query":"循环"}`,
+				map[string]any{"type": "response.completed", "response": map[string]any{
+					"status": "completed",
+					"output": []any{fakeCallItem(fmt.Sprintf("fc%d", round))},
 				}},
-				map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed"}},
 			)
 			return
 		}
@@ -224,7 +260,9 @@ func TestStreamResponsesForceTextAfterMaxRounds(t *testing.T) {
 		}
 		writeSSE(t, w,
 			map[string]any{"type": "response.output_text.delta", "delta": "收尾"},
-			map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed"}},
+			map[string]any{"type": "response.completed", "response": map[string]any{
+				"status": "completed", "output": []any{},
+			}},
 		)
 	}))
 	defer ts.Close()
@@ -259,7 +297,9 @@ func TestStreamComposeDeepSeekPlain(t *testing.T) {
 		}
 		writeSSE(t, w,
 			map[string]any{"type": "response.output_text.delta", "delta": "好"},
-			map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed"}},
+			map[string]any{"type": "response.completed", "response": map[string]any{
+				"status": "completed", "output": []any{},
+			}},
 		)
 	}))
 	defer ts.Close()
