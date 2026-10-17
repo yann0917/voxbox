@@ -108,13 +108,16 @@ func streamResponses(ctx context.Context, cfg *config.Config, p Provider, model,
 		if reasoning == "" {
 			reasoning = reasoningTextFromOutput(resp.Resp.Output)
 		}
+		var reasoningItem *responsesReasoningItem
 		if reasoning != "" {
-			input = append(input, responsesReasoningItem{
+			reasoningItem = &responsesReasoningItem{
 				Type:    "reasoning",
 				Content: []responsesReasoningText{{Type: "reasoning_text", Text: reasoning}},
-			})
+			}
 		}
-		// function_call 项紧跟工具结果，按 output 原序配对
+		// function_call 项紧跟工具结果，按 output 原序配对。并行调用（一轮多个
+		// function_call）时每个调用前都要配一份思考项——官方按「调用↔思考」配对校验，
+		// 单思考+多调用整单被拒（真机实测，V16 形状通过）。
 		appended := 0
 		for _, raw := range resp.Resp.Output {
 			if len(raw) == 0 {
@@ -131,6 +134,9 @@ func streamResponses(ctx context.Context, cfg *config.Config, p Provider, model,
 				continue
 			}
 			out := executeWebTool(ctx, cfg, item.Name, item.Arguments, lastUserQuestion(messages), onStatus)
+			if reasoningItem != nil {
+				input = append(input, *reasoningItem)
+			}
 			input = append(input,
 				// 回传调用项供 API 配对（官方多轮组装口径），再紧跟工具结果
 				responsesItem{Type: "function_call", CallID: item.CallID, Name: item.Name, Arguments: item.Arguments},

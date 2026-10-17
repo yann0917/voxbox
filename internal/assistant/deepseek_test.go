@@ -174,17 +174,25 @@ func TestStreamResponsesToolLoop(t *testing.T) {
 					map[string]any{"type": "response.reasoning_text.delta", "delta": "先搜一下"},
 					map[string]any{"type": "response.completed", "response": map[string]any{
 						"status": "completed",
-						"output": []any{fakeReasoningItem(), fakeCallItem("fc1")},
+						// 并行双调用(真实机形态:模型一轮发起两次 web_search)
+						"output": []any{fakeReasoningItem(), fakeCallItem("fc1"), fakeCallItem("fc2")},
 					}},
 				)
 				return
 			}
-			// 次轮：input 应按序含清洗后的思考项、调用项、工具结果
-			reasoningIdx, callIdx, outIdx := -1, -1, -1
+			// 次轮：input 应按序含清洗后的思考项+调用项+工具结果,且思考项逐调用配对
+			// (官方按「调用↔思考」配对校验,单思考+多调用整单被拒——真机实测)
+			type marks struct{ reasoning, call, out int }
+			seen := []marks{}
+			cur := marks{reasoning: -1, call: -1, out: -1}
 			for i, item := range req.Input {
 				switch item["type"] {
 				case "reasoning":
-					reasoningIdx = i
+					if cur.reasoning >= 0 || cur.call >= 0 || cur.out >= 0 {
+						seen = append(seen, cur)
+						cur = marks{reasoning: -1, call: -1, out: -1}
+					}
+					cur.reasoning = i
 					// 清洗校验：只允许 type+content 两个键，content 为明文思维链
 					if _, has := item["id"]; has {
 						t.Errorf("思考项不应携带 id: %+v", item)
@@ -201,23 +209,22 @@ func TestStreamResponsesToolLoop(t *testing.T) {
 						t.Errorf("思考明文 = %+v, want 需要先搜一下", block)
 					}
 				case "function_call":
-					if item["call_id"] == "fc1" {
-						callIdx = i
-					}
+					cur.call = i
 				case "function_call_output":
-					if item["call_id"] == "fc1" &&
-						strings.Contains(fmt.Sprint(item["output"]), "voxbox V4 发布了") {
-						outIdx = i
+					cur.out = i
+					if !strings.Contains(fmt.Sprint(item["output"]), "voxbox V4 发布了") {
+						t.Errorf("工具结果应含搜索摘要: %+v", item)
 					}
 				}
 			}
-			if reasoningIdx < 0 || callIdx < 0 || outIdx < 0 {
-				t.Fatalf("次轮 input 缺回传项: reasoning=%d call=%d output=%d input=%+v",
-					reasoningIdx, callIdx, outIdx, req.Input)
+			seen = append(seen, cur)
+			if len(seen) != 2 {
+				t.Fatalf("应有两个「思考+调用+结果」配对组, got %d: %+v", len(seen), req.Input)
 			}
-			if !(reasoningIdx < callIdx && callIdx < outIdx) {
-				t.Errorf("回传顺序应 reasoning→function_call→function_call_output: %d %d %d",
-					reasoningIdx, callIdx, outIdx)
+			for gi, g := range seen {
+				if !(g.reasoning >= 0 && g.call > g.reasoning && g.out > g.call) {
+					t.Errorf("第 %d 组顺序应 reasoning→function_call→function_call_output: %+v", gi+1, g)
+				}
 			}
 			if req.ToolChoice != nil {
 				t.Errorf("续轮不应强制 tool_choice")
@@ -248,8 +255,13 @@ func TestStreamResponsesToolLoop(t *testing.T) {
 	if strings.Join(deltas, "") != "答案" {
 		t.Fatalf("deltas = %q, want 答案", deltas)
 	}
-	if len(statuses) != 1 || !strings.Contains(statuses[0], "正在联网搜索") {
-		t.Fatalf("statuses = %q, want 含正在联网搜索", statuses)
+	if len(statuses) != 2 {
+		t.Fatalf("statuses = %q, want 双调用各一条正在联网搜索", statuses)
+	}
+	for _, s := range statuses {
+		if !strings.Contains(s, "正在联网搜索") {
+			t.Fatalf("statuses = %q, want 含正在联网搜索", statuses)
+		}
 	}
 	if round != 2 {
 		t.Fatalf("responses 轮数 = %d, want 2", round)
