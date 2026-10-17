@@ -145,8 +145,8 @@ func TestModelAllowed(t *testing.T) {
 func TestCatalogWith(t *testing.T) {
 	cfg := &config.Config{}
 	cat := CatalogWith(cfg)
-	if len(cat) != 4 {
-		t.Fatalf("平台数 = %d, want 4", len(cat))
+	if len(cat) != 5 {
+		t.Fatalf("平台数 = %d, want 5", len(cat))
 	}
 	for _, p := range cat {
 		if p.Enabled {
@@ -156,8 +156,11 @@ func TestCatalogWith(t *testing.T) {
 			t.Fatalf("%s 模型数 = %d, want 2", p.Provider, len(p.Models))
 		}
 	}
+	if !cat[4].WebTools || cat[4].Provider != ProviderDeepseek {
+		t.Fatalf("DeepSeek 应为目录末位且挂联网工具: %+v", cat[4])
+	}
 	cfg.Zhipu.APIKey = "k"
-	if cat := CatalogWith(cfg); cat[0].Enabled != true || cat[1].Enabled || cat[2].Enabled || cat[3].Enabled {
+	if cat := CatalogWith(cfg); cat[0].Enabled != true || cat[1].Enabled || cat[2].Enabled || cat[3].Enabled || cat[4].Enabled {
 		t.Fatalf("仅配置智谱时 Enabled 判定错误: %+v", cat)
 	}
 }

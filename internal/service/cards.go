@@ -9,6 +9,7 @@ import (
 	"github.com/yann0917/voxbox/internal/config"
 	"github.com/yann0917/voxbox/internal/provider"
 	"github.com/yann0917/voxbox/internal/provider/audiotool"
+	"github.com/yann0917/voxbox/internal/provider/deepseek"
 	"github.com/yann0917/voxbox/internal/provider/gsgc"
 	"github.com/yann0917/voxbox/internal/provider/local"
 	"github.com/yann0917/voxbox/internal/provider/minimax"
@@ -31,6 +32,7 @@ func providerCards() []provider.ProviderInfo {
 		zhipu.ProviderCard(),
 		openrouter.ProviderCard(),
 		minimax.ProviderCard(),
+		deepseek.ProviderCard(),
 		audiotool.ProviderCard(),
 		gsgc.ProviderCard(),
 		local.ProviderCard(),

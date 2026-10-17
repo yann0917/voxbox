@@ -22,8 +22,8 @@ func TestAssistantModels(t *testing.T) {
 		t.Fatalf("code = %d, msg = %s", e.Code, e.Message)
 	}
 	plats, ok := e.Data.([]any)
-	if !ok || len(plats) != 4 {
-		t.Fatalf("platforms = %#v, want 4 项", e.Data)
+	if !ok || len(plats) != 5 {
+		t.Fatalf("platforms = %#v, want 5 项", e.Data)
 	}
 }
 
@@ -54,6 +54,15 @@ func TestAssistantChatNoCredentialMapsCode4(t *testing.T) {
 	}
 	if !strings.Contains(e.Message, "千问 API Key 未配置") {
 		t.Fatalf("message = %s, want 含哨兵文案", e.Message)
+	}
+	// DeepSeek 平台同口径：未配置映射业务码 4 且附自家哨兵文案
+	e = postEnvelope(t, ac, ts.URL+"/api/assistant/chat",
+		`{"provider":"deepseek","model":"deepseek-flash","messages":[{"role":"user","content":"hi"}]}`)
+	if e.Code != CodeBadCredential {
+		t.Fatalf("deepseek code = %d, want %d", e.Code, CodeBadCredential)
+	}
+	if !strings.Contains(e.Message, "DeepSeek API Key 未配置") {
+		t.Fatalf("deepseek message = %s, want 含哨兵文案", e.Message)
 	}
 }
 
@@ -89,17 +98,18 @@ func postEnvelope(t *testing.T, ac *http.Client, url, body string) envelope {
 }
 
 // setAssistantChatStream 替换 chat 流式底层缝并在测试结束还原（refine 的
-// setRefineStream 同款）：fn 收到定形 system 与整备后的 messages，calls 返回
-// 调用次数供断言（预检拦截时不应被调用）。
-func setAssistantChatStream(t *testing.T, fn func(system string, messages []assistant.Message, onDelta func(string)) error) *int {
+// setRefineStream 同款）：fn 收到定形 system 与整备后的 messages，onStatus 为联网
+// 工具进度回调（DeepSeek 平台生产路径使用），calls 返回调用次数供断言（预检拦截时
+// 不应被调用）。
+func setAssistantChatStream(t *testing.T, fn func(system string, messages []assistant.Message, onDelta func(string), onStatus func(string)) error) *int {
 	t.Helper()
 	orig := assistantChatStream
 	t.Cleanup(func() { assistantChatStream = orig })
 	calls := 0
 	assistantChatStream = func(_ context.Context, _ *config.Config, _ assistant.Provider, _, system string,
-		messages []assistant.Message, onDelta func(string)) error {
+		messages []assistant.Message, onDelta func(string), onStatus func(string)) error {
 		calls++
-		return fn(system, messages, onDelta)
+		return fn(system, messages, onDelta, onStatus)
 	}
 	return &calls
 }
@@ -129,7 +139,7 @@ func TestAssistantChatContextInjection(t *testing.T) {
 	const ctxText = "以下是本次录音的转写全文：大家好，我们讨论一下方案。"
 	var s0, got string
 	var noCtxMsgs, ctxMsgs []assistant.Message
-	calls := setAssistantChatStream(t, func(system string, messages []assistant.Message, onDelta func(string)) error {
+	calls := setAssistantChatStream(t, func(system string, messages []assistant.Message, onDelta func(string), _ func(string)) error {
 		if s0 == "" {
 			s0, noCtxMsgs = system, messages
 		} else {
@@ -193,7 +203,7 @@ func TestAssistantChatContextCap(t *testing.T) {
 		`{"fields":{"api_key":"sk-chat-test"}}`); e.Code != CodeOK {
 		t.Fatalf("配置假凭证 code = %d (%s)", e.Code, e.Message)
 	}
-	calls := setAssistantChatStream(t, func(_ string, _ []assistant.Message, onDelta func(string)) error {
+	calls := setAssistantChatStream(t, func(_ string, _ []assistant.Message, onDelta func(string), _ func(string)) error {
 		onDelta("好的")
 		return nil
 	})
@@ -248,9 +258,37 @@ func TestAssistantChatContextPrecheckUnchanged(t *testing.T) {
 		{"白名单外模型", `{"provider":"qianwen","model":"gpt-4o","context":"x","messages":[{"role":"user","content":"hi"}]}`, CodeBadRequest},
 		{"最后一条非 user", `{"provider":"qianwen","model":"qwen3.8-flash","context":"x","messages":[{"role":"assistant","content":"hi"}]}`, CodeBadRequest},
 		{"凭证未配置", `{"provider":"qianwen","model":"qwen3.8-flash","context":"x","messages":[{"role":"user","content":"hi"}]}`, CodeBadCredential},
+		{"DeepSeek 凭证未配置", `{"provider":"deepseek","model":"deepseek-flash","context":"x","messages":[{"role":"user","content":"hi"}]}`, CodeBadCredential},
 	} {
 		if e := postEnvelope(t, ac, ts.URL+"/api/assistant/chat", tc.body); e.Code != tc.want {
 			t.Errorf("%s: code = %d (%s), want %d", tc.name, e.Code, e.Message, tc.want)
 		}
+	}
+}
+
+// TestAssistantChatStatusEvent 联网工具进度事件端到端：底层缝的 onStatus 以独立
+// {"status":...} 事件透传给 SSE（协议新增事件类型，delta/done 既有形态不变）。
+func TestAssistantChatStatusEvent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ts, _, ac := newTestServer(t)
+	if _, e := doJSON(t, ac, http.MethodPut, ts.URL+"/api/settings/providers/qianwen",
+		`{"fields":{"api_key":"sk-chat-test"}}`); e.Code != CodeOK {
+		t.Fatalf("配置假凭证 code = %d (%s)", e.Code, e.Message)
+	}
+	setAssistantChatStream(t, func(_ string, _ []assistant.Message, onDelta func(string), onStatus func(string)) error {
+		onStatus("正在联网搜索：voxbox")
+		onDelta("好的")
+		return nil
+	})
+	body, ct := postChatSSE(t, ac, ts.URL,
+		`{"provider":"qianwen","model":"qwen3.8-flash","messages":[{"role":"user","content":"hi"}]}`)
+	if !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("Content-Type = %s, want text/event-stream", ct)
+	}
+	if !strings.Contains(body, `"status":"正在联网搜索：voxbox"`) {
+		t.Fatalf("SSE 应透传 status 事件: %s", body)
+	}
+	if !strings.Contains(body, `"delta":"好的"`) || !strings.HasSuffix(strings.TrimSpace(body), `"done":true}`) {
+		t.Fatalf("delta→done 协议应保持: %s", body)
 	}
 }

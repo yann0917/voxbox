@@ -27,10 +27,11 @@ func (s *Server) assistantModels(c *gin.Context) {
 	ok(c, assistant.CatalogWith(s.svc.Config()))
 }
 
-// assistantChatStream 流式底层测试缝：生产即 assistant.StreamCompose（system 参数化
-// 导出入口，system 由 assistant.ChatSystem 组装——不带 context 时即默认助手提示）；
-// server 包测试替换为假实现离线断言下发内容（refineStream 同款）。
-var assistantChatStream = assistant.StreamCompose
+// assistantChatStream 流式底层测试缝：生产即 assistant.StreamChatWeb（system 参数化
+// 导出入口，system 由 assistant.ChatSystem 组装——不带 context 时即默认助手提示；
+// DeepSeek 平台附带联网函数工具回路，onStatus 通报工具进度）。server 包测试替换为
+// 假实现离线断言下发内容（refineStream 同款）。
+var assistantChatStream = assistant.StreamChatWeb
 
 type assistantChatReq struct {
 	Provider string              `json:"provider"`
@@ -92,6 +93,9 @@ func (s *Server) assistantChat(c *gin.Context) {
 	err := assistantChatStream(c.Request.Context(), cfg, p, req.Model, assistant.ChatSystem(req.Context), msgs, func(delta string) {
 		// 客户端断开后写事件失败不中断循环：请求上下文取消会让上游读取尽快退出
 		_ = writeEvent(gin.H{"delta": delta})
+	}, func(status string) {
+		// 联网工具执行进度（如「正在联网搜索：…」）：独立事件类型，既有客户端忽略未知字段不受影响
+		_ = writeEvent(gin.H{"status": status})
 	})
 	if err != nil {
 		// 客户端主动中止生成属正常交互：不算错误、不再发事件

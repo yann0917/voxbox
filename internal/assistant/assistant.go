@@ -1,5 +1,6 @@
 // Package assistant 悬浮 AI 助手的大模型对话客户端：智谱/千问/小米/MiniMax 四家共用
-// OpenAI 兼容 chat/completions 流式协议，凭证直接复用各语音平台的 API Key
+// OpenAI 兼容 chat/completions 流式协议，DeepSeek 走 OpenAI Responses 风格 /responses
+// 流式协议（含函数工具联网回路，见 deepseek.go）。凭证直接复用各平台的 API Key
 // （config.yaml 同名段），不新增设置卡。模型目录是后端单一事实来源：前端渲染与
 // chat 的 model 白名单都以此为准。
 package assistant
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/yann0917/voxbox/internal/config"
+	"github.com/yann0917/voxbox/internal/provider/deepseek"
 	"github.com/yann0917/voxbox/internal/provider/minimax"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
 	"github.com/yann0917/voxbox/internal/provider/xiaomi"
@@ -26,10 +28,11 @@ import (
 type Provider string
 
 const (
-	ProviderZhipu   Provider = "zhipu"
-	ProviderQianwen Provider = "qianwen"
-	ProviderXiaomi  Provider = "xiaomi"
-	ProviderMinimax Provider = "minimax"
+	ProviderZhipu    Provider = "zhipu"
+	ProviderQianwen  Provider = "qianwen"
+	ProviderXiaomi   Provider = "xiaomi"
+	ProviderMinimax  Provider = "minimax"
+	ProviderDeepseek Provider = "deepseek"
 )
 
 // Model 平台下的可选模型。
@@ -39,11 +42,13 @@ type Model struct {
 }
 
 // Platform 模型目录的平台分组；Enabled 随当前凭证状态标注，前端据此禁用未配置平台的模型组。
+// WebTools 平台是否支持服务端函数工具联网回路（内部路由标志，不出 API）。
 type Platform struct {
 	Provider Provider `json:"provider"`
 	Label    string   `json:"label"`
 	Enabled  bool     `json:"enabled"`
 	Models   []Model  `json:"models"`
+	WebTools bool     `json:"-"`
 }
 
 // catalog 模型清单（2026-09-26 真机 /models 列表校准）：每平台两款，快档在前作默认。
@@ -65,6 +70,12 @@ var catalog = []Platform{
 	{Provider: ProviderMinimax, Label: "MiniMax", Models: []Model{
 		{ID: "MiniMax-M2.7-highspeed", Label: "MiniMax-M2.7 Highspeed"},
 		{ID: "MiniMax-M3", Label: "MiniMax-M3（深度思考）"},
+	}},
+	// DeepSeek（2026-10-17 按 api-docs Responses API / list-models 校准）：flash 为快档
+	// 作默认（思考强度压到 low 快答）；v4-pro 为旗舰深度思考，且两者均可挂联网函数工具。
+	{Provider: ProviderDeepseek, Label: "DeepSeek", WebTools: true, Models: []Model{
+		{ID: "deepseek-flash", Label: "DeepSeek Flash"},
+		{ID: "deepseek-v4-pro", Label: "DeepSeek V4 Pro（深度思考）"},
 	}},
 }
 
@@ -109,6 +120,8 @@ func apiKeyOf(cfg *config.Config, p Provider) string {
 		return cfg.Xiaomi.APIKey
 	case ProviderMinimax:
 		return cfg.Minimax.APIKey
+	case ProviderDeepseek:
+		return cfg.Deepseek.APIKey
 	}
 	return ""
 }
@@ -125,6 +138,8 @@ func errNoCredOf(p Provider) error {
 		return fmt.Errorf("%w：%s", xiaomi.ErrNoCred, guide)
 	case ProviderMinimax:
 		return fmt.Errorf("%w：%s", minimax.ErrNoCred, guide)
+	case ProviderDeepseek:
+		return fmt.Errorf("%w：%s", deepseek.ErrNoCred, guide)
 	}
 	return fmt.Errorf("平台 %s 不支持大模型对话", p)
 }
@@ -182,6 +197,7 @@ func splitModelRef(v string) (Provider, string, bool) {
 
 // endpoint 各平台 OpenAI 兼容 chat/completions 入口：智谱/小米与语音调用同域同鉴权；
 // 千问走 DashScope 兼容模式（maas.qianwenaiapi.com/compatible-mode，2026-09-26 真机校准）。
+// DeepSeek 不走此入口（/responses 协议，见 streamResponses）。
 func endpoint(p Provider) string {
 	switch p {
 	case ProviderZhipu:
@@ -192,6 +208,8 @@ func endpoint(p Provider) string {
 		return xiaomi.BaseURL + "/v1/chat/completions"
 	case ProviderMinimax:
 		return minimax.BaseURL + "/v1/chat/completions"
+	case ProviderDeepseek:
+		return deepseek.BaseURL + "/responses"
 	}
 	return ""
 }
@@ -264,13 +282,27 @@ func StreamCompose(ctx context.Context, cfg *config.Config, p Provider, model, s
 	return streamChat(ctx, cfg, p, model, system, messages, onDelta)
 }
 
+// StreamChatWeb 助手对话入口（联网增强）：DeepSeek 走 /responses 函数工具回路
+// （web_search/web_fetch 联网检索，onStatus 回报工具进度供前端展示），其余平台
+// 行为与 StreamCompose 完全一致（未真机验证的函数调用参数不发送——既定纪律）。
+func StreamChatWeb(ctx context.Context, cfg *config.Config, p Provider, model, system string, messages []Message, onDelta func(string), onStatus func(string)) error {
+	if p == ProviderDeepseek {
+		return streamResponsesWeb(ctx, cfg, p, model, system, messages, onDelta, onStatus)
+	}
+	return streamChat(ctx, cfg, p, model, system, messages, onDelta)
+}
+
 // streamChat 流式调用共用实现：凭证与模型白名单校验后直连平台 SSE 端点。
+// DeepSeek 分流到 /responses 协议（OpenAI Responses 风格）。
 func streamChat(ctx context.Context, cfg *config.Config, p Provider, model, system string, messages []Message, onDelta func(string)) error {
 	if err := CheckCredential(cfg, p); err != nil {
 		return err
 	}
 	if !ModelAllowed(p, model) {
 		return fmt.Errorf("平台 %s 不支持模型 %s", Label(p), model)
+	}
+	if p == ProviderDeepseek {
+		return streamResponses(ctx, cfg, p, model, system, messages, onDelta, false, nil)
 	}
 	raw, err := json.Marshal(buildChatRequest(p, model, system, messages))
 	if err != nil {

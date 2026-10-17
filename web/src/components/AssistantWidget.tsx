@@ -16,6 +16,7 @@ export default function AssistantWidget() {
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [toolStatus, setToolStatus] = useState(""); // 联网工具进度（如「正在联网搜索：…」，服务端 status 事件）
   const [picked, setPicked] = useState(""); // 用户显式选择（"provider:modelId"）；空 = 回落默认
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -84,6 +85,7 @@ export default function AssistantWidget() {
     setMsgs([...outgoing, { role: "assistant", content: "" }]);
     setInput("");
     setStreaming(true);
+    setToolStatus("");
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     const patchLast = (content: string) =>
@@ -129,8 +131,10 @@ export default function AssistantWidget() {
             delta?: string;
             done?: boolean;
             error?: { message: string };
+            status?: string;
           };
           if (payload.error) throw new Error(payload.error.message);
+          if (payload.status) setToolStatus(payload.status);
           if (payload.delta) {
             acc += payload.delta;
             patchLast(acc);
@@ -153,6 +157,7 @@ export default function AssistantWidget() {
       }
     } finally {
       setStreaming(false);
+      setToolStatus("");
       abortRef.current = null;
     }
   }
@@ -241,7 +246,7 @@ export default function AssistantWidget() {
         )}
         {streaming && msgs[msgs.length - 1]?.content === "" && (
           <div className="self-start rounded-[var(--radius-md)] bg-raise px-3 py-2">
-            <WaveLoader label="生成中" />
+            <WaveLoader label={toolStatus || "生成中"} />
           </div>
         )}
       </div>
