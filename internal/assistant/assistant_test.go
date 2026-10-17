@@ -18,7 +18,7 @@ func TestScanStreamDeltas(t *testing.T) {
 		"data: {\"choices\":[],\"usage\":{\"total_tokens\":9}}\n\n" +
 		"data: [DONE]\n\n"
 	var got []string
-	if err := scanStream(context.Background(), ProviderQianwen, strings.NewReader(body), func(d string) {
+	if _, _, err := scanStream(context.Background(), ProviderQianwen, strings.NewReader(body), func(d string) {
 		got = append(got, d)
 	}); err != nil {
 		t.Fatalf("scanStream: %v", err)
@@ -31,7 +31,7 @@ func TestScanStreamDeltas(t *testing.T) {
 func TestScanStreamInlineError(t *testing.T) {
 	// 个别平台在流内以 data 行下发错误体
 	body := "data: {\"error\":{\"code\":\"1113\",\"message\":\"余额不足\"}}\n\n"
-	err := scanStream(context.Background(), ProviderZhipu, strings.NewReader(body), func(string) {})
+	_, _, err := scanStream(context.Background(), ProviderZhipu, strings.NewReader(body), func(string) {})
 	if err == nil || !strings.Contains(err.Error(), "智谱") || !strings.Contains(err.Error(), "余额不足") {
 		t.Fatalf("err = %v, want 智谱 API 错误: 余额不足", err)
 	}
@@ -40,7 +40,7 @@ func TestScanStreamInlineError(t *testing.T) {
 func TestScanStreamRawJSONError(t *testing.T) {
 	// 流式请求直接回 JSON 错误体、无任何 data 行（智谱余额不足的真机形态）
 	body := "{\"error\":{\"code\":\"1113\",\"message\":\"余额不足或无可用资源包,请充值。\"}}"
-	err := scanStream(context.Background(), ProviderZhipu, strings.NewReader(body), func(string) {})
+	_, _, err := scanStream(context.Background(), ProviderZhipu, strings.NewReader(body), func(string) {})
 	if err == nil || !strings.Contains(err.Error(), "余额不足") {
 		t.Fatalf("err = %v, want 余额不足", err)
 	}
@@ -50,7 +50,7 @@ func TestScanStreamDoneWithoutTerminator(t *testing.T) {
 	// 上游未发 [DONE] 直接断流：正常收尾不算错误
 	body := "data: {\"choices\":[{\"delta\":{\"content\":\"好\"}}]}\n\n"
 	var got []string
-	if err := scanStream(context.Background(), ProviderXiaomi, strings.NewReader(body), func(d string) {
+	if _, _, err := scanStream(context.Background(), ProviderXiaomi, strings.NewReader(body), func(d string) {
 		got = append(got, d)
 	}); err != nil {
 		t.Fatalf("scanStream: %v", err)

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -52,7 +53,9 @@ type Platform struct {
 }
 
 // catalog 模型清单（各平台按真机 /models 列表校准）：每平台两款，快档在前作默认；
-// DeepSeek 居首（用户指定，模型下拉与回落默认均按此序）。
+// DeepSeek 居首（用户指定，模型下拉与回落默认均按此序）。WebTools 仅标记「该平台
+// 函数调用已真机验证」——联网回路的搜索后端还要求 DeepSeek key 在位（StreamChatWeb
+// 门控），未验证平台置位前不发 tools（未真机验证的参数不发送——既定纪律）。
 var catalog = []Platform{
 	// DeepSeek（2026-10-17 按 api-docs Responses API / list-models 校准）：flash 为快档
 	// 作默认（思考强度压到 low 快答）；v4-pro 为旗舰深度思考，且两者均可挂联网函数工具。
@@ -64,7 +67,8 @@ var catalog = []Platform{
 		{ID: "glm-5.3-flash", Label: "GLM-5.3 Flash"},
 		{ID: "glm-5.3", Label: "GLM-5.3"},
 	}},
-	{Provider: ProviderQianwen, Label: "千问", Models: []Model{
+	// 千问（2026-10-17 真机验证 compatible-mode 标准 tool_calls，流式增量带 index/id）
+	{Provider: ProviderQianwen, Label: "千问", WebTools: true, Models: []Model{
 		{ID: "qwen3.8-flash", Label: "Qwen3.8 Flash"},
 		{ID: "qwen3.8-max", Label: "Qwen3.8 Max"},
 	}},
@@ -74,7 +78,8 @@ var catalog = []Platform{
 	}},
 	// MiniMax（2026-10-05 按 api-reference/text-chat-openai 校准）：highspeed 为优先准入
 	// 快档作默认；M3 为旗舰深度思考（输入输出价与 M2.7 相同，永久五折）。
-	{Provider: ProviderMinimax, Label: "MiniMax", Models: []Model{
+	// 2026-10-17 真机验证标准 tool_calls（流式增量带 index/id）。
+	{Provider: ProviderMinimax, Label: "MiniMax", WebTools: true, Models: []Model{
 		{ID: "MiniMax-M2.7-highspeed", Label: "MiniMax-M2.7 Highspeed"},
 		{ID: "MiniMax-M3", Label: "MiniMax-M3（深度思考）"},
 	}},
@@ -251,20 +256,53 @@ type chatRequest struct {
 	// 不显式开启时思考可能以 <think> 标签内联在 content 里，助手会把思考过程当正文渲染。
 	// 仅 MiniMax 置位。
 	ReasoningSplit *bool `json:"reasoning_split,omitempty"`
+	// Tools 联网函数工具（chat/completions 标准：function 声明嵌套在 function 键下，
+	// 异于 DeepSeek /responses 的平铺格式）。仅联网回路路径携带，纯对话不带。
+	Tools []chatTool `json:"tools,omitempty"`
 }
 
 type chatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+	// ToolCalls/ToolCallID 仅工具回路的 wire 消息使用：assistant 带发起的调用，
+	// role:"tool" 消息带对应 tool_call_id 回传结果。
+	ToolCalls  []chatToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string         `json:"tool_call_id,omitempty"`
+}
+
+// chatTool chat/completions 标准函数工具声明。
+type chatTool struct {
+	Type     string       `json:"type"` // "function"
+	Function chatToolSpec `json:"function"`
+}
+
+type chatToolSpec struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters"`
+}
+
+// chatToolCall 流式增量积累出的完整函数调用（OpenAI 标准分片：id/name 首片携带，
+// arguments 按 index 分片拼接）。
+type chatToolCall struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }
 
 // streamChunk OpenAI 兼容流式分片；Err 承接个别平台在流内下发的错误体。
 type streamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content          string `json:"content"`
-			ReasoningContent string `json:"reasoning_content"`
+			Content          string         `json:"content"`
+			ReasoningContent string         `json:"reasoning_content"`
+			ToolCalls        []chatToolCall `json:"tool_calls"`
 		} `json:"delta"`
+		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 	Err *apiErrorBody `json:"error"`
 }
@@ -283,14 +321,93 @@ func StreamCompose(ctx context.Context, cfg *config.Config, p Provider, model, s
 	return streamChat(ctx, cfg, p, model, system, messages, onDelta)
 }
 
-// StreamChatWeb 助手对话入口（联网增强）：DeepSeek 走 /responses 函数工具回路
-// （web_search/web_fetch 联网检索，onStatus 回报工具进度供前端展示），其余平台
-// 行为与 StreamCompose 完全一致（未真机验证的函数调用参数不发送——既定纪律）。
+// StreamChatWeb 助手对话入口（联网增强）：DeepSeek 走 /responses 函数工具回路；其余
+// 平台在「目录声明已验证支持函数调用 + DeepSeek key 在位（搜索后端）」时走共享的
+// chat/completions 工具回路，否则行为与 StreamCompose 完全一致（未真机验证的函数
+// 调用参数不发送——既定纪律）。
 func StreamChatWeb(ctx context.Context, cfg *config.Config, p Provider, model, system string, messages []Message, onDelta func(string), onStatus func(string)) error {
 	if p == ProviderDeepseek {
 		return streamResponsesWeb(ctx, cfg, p, model, system, messages, onDelta, onStatus)
 	}
+	if platformWebTools(p) && cfg.Deepseek.APIKey != "" {
+		return streamChatWebTools(ctx, cfg, p, model, system, messages, onDelta, onStatus)
+	}
 	return streamChat(ctx, cfg, p, model, system, messages, onDelta)
+}
+
+// platformWebTools 平台是否通过真机函数调用验证（目录 WebTools 旗标）。
+func platformWebTools(p Provider) bool {
+	for _, c := range catalog {
+		if c.Provider == p {
+			return c.WebTools
+		}
+	}
+	return false
+}
+
+// streamChatWebTools chat/completions 工具回路（千问/MiniMax 等标准函数调用平台）：
+// 循环「请求（携带 tools）→ 流内积累 tool_calls → 本地执行 web_search/web_fetch →
+// assistant(tool_calls)+tool 结果消息回传续流」，无调用即结束。轮数上限与思考通道
+// 处理与 DeepSeek 回路同口径；搜索/抓取后端复用 DeepSeek 工具 API。
+func streamChatWebTools(ctx context.Context, cfg *config.Config, p Provider, model, system string, messages []Message, onDelta func(string), onStatus func(string)) error {
+	if err := CheckCredential(cfg, p); err != nil {
+		return err
+	}
+	if !ModelAllowed(p, model) {
+		return fmt.Errorf("平台 %s 不支持模型 %s", Label(p), model)
+	}
+	wireMsgs := make([]chatMessage, 0, len(messages)+2+4*maxWebRounds)
+	wireMsgs = append(wireMsgs, chatMessage{Role: "system", Content: system + webSystemNote})
+	for _, m := range messages {
+		wireMsgs = append(wireMsgs, chatMessage{Role: m.Role, Content: m.Content})
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	for round := 0; ; round++ {
+		roundText, calls, err := streamChatRound(ctx, cfg, p, model, wireMsgs, round < maxWebRounds, onDelta)
+		if err != nil {
+			return err
+		}
+		if len(calls) == 0 {
+			return nil
+		}
+		// 回放 assistant(tool_calls) + 逐调用 tool 结果；轮数用尽后请求不再携带工具，
+		// 模型据工具结果收尾作答
+		wireMsgs = append(wireMsgs, chatMessage{Role: "assistant", Content: roundText, ToolCalls: calls})
+		for _, c := range calls {
+			out := executeWebTool(ctx, cfg, c.Function.Name, c.Function.Arguments, lastUserQuestion(messages), onStatus)
+			wireMsgs = append(wireMsgs, chatMessage{Role: "tool", ToolCallID: c.ID, Content: out})
+		}
+	}
+}
+
+// streamChatRound 工具回路单轮流式：withTools 决定是否携带函数工具声明。
+func streamChatRound(ctx context.Context, cfg *config.Config, p Provider, model string, wireMsgs []chatMessage, withTools bool, onDelta func(string)) (string, []chatToolCall, error) {
+	req := buildChatRequest(p, model, "", nil)
+	req.Messages = wireMsgs
+	if withTools {
+		req.Tools = chatWebTools
+	}
+	raw, err := json.Marshal(req)
+	if err != nil {
+		return "", nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint(p), bytes.NewReader(raw))
+	if err != nil {
+		return "", nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+apiKeyOf(cfg, p))
+	resp, err := apiClient.Do(httpReq)
+	if err != nil {
+		return "", nil, fmt.Errorf("请求%s平台失败: %w", Label(p), err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		return "", nil, decodeProviderError(p, body, resp.StatusCode)
+	}
+	return scanStream(ctx, p, resp.Body, onDelta)
 }
 
 // streamChat 流式调用共用实现：凭证与模型白名单校验后直连平台 SSE 端点。
@@ -326,15 +443,20 @@ func streamChat(ctx context.Context, cfg *config.Config, p Provider, model, syst
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		return decodeProviderError(p, body, resp.StatusCode)
 	}
-	return scanStream(ctx, p, resp.Body, onDelta)
+	_, _, err = scanStream(ctx, p, resp.Body, onDelta)
+	return err
 }
 
-// scanStream 逐行解析 SSE：正常 data 行转增量回调，[DONE] 终止。个别平台对流式请求
+// scanStream 逐行解析 SSE：正常 data 行转增量回调，[DONE] 终止；tool_calls 增量按
+// index 积累（id/name 首片携带、arguments 分片拼接，2026-10-17 千问/MiniMax 真机同形）。
+// 返回本轮正文全文（工具回路回放 assistant 消息用）与完整函数调用。个别平台对流式请求
 // 直接回 JSON 错误体（无 data: 行，如余额不足）——把非 SSE 行累积起来，流结束后按错误体解析。
-func scanStream(ctx context.Context, p Provider, r io.Reader, onDelta func(string)) error {
+func scanStream(ctx context.Context, p Provider, r io.Reader, onDelta func(string)) (string, []chatToolCall, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	var rawLines []string
+	var text strings.Builder
+	calls := map[int]*chatToolCall{}
 	sawData := false
 	for sc.Scan() {
 		line := sc.Text()
@@ -348,31 +470,71 @@ func scanStream(ctx context.Context, p Provider, r io.Reader, onDelta func(strin
 		rawLines = nil
 		payload := strings.TrimSpace(line[len("data:"):])
 		if payload == "[DONE]" {
-			return nil
+			return text.String(), collectToolCalls(calls), nil
 		}
 		var chunk streamChunk
 		if json.Unmarshal([]byte(payload), &chunk) != nil {
 			continue // 心跳/注释等无法解析的行直接忽略
 		}
 		if chunk.Err != nil && chunk.Err.Message != "" {
-			return fmt.Errorf("%s API 错误: %s", Label(p), chunk.Err.Message)
+			return "", nil, fmt.Errorf("%s API 错误: %s", Label(p), chunk.Err.Message)
 		}
 		if len(chunk.Choices) > 0 {
-			if delta := chunk.Choices[0].Delta.Content; delta != "" {
-				onDelta(delta)
+			delta := chunk.Choices[0].Delta
+			if delta.Content != "" {
+				text.WriteString(delta.Content)
+				onDelta(delta.Content)
+			}
+			for _, tc := range delta.ToolCalls {
+				acc := calls[tc.Index]
+				if acc == nil {
+					acc = &chatToolCall{Index: tc.Index, ID: tc.ID, Type: tc.Type}
+					calls[tc.Index] = acc
+				}
+				if tc.ID != "" {
+					acc.ID = tc.ID
+				}
+				if tc.Type != "" {
+					acc.Type = tc.Type
+				}
+				if tc.Function.Name != "" {
+					acc.Function.Name += tc.Function.Name
+				}
+				acc.Function.Arguments += tc.Function.Arguments
 			}
 		}
 	}
 	if err := sc.Err(); err != nil {
 		if ctx.Err() != nil {
-			return ctx.Err() // 客户端断开/整体超时：调用方按取消处理，不再包装
+			return "", nil, ctx.Err() // 客户端断开/整体超时：调用方按取消处理，不再包装
 		}
-		return fmt.Errorf("读取%s流式响应失败: %w", Label(p), err)
+		return "", nil, fmt.Errorf("读取%s流式响应失败: %w", Label(p), err)
 	}
 	if !sawData && len(rawLines) > 0 {
-		return decodeProviderError(p, []byte(strings.Join(rawLines, "\n")), http.StatusOK)
+		return "", nil, decodeProviderError(p, []byte(strings.Join(rawLines, "\n")), http.StatusOK)
 	}
-	return nil
+	return text.String(), collectToolCalls(calls), nil
+}
+
+// collectToolCalls 按 index 序输出完整调用；空类型补默认 function。
+func collectToolCalls(calls map[int]*chatToolCall) []chatToolCall {
+	if len(calls) == 0 {
+		return nil
+	}
+	idx := make([]int, 0, len(calls))
+	for i := range calls {
+		idx = append(idx, i)
+	}
+	sort.Ints(idx)
+	out := make([]chatToolCall, 0, len(idx))
+	for _, i := range idx {
+		c := calls[i]
+		if c.Type == "" {
+			c.Type = "function"
+		}
+		out = append(out, *c)
+	}
+	return out
 }
 
 // decodeProviderError 三家错误体统一转译：{"error":{...}} 优先，兼容 DashScope 裸

@@ -36,31 +36,46 @@ const webSystemNote = "\n\n你可以使用 web_search（联网搜索）与 web_f
 	"web_search 的 query 支持 site:、-site:、引号、lang:、after:/before: 等搜索语法；" +
 	"回答中引用网络信息时注明来源链接。"
 
+// webSearchDesc/webFetchDesc 两个联网工具的描述（/responses 平铺与 chat/completions
+// 嵌套两种声明格式共用）。
+const (
+	webSearchDesc = "联网搜索，返回网页结果的标题、链接、摘要与发布时间。需要时效性信息或不确定的事实时调用。"
+	webFetchDesc  = "抓取指定网页的正文（Markdown）。已知具体网址需要阅读全文时调用。"
+)
+
+// webSearchParams/webFetchParams 参数 schema（两种声明格式同形）。
+func webSearchParams() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"query": map[string]any{"type": "string", "description": "搜索词，1~128 字符"},
+			"count": map[string]any{"type": "integer", "description": "返回条数（1~10，默认 8）"},
+		},
+		"required": []string{"query"},
+	}
+}
+
+func webFetchParams() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"url": map[string]any{"type": "string", "description": "要抓取的 http/https 网页地址"},
+		},
+		"required": []string{"url"},
+	}
+}
+
 // webTools 服务端声明的联网函数工具（OpenAI Responses 风格：name/description/parameters 平铺）。
 var webTools = []responsesTool{
-	{
-		Type: "function", Name: "web_search",
-		Description: "联网搜索，返回网页结果的标题、链接、摘要与发布时间。需要时效性信息或不确定的事实时调用。",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"query": map[string]any{"type": "string", "description": "搜索词，1~128 字符"},
-				"count": map[string]any{"type": "integer", "description": "返回条数（1~10，默认 8）"},
-			},
-			"required": []string{"query"},
-		},
-	},
-	{
-		Type: "function", Name: "web_fetch",
-		Description: "抓取指定网页的正文（Markdown）。已知具体网址需要阅读全文时调用。",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"url": map[string]any{"type": "string", "description": "要抓取的 http/https 网页地址"},
-			},
-			"required": []string{"url"},
-		},
-	},
+	{Type: "function", Name: "web_search", Description: webSearchDesc, Parameters: webSearchParams()},
+	{Type: "function", Name: "web_fetch", Description: webFetchDesc, Parameters: webFetchParams()},
+}
+
+// chatWebTools 同一组工具的 chat/completions 标准声明（function 嵌套在 function 键下），
+// 供千问/MiniMax 等标准函数调用平台使用。
+var chatWebTools = []chatTool{
+	{Type: "function", Function: chatToolSpec{Name: "web_search", Description: webSearchDesc, Parameters: webSearchParams()}},
+	{Type: "function", Function: chatToolSpec{Name: "web_fetch", Description: webFetchDesc, Parameters: webFetchParams()}},
 }
 
 // streamResponsesWeb 联网增强入口：凭证/模型校验后进入带工具回路的 /responses 流。
