@@ -51,8 +51,15 @@ type Platform struct {
 	WebTools bool     `json:"-"`
 }
 
-// catalog 模型清单（2026-09-26 真机 /models 列表校准）：每平台两款，快档在前作默认。
+// catalog 模型清单（各平台按真机 /models 列表校准）：每平台两款，快档在前作默认；
+// DeepSeek 居首（用户指定，模型下拉与回落默认均按此序）。
 var catalog = []Platform{
+	// DeepSeek（2026-10-17 按 api-docs Responses API / list-models 校准）：flash 为快档
+	// 作默认（思考强度压到 low 快答）；v4-pro 为旗舰深度思考，且两者均可挂联网函数工具。
+	{Provider: ProviderDeepseek, Label: "DeepSeek", WebTools: true, Models: []Model{
+		{ID: "deepseek-flash", Label: "DeepSeek Flash"},
+		{ID: "deepseek-v4-pro", Label: "DeepSeek V4 Pro（深度思考）"},
+	}},
 	{Provider: ProviderZhipu, Label: "智谱", Models: []Model{
 		{ID: "glm-5.3-flash", Label: "GLM-5.3 Flash"},
 		{ID: "glm-5.3", Label: "GLM-5.3"},
@@ -70,12 +77,6 @@ var catalog = []Platform{
 	{Provider: ProviderMinimax, Label: "MiniMax", Models: []Model{
 		{ID: "MiniMax-M2.7-highspeed", Label: "MiniMax-M2.7 Highspeed"},
 		{ID: "MiniMax-M3", Label: "MiniMax-M3（深度思考）"},
-	}},
-	// DeepSeek（2026-10-17 按 api-docs Responses API / list-models 校准）：flash 为快档
-	// 作默认（思考强度压到 low 快答）；v4-pro 为旗舰深度思考，且两者均可挂联网函数工具。
-	{Provider: ProviderDeepseek, Label: "DeepSeek", WebTools: true, Models: []Model{
-		{ID: "deepseek-flash", Label: "DeepSeek Flash"},
-		{ID: "deepseek-v4-pro", Label: "DeepSeek V4 Pro（深度思考）"},
 	}},
 }
 
