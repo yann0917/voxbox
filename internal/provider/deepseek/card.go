@@ -18,7 +18,7 @@ func ProviderCard() provider.ProviderInfo {
 			"并为助手提供网页搜索与网页抓取的联网能力（按成功调用计费，约 ¥5/千次）。" +
 			"API Key 在 platform.deepseek.com 创建。",
 		Kind:  provider.KindCloud,
-		Order: 25,
+		Order: 19, // 千问(20)之上：用户指定的设置页排列位置
 		Fields: []provider.CredentialField{
 			{Key: "api_key", Label: "API Key", Kind: provider.FieldSecret, Required: true,
 				ConfigKey: "deepseek.api_key", Placeholder: "platform.deepseek.com 创建",
