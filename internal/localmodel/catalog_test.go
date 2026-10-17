@@ -519,18 +519,19 @@ func TestEmbeddedCatalogR2T2(t *testing.T) {
 	t.Fatal("内嵌目录缺少 r2t2-q8_0 条目")
 }
 
-// TestEmbeddedCatalogAudiocppV090 落实引擎提版留档(Task 1):audiocpp 引擎 revision
-// 显式记为 v0.9.0(v0.8.2 时代条目无 revision 缺省 master,提版不带 revision 会让
-// 已装旧二进制的安装永远匹配 manifest 而不触发重装;显式 revision 让旧安装判为
-// 未安装并引导重下 29MB),资产 URL 指向 v0.9.0 release,四平台资产(与 v0.8.2
-// 条目选型一致)sha256 均为本机对整包实测;binaries 与 v0.9.0 解包布局一致(server/cli 在包根)。
-func TestEmbeddedCatalogAudiocppV090(t *testing.T) {
+// TestEmbeddedCatalogAudiocppV092 落实引擎提版留档:audiocpp 引擎 revision 显式记为
+// v0.9.2(v0.9.0→v0.9.2,提版驱动旧安装判为未安装并引导重下 31MB),资产 URL 指向
+// v0.9.2 release,四平台资产 sha256 均为本机对整包实测(linux 切 portable 版规避
+// v0.9.1 公告的 AVX-512 自动检测崩溃);binaries 与 v0.9.2 解包布局一致(server/cli
+// 在包根)。v0.9.2 真机回归(2026-10-17,metal):qwen3 克隆/预置、voxcpm2 直读/克隆、
+// chatterbox clon、r2t2 转写全通,与 v0.9.0 行为一致。
+func TestEmbeddedCatalogAudiocppV092(t *testing.T) {
 	for _, e := range catalog {
 		if e.ID != "audiocpp" || e.Kind != "engine" {
 			continue
 		}
-		if e.Revision != "v0.9.0" {
-			t.Errorf("audiocpp 引擎 revision 应为 v0.9.0(提版驱动旧安装重装),实际 %q", e.Revision)
+		if e.Revision != "v0.9.2" {
+			t.Errorf("audiocpp 引擎 revision 应为 v0.9.2(提版驱动旧安装重装),实际 %q", e.Revision)
 		}
 		if len(e.Assets) != 4 {
 			t.Fatalf("audiocpp 应声明 4 个平台资产(darwin arm64/amd64 + windows amd64 + linux amd64),实际 %d", len(e.Assets))
@@ -541,20 +542,20 @@ func TestEmbeddedCatalogAudiocppV090(t *testing.T) {
 			sha  string
 		}{
 			"darwin/arm64": {
-				"https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/audio-v0.9.0-bin-macos-arm64-metal.tar.gz",
-				29162796, "7cea9219d5f06475011c5d225d71d988cecef633ff7d098ee8a4c7b08583b1b4",
+				"https://github.com/0xShug0/audio.cpp/releases/download/v0.9.2/audio-v0.9.2-bin-macos-arm64-metal.tar.gz",
+				31972675, "827239e1d5824f8294cce461661dc7f20f933869bd333dfc60ba3c089f29faab",
 			},
 			"darwin/amd64": {
-				"https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/audio-v0.9.0-bin-macos-x64-metal.tar.gz",
-				30897245, "f6e50c776bfe3b23cb5e420f1dd31b11661ed3dc01207cf05cf780dfdadca1c9",
+				"https://github.com/0xShug0/audio.cpp/releases/download/v0.9.2/audio-v0.9.2-bin-macos-x64-metal.tar.gz",
+				33862576, "b199add8ab8d53f81769367b9869a021eae838fa6104c9b05a012ec7899774d8",
 			},
 			"windows/amd64": {
-				"https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/audio-v0.9.0-bin-windows-x64-cpu-portable.zip",
-				25803809, "3ee19466a1a2b5366364ca8447a4794391dd89671e655ffd01aa421ac1668bfa",
+				"https://github.com/0xShug0/audio.cpp/releases/download/v0.9.2/audio-v0.9.2-bin-windows-x64-cpu-portable.zip",
+				28114705, "4bea04239d753d2d0a294580ad4af2a0fa81b0de244a1b9146650c7f9fa4e84d",
 			},
 			"linux/amd64": {
-				"https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/audio-v0.9.0-bin-ubuntu-x64-cpu.tar.gz",
-				49587362, "d0f0db4ab13bd3de1c15b6d60256e615d2bac65892fdd4fccc9a2b678db47635",
+				"https://github.com/0xShug0/audio.cpp/releases/download/v0.9.2/audio-v0.9.2-bin-ubuntu-x64-cpu-portable.tar.gz",
+				59857917, "72bfb07f46bb8f4cc0217a604619dbb78cfc388dfa4e639feb412ca7e2410980",
 			},
 		}
 		for plat, w := range want {
@@ -567,8 +568,8 @@ func TestEmbeddedCatalogAudiocppV090(t *testing.T) {
 				t.Errorf("audiocpp 平台 %s 资产与实测不符: %+v", plat, a)
 			}
 		}
-		if e.SizeBytes != 29162796 {
-			t.Errorf("audiocpp size_bytes 应为本机平台(darwin/arm64)资产实测 29162796,实际 %d", e.SizeBytes)
+		if e.SizeBytes != 31972675 {
+			t.Errorf("audiocpp size_bytes 应为本机平台(darwin/arm64)资产实测 31972675,实际 %d", e.SizeBytes)
 		}
 		return
 	}

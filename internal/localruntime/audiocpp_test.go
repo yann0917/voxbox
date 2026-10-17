@@ -183,26 +183,27 @@ func TestSynthesizeWaitsForHealth(t *testing.T) {
 // (磁盘即真相:manifest 合法即已安装),返回与生产同路径构造的 localmodel.Manager。
 func seedTTSManager(t *testing.T, dir string) *localmodel.Manager {
 	t.Helper()
+	m := localmodel.NewManager(dir)
 	writeManifest := func(dirPath, id, extra string) {
 		t.Helper()
 		if err := os.MkdirAll(dirPath, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		raw := fmt.Sprintf(`{"id":%q,"repo":"org/%s","revision":%q%s,"files":[{"path":"f","size":1}]}`, id, id, engineRevision(id), extra)
+		raw := fmt.Sprintf(`{"id":%q,"repo":"org/%s","revision":%q%s,"files":[{"path":"f","size":1}]}`, id, id, engineRevision(m, id), extra)
 		if err := os.WriteFile(filepath.Join(dirPath, "manifest.json"), []byte(raw), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 	writeManifest(filepath.Join(dir, "engines", "audiocpp"), "audiocpp", `,"binary":"pkg/bin/audiocpp_server"`)
 	writeManifest(filepath.Join(dir, "models", "qwen3-tts-base-q8"), "qwen3-tts-base-q8", "")
-	return localmodel.NewManager(dir)
+	return m
 }
 
-// engineRevision 播种 manifest 的 revision:与内嵌目录条目一致(磁盘即真相的判定键
-// 是 id+revision 双匹配,audiocpp 引擎自 v0.9.0 起显式记 revision)。
-func engineRevision(id string) string {
-	if id == "audiocpp" {
-		return "v0.9.0"
+// engineRevision 播种 manifest 的 revision:取内嵌目录条目实值(磁盘即真相的判定键
+// 是 id+revision 双匹配;跟随目录换版,不硬编码——local_test 同口径)。
+func engineRevision(m *localmodel.Manager, id string) string {
+	if e, ok := m.GetEntry(id); ok && e.Revision != "" {
+		return e.Revision
 	}
 	return "master"
 }
