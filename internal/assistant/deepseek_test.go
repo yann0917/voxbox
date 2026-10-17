@@ -29,14 +29,15 @@ func writeSSE(t *testing.T, w http.ResponseWriter, events ...any) {
 }
 
 func TestScanResponsesStreamDeltas(t *testing.T) {
-	// 思考通道增量不回调；正文增量按序回调；completed 终止并携带完整 response
-	body := "data: {\"type\":\"response.reasoning_text.delta\",\"delta\":\"思考\"}\n\n" +
+	// 思考增量不回调、就地积累；正文增量按序回调；completed 终止并携带完整 response
+	body := "data: {\"type\":\"response.reasoning_text.delta\",\"delta\":\"思\"}\n\n" +
+		"data: {\"type\":\"response.reasoning_text.delta\",\"delta\":\"考\"}\n\n" +
 		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"你\"}\n\n" +
 		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"好\"}\n\n" +
 		"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"," +
 		"\"output\":[{\"type\":\"reasoning\",\"id\":\"rs_1\"}]}}\n\n"
 	var got []string
-	resp, err := scanResponsesStream(context.Background(), strings.NewReader(body), func(d string) {
+	res, err := scanResponsesStream(context.Background(), strings.NewReader(body), func(d string) {
 		got = append(got, d)
 	})
 	if err != nil {
@@ -45,8 +46,25 @@ func TestScanResponsesStreamDeltas(t *testing.T) {
 	if strings.Join(got, "") != "你好" {
 		t.Fatalf("deltas = %q, want 你好", got)
 	}
-	if resp.Status != "completed" || len(resp.Output) != 1 {
-		t.Fatalf("resp = %+v, want completed 且携带 output", resp)
+	if res.Reasoning != "思考" {
+		t.Fatalf("Reasoning = %q, want 思考", res.Reasoning)
+	}
+	if res.Resp.Status != "completed" || len(res.Resp.Output) != 1 {
+		t.Fatalf("resp = %+v, want completed 且携带 output", res.Resp)
+	}
+}
+
+func TestScanResponsesStreamReasoningDoneOverrides(t *testing.T) {
+	// done 事件的完整思维链覆盖增量积累
+	body := "data: {\"type\":\"response.reasoning_text.delta\",\"delta\":\"增量\"}\n\n" +
+		"data: {\"type\":\"response.reasoning_text.done\",\"text\":\"完整思维链\"}\n\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"
+	res, err := scanResponsesStream(context.Background(), strings.NewReader(body), func(string) {})
+	if err != nil {
+		t.Fatalf("scanResponsesStream: %v", err)
+	}
+	if res.Reasoning != "完整思维链" {
+		t.Fatalf("Reasoning = %q, want 完整思维链", res.Reasoning)
 	}
 }
 
@@ -86,12 +104,12 @@ func setDeepseekBaseURL(t *testing.T, url string) {
 	t.Cleanup(func() { deepseekBaseURL = orig })
 }
 
-// fakeReasoningItem 思考项原文（含 reasoning_text 内容块，回传校验用）。
+// fakeReasoningItem 终止载荷里的思考项：带 input 不支持的字段（id/summary/status）且
+// content 为空——真实机形态的敌意样例，回传时必须被清洗重建。
 func fakeReasoningItem() map[string]any {
 	return map[string]any{
 		"type": "reasoning", "id": "rs_1", "status": "completed",
-		"content": []map[string]any{{"type": "reasoning_text", "text": "需要先搜一下"}},
-		"summary": []any{},
+		"content": []any{}, "summary": []any{},
 	}
 }
 
@@ -104,7 +122,7 @@ func fakeCallItem(callID string) map[string]any {
 }
 
 // TestStreamResponsesToolLoop 工具回路端到端：首轮发起 web_search → 本地执行（校验
-// 鉴权/搜索词）→ 次轮按序回传 reasoning 原文 + function_call + function_call_output。
+// 鉴权/搜索词）→ 次轮回传清洗后的思考项（仅 type+明文 content）+ 调用项 + 工具结果。
 func TestStreamResponsesToolLoop(t *testing.T) {
 	cfg := &config.Config{Deepseek: config.DeepseekConfig{APIKey: "sk-test"}}
 	round := 0
@@ -152,7 +170,8 @@ func TestStreamResponsesToolLoop(t *testing.T) {
 					t.Errorf("flash 应携带 effort=low, got %+v", req.Reasoning)
 				}
 				writeSSE(t, w,
-					map[string]any{"type": "response.reasoning_text.delta", "delta": "思考"},
+					map[string]any{"type": "response.reasoning_text.delta", "delta": "需要"},
+					map[string]any{"type": "response.reasoning_text.delta", "delta": "先搜一下"},
 					map[string]any{"type": "response.completed", "response": map[string]any{
 						"status": "completed",
 						"output": []any{fakeReasoningItem(), fakeCallItem("fc1")},
@@ -160,14 +179,26 @@ func TestStreamResponsesToolLoop(t *testing.T) {
 				)
 				return
 			}
-			// 次轮：input 应按序含回传的思考项原文、调用项、工具结果
+			// 次轮：input 应按序含清洗后的思考项、调用项、工具结果
 			reasoningIdx, callIdx, outIdx := -1, -1, -1
 			for i, item := range req.Input {
 				switch item["type"] {
 				case "reasoning":
 					reasoningIdx = i
-					if fmt.Sprint(item["id"]) != "rs_1" {
-						t.Errorf("reasoning 应原文回传, got %+v", item)
+					// 清洗校验：只允许 type+content 两个键，content 为明文思维链
+					if _, has := item["id"]; has {
+						t.Errorf("思考项不应携带 id: %+v", item)
+					}
+					if _, has := item["summary"]; has {
+						t.Errorf("思考项不应携带 summary: %+v", item)
+					}
+					content, ok := item["content"].([]any)
+					if !ok || len(content) != 1 {
+						t.Fatalf("思考项 content 形状错误: %+v", item)
+					}
+					block := content[0].(map[string]any)
+					if block["type"] != "reasoning_text" || block["text"] != "需要先搜一下" {
+						t.Errorf("思考明文 = %+v, want 需要先搜一下", block)
 					}
 				case "function_call":
 					if item["call_id"] == "fc1" {

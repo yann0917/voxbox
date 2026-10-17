@@ -1,7 +1,7 @@
 // DeepSeek 专用链路：OpenAI Responses 风格 /responses 流式协议，以及基于函数工具的
 // 联网回路——服务端声明 web_search/web_fetch 两个 function 工具，模型发起调用后由
 // 本地执行（转调 DeepSeek 网页搜索/抓取 API），结果作为 function_call_output 回传续流。
-// API 无状态：多轮上下文（含工具调用项）由客户端在 input 里全量回传。
+// API 无状态：多轮上下文（含工具调用项与清洗后的思考项）由客户端在 input 里全量回传。
 package assistant
 
 import (
@@ -75,9 +75,9 @@ func streamResponsesWeb(ctx context.Context, cfg *config.Config, p Provider, mod
 }
 
 // streamResponses /responses 流式实现：循环执行「请求 → 收集 function_call → 执行工具 →
-// 回传续流」，无工具调用即结束。thinking 模式下上一轮的 reasoning 输出项必须原样回传
-// （官方校验：缺思考项的 function_call 续轮直接报错）。整体硬上限 3 分钟（多轮共享），
-// 上游卡死时兜底。
+// 回传续流」，无工具调用即结束。thinking 模式续轮必须携带思考项（官方强制校验），
+// 以明文 content 的最小形状清洗回传（见 streamResponses 内注释）。整体硬上限 3 分钟
+// （多轮共享），上游卡死时兜底。
 func streamResponses(ctx context.Context, cfg *config.Config, p Provider, model, system string, messages []Message, onDelta func(string), withTools bool, onStatus func(string)) error {
 	input := make([]any, 0, len(messages)+4*maxWebRounds)
 	for _, m := range messages {
@@ -101,34 +101,42 @@ func streamResponses(ctx context.Context, cfg *config.Config, p Provider, model,
 		if err != nil {
 			return err
 		}
-		// 按 output 原序回注：reasoning 项原文回传，function_call 项紧跟工具结果
+		// 思考项清洗回传：官方 input 只认明文 content（summary/encrypted_content 等字段
+		// 不支持，带着会被整个拒收——真机报「reasoning_text must be passed back」）。
+		// 明文优先取流式事件积累，终止载荷里有内容时兜底，统一重建为最小形状。
+		reasoning := resp.Reasoning
+		if reasoning == "" {
+			reasoning = reasoningTextFromOutput(resp.Resp.Output)
+		}
+		if reasoning != "" {
+			input = append(input, responsesReasoningItem{
+				Type:    "reasoning",
+				Content: []responsesReasoningText{{Type: "reasoning_text", Text: reasoning}},
+			})
+		}
+		// function_call 项紧跟工具结果，按 output 原序配对
 		appended := 0
-		for _, raw := range resp.Output {
+		for _, raw := range resp.Resp.Output {
 			if len(raw) == 0 {
 				continue
 			}
 			var peek struct {
 				Type string `json:"type"`
 			}
-			if json.Unmarshal(raw, &peek) != nil {
+			if json.Unmarshal(raw, &peek) != nil || peek.Type != "function_call" {
 				continue
 			}
-			switch peek.Type {
-			case "reasoning":
-				input = append(input, raw)
-			case "function_call":
-				var item responsesOutputItem
-				if json.Unmarshal(raw, &item) != nil || item.CallID == "" {
-					continue
-				}
-				out := executeWebTool(ctx, cfg, item.Name, item.Arguments, lastUserQuestion(messages), onStatus)
-				input = append(input,
-					// 回传调用项供 API 配对（官方多轮组装口径），再紧跟工具结果
-					responsesItem{Type: "function_call", CallID: item.CallID, Name: item.Name, Arguments: item.Arguments},
-					responsesItem{Type: "function_call_output", CallID: item.CallID, Output: out},
-				)
-				appended++
+			var item responsesOutputItem
+			if json.Unmarshal(raw, &item) != nil || item.CallID == "" {
+				continue
 			}
+			out := executeWebTool(ctx, cfg, item.Name, item.Arguments, lastUserQuestion(messages), onStatus)
+			input = append(input,
+				// 回传调用项供 API 配对（官方多轮组装口径），再紧跟工具结果
+				responsesItem{Type: "function_call", CallID: item.CallID, Name: item.Name, Arguments: item.Arguments},
+				responsesItem{Type: "function_call_output", CallID: item.CallID, Output: out},
+			)
+			appended++
 		}
 		if appended == 0 {
 			return nil
@@ -136,11 +144,16 @@ func streamResponses(ctx context.Context, cfg *config.Config, p Provider, model,
 	}
 }
 
-// streamResponsesRound 单轮流式：正文增量实时回调，返回终止事件携带的完整 response
-// 对象——output 数组是回传的单一事实源（reasoning 项原文、function_call 项完整参数
-// 都在其中），不依赖 output_item.done 增量事件积累。思考通道（reasoning_text.delta）
-// 与 web_search_call 等事件忽略——工具执行期由 onStatus 通报进度。tools/toolChoice 均可空。
-func streamResponsesRound(ctx context.Context, cfg *config.Config, p Provider, model, system string, input []any, tools []responsesTool, toolChoice *string, onDelta func(string)) (responsesResponse, error) {
+// responsesRoundResult 单轮流式产出：终止事件携带的完整 response 对象 + 流式积累的
+// 完整思维链明文（回传思考项的素材）。
+type responsesRoundResult struct {
+	Resp      responsesResponse
+	Reasoning string
+}
+
+// streamResponsesRound 单轮流式：正文增量实时回调，思维链（reasoning_text.delta/done）
+// 不进正文回调、就地积累为完整明文。tools/toolChoice 均可空（纯净请求）。
+func streamResponsesRound(ctx context.Context, cfg *config.Config, p Provider, model, system string, input []any, tools []responsesTool, toolChoice *string, onDelta func(string)) (responsesRoundResult, error) {
 	req := responsesRequest{
 		Model:        model,
 		Input:        input,
@@ -155,28 +168,29 @@ func streamResponsesRound(ctx context.Context, cfg *config.Config, p Provider, m
 	}
 	raw, err := json.Marshal(req)
 	if err != nil {
-		return responsesResponse{}, err
+		return responsesRoundResult{}, err
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, deepseekBaseURL+"/responses", bytes.NewReader(raw))
 	if err != nil {
-		return responsesResponse{}, err
+		return responsesRoundResult{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKeyOf(cfg, p))
 	resp, err := apiClient.Do(httpReq)
 	if err != nil {
-		return responsesResponse{}, fmt.Errorf("请求%s平台失败: %w", Label(p), err)
+		return responsesRoundResult{}, fmt.Errorf("请求%s平台失败: %w", Label(p), err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		return responsesResponse{}, decodeProviderError(p, body, resp.StatusCode)
+		return responsesRoundResult{}, decodeProviderError(p, body, resp.StatusCode)
 	}
 	return scanResponsesStream(ctx, resp.Body, onDelta)
 }
 
 // responsesRequest /responses 请求体（OpenAI Responses 风格）。Input 混合装载：
-// 历史消息/调用项用 responsesItem，回传的 reasoning 项用 json.RawMessage 原文透传。
+// 历史消息/调用项用 responsesItem，回传的思考项用 responsesReasoningItem（官方仅支持
+// 明文 content 的最小形状）。
 type responsesRequest struct {
 	Model        string              `json:"model"`
 	Input        []any               `json:"input"`
@@ -212,6 +226,18 @@ type responsesOutputItem struct {
 	Status    string `json:"status"`
 }
 
+// responsesReasoningItem 续轮回传的思考项：官方 input 仅支持明文 content（归并到相邻
+// assistant 消息），summary/encrypted_content/id/status 等字段不支持，不发送。
+type responsesReasoningItem struct {
+	Type    string                   `json:"type"` // "reasoning"
+	Content []responsesReasoningText `json:"content"`
+}
+
+type responsesReasoningText struct {
+	Type string `json:"type"` // "reasoning_text"
+	Text string `json:"text"`
+}
+
 type responsesTool struct {
 	Type        string         `json:"type"`
 	Name        string         `json:"name"`
@@ -220,16 +246,18 @@ type responsesTool struct {
 }
 
 // responsesEvent SSE data 载荷：事件类型在 data 内（event: 行与之一致，以 data 为准）。
-// 关注三类：正文增量、终止事件（completed/incomplete/failed，携带完整 response 对象）。
+// 关注四类：正文增量、思维链增量/完整文本（思考项回传素材）、终止事件（completed/
+// incomplete/failed，携带完整 response 对象）。
 type responsesEvent struct {
 	Type     string             `json:"type"`
 	Delta    string             `json:"delta"`
+	Text     string             `json:"text"` // response.reasoning_text.done 的完整思维链
 	Response *responsesResponse `json:"response"`
 	Error    *apiErrorBody      `json:"error"`
 }
 
-// responsesResponse 终止事件内的完整 response 对象。Output 保持原文（json.RawMessage）：
-// reasoning 项要原样回传给续轮，经 struct 往返会有字段取舍风险。
+// responsesResponse 终止事件内的完整 response 对象。Output 保持原文（json.RawMessage），
+// 由调用方按类型解出——原文可能含 input 不支持的字段，禁止直接回传。
 type responsesResponse struct {
 	Status            string            `json:"status"`
 	Output            []json.RawMessage `json:"output"`
@@ -240,13 +268,14 @@ type responsesResponse struct {
 }
 
 // scanResponsesStream 逐行解析 Responses SSE（event: + data: 行，无 [DONE]，终止于
-// completed/incomplete/failed 事件），返回终止事件携带的完整 response 对象（未终止
-// 断流时为零值）。非 data 行累积兜底：上游直接回 JSON 错误体时流结束后按错误体解析
-// （scanStream 同款防御）。
-func scanResponsesStream(ctx context.Context, r io.Reader, onDelta func(string)) (responsesResponse, error) {
+// completed/incomplete/failed 事件），返回终止事件对象与流式积累的思维链明文（未终止
+// 断流时 Resp 为零值）。非 data 行累积兜底：上游直接回 JSON 错误体时流结束后按错误体
+// 解析（scanStream 同款防御）。
+func scanResponsesStream(ctx context.Context, r io.Reader, onDelta func(string)) (responsesRoundResult, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	var rawLines []string
+	var reasoning strings.Builder
 	sawData := false
 	for sc.Scan() {
 		line := sc.Text()
@@ -268,32 +297,60 @@ func scanResponsesStream(ctx context.Context, r io.Reader, onDelta func(string))
 			if ev.Delta != "" {
 				onDelta(ev.Delta)
 			}
+		case "response.reasoning_text.delta":
+			reasoning.WriteString(ev.Delta) // 思考不进正文回调，就地积累供回传
+		case "response.reasoning_text.done":
+			// 完整思维链以 done 事件为准（覆盖增量积累，防心跳丢段）
+			if ev.Text != "" {
+				reasoning.Reset()
+				reasoning.WriteString(ev.Text)
+			}
 		case "response.completed", "response.incomplete":
 			// 截断（max_output_tokens/内容审查）也按正常收尾：已产出的正文保留
 			if ev.Response != nil {
-				return *ev.Response, nil
+				return responsesRoundResult{Resp: *ev.Response, Reasoning: reasoning.String()}, nil
 			}
-			return responsesResponse{}, nil
+			return responsesRoundResult{Reasoning: reasoning.String()}, nil
 		case "response.failed":
 			if ev.Error != nil && ev.Error.Message != "" {
-				return responsesResponse{}, fmt.Errorf("DeepSeek API 错误: %s", ev.Error.Message)
+				return responsesRoundResult{}, fmt.Errorf("DeepSeek API 错误: %s", ev.Error.Message)
 			}
 			if ev.Response != nil && ev.Response.Error != nil && ev.Response.Error.Message != "" {
-				return responsesResponse{}, fmt.Errorf("DeepSeek API 错误: %s", ev.Response.Error.Message)
+				return responsesRoundResult{}, fmt.Errorf("DeepSeek API 错误: %s", ev.Response.Error.Message)
 			}
-			return responsesResponse{}, fmt.Errorf("DeepSeek API 错误: 响应生成失败")
+			return responsesRoundResult{}, fmt.Errorf("DeepSeek API 错误: 响应生成失败")
 		}
 	}
 	if err := sc.Err(); err != nil {
 		if ctx.Err() != nil {
-			return responsesResponse{}, ctx.Err() // 客户端断开/整体超时：调用方按取消处理，不再包装
+			return responsesRoundResult{}, ctx.Err() // 客户端断开/整体超时：调用方按取消处理，不再包装
 		}
-		return responsesResponse{}, fmt.Errorf("读取%s流式响应失败: %w", Label(ProviderDeepseek), err)
+		return responsesRoundResult{}, fmt.Errorf("读取%s流式响应失败: %w", Label(ProviderDeepseek), err)
 	}
 	if !sawData && len(rawLines) > 0 {
-		return responsesResponse{}, decodeProviderError(ProviderDeepseek, []byte(strings.Join(rawLines, "\n")), http.StatusOK)
+		return responsesRoundResult{}, decodeProviderError(ProviderDeepseek, []byte(strings.Join(rawLines, "\n")), http.StatusOK)
 	}
-	return responsesResponse{}, nil // 上游未发终止事件直接断流：正常收尾不算错误
+	return responsesRoundResult{Reasoning: reasoning.String()}, nil // 上游未发终止事件直接断流：正常收尾不算错误
+}
+
+// reasoningTextFromOutput 从终止载荷的 output 原文里提取思考明文（流式积累为空时的兜底）。
+func reasoningTextFromOutput(output []json.RawMessage) string {
+	var b strings.Builder
+	for _, raw := range output {
+		var item struct {
+			Type    string                   `json:"type"`
+			Content []responsesReasoningText `json:"content"`
+		}
+		if json.Unmarshal(raw, &item) != nil || item.Type != "reasoning" {
+			continue
+		}
+		for _, c := range item.Content {
+			if c.Type == "reasoning_text" {
+				b.WriteString(c.Text)
+			}
+		}
+	}
+	return b.String()
 }
 
 // executeWebTool 执行一次联网工具调用，返回注入回模型的结果文本。失败以文本说明回传
