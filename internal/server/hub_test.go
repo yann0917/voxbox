@@ -11,6 +11,20 @@ import (
 	"github.com/yann0917/voxbox/internal/task"
 )
 
+// waitRegistered 等待服务端 handler goroutine 完成 WS 客户端注册：Dial 返回只代表
+// 握手完成，register 在另一 goroutine 里执行——高负载 CI 容器上竞态窗口可吞掉后续
+// 广播（Release 工作流 TestHubBroadcast 读超时,2026-10-18 实锤），Notify 前必须等注册。
+func waitRegistered(t *testing.T, h *Hub) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for h.clientCount() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("WS 客户端 5s 内未完成注册")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
 func TestHubBroadcast(t *testing.T) {
 	ts, s, ac := newTestServer(t)
 	url := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/ws"
@@ -19,6 +33,7 @@ func TestHubBroadcast(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ws.Close()
+	waitRegistered(t, s.Hub())
 
 	s.Hub().Notify(task.Event{Type: "progress", TaskID: "x", Progress: 42, Note: "测试"})
 
@@ -43,6 +58,7 @@ func TestHubNotifyModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ws.Close()
+	waitRegistered(t, s.Hub())
 
 	s.Hub().NotifyModel(localmodel.Event{
 		ID: "kokoro-v1.0", Status: localmodel.StatusDownloading,
