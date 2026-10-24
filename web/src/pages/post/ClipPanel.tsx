@@ -475,10 +475,10 @@ export default function ClipPanel() {
               </p>
             )}
             <p className="text-[11px] leading-relaxed text-muted">
-              也可以在音乐搜索结果行点「切高潮」，歌曲自动落盘为本页产物输入。
+              也可以在素材页音乐搜索结果行点「切高潮」，歌曲下载后自动落盘为本页产物输入。
             </p>
             <div>
-              <Button size="sm" variant="secondary" onClick={() => navigate("/music")} icon={<Music size={14} strokeWidth={1.75} />}>
+              <Button size="sm" variant="secondary" onClick={() => navigate("/library?tab=music")} icon={<Music size={14} strokeWidth={1.75} />}>
                 去音乐搜索
               </Button>
             </div>

@@ -10,9 +10,11 @@ import (
 	"github.com/yann0917/voxbox/internal/provider"
 	"github.com/yann0917/voxbox/internal/provider/audiotool"
 	"github.com/yann0917/voxbox/internal/provider/deepseek"
+	"github.com/yann0917/voxbox/internal/provider/downloader"
 	"github.com/yann0917/voxbox/internal/provider/gsgc"
 	"github.com/yann0917/voxbox/internal/provider/local"
 	"github.com/yann0917/voxbox/internal/provider/minimax"
+	"github.com/yann0917/voxbox/internal/provider/music"
 	"github.com/yann0917/voxbox/internal/provider/mvsep"
 	"github.com/yann0917/voxbox/internal/provider/openrouter"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
@@ -27,6 +29,8 @@ func providerCards() []provider.ProviderInfo {
 		volcengine.ProviderCard(),
 		volcengine.MediaKitCard(),
 		mvsep.ProviderCard(),
+		music.ProviderCard(),
+		downloader.ProviderCard(),
 		qianwen.ProviderCard(),
 		xiaomi.ProviderCard(),
 		zhipu.ProviderCard(),

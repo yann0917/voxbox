@@ -48,11 +48,31 @@ type Config struct {
 	Assistant AssistantConfig
 	// Translate 字幕翻译的免费源设置：DeepLX 自建端点（可选，空=仅 Google 免费源）。
 	Translate TranslateConfig
+	// Music 音乐音源（qingmusic 移植链路）设置：音源配置同步地址，空=不自动同步，
+	// 由设置页手动同步或导入 music.json。
+	Music MusicConfig
+	// Downloader 外部下载器接入：yt-dlp 与 douyin-downloader 的本地调用方式，三个键都可选。
+	Downloader DownloaderConfig
 }
 
 // TranslateConfig 字幕翻译设置段。
 type TranslateConfig struct {
 	DeepLXURL string `mapstructure:"deeplx_url"`
+}
+
+// MusicConfig 音乐音源设置段：sources_url 是音源配置（music.json）的拉取地址，
+// 设置页「同步音源」按钮消费；留空则只能手动导入。
+type MusicConfig struct {
+	SourcesURL string `mapstructure:"sources_url"`
+}
+
+// DownloaderConfig 外部下载器设置段：yt-dlp 缺省按 PATH 查找（桌面版可显式指路径）；
+// douyin-downloader 是外部 Python 项目，须给出启动命令与其 config.yml 绝对路径，
+// cookie 由该配置自管（voxbox 只覆写输出目录与链接，不碰凭证段）。
+type DownloaderConfig struct {
+	YtdlpPath     string `mapstructure:"ytdlp_path"`
+	DouyinCommand string `mapstructure:"douyin_command"`
+	DouyinConfig  string `mapstructure:"douyin_config"`
 }
 
 // AssistantConfig AI 文本能力的共享设置段。
@@ -294,6 +314,14 @@ func configFromViper(v *viper.Viper) *Config {
 		},
 		Translate: TranslateConfig{
 			DeepLXURL: strings.TrimSpace(v.GetString("translate.deeplx_url")),
+		},
+		Music: MusicConfig{
+			SourcesURL: strings.TrimSpace(v.GetString("music.sources_url")),
+		},
+		Downloader: DownloaderConfig{
+			YtdlpPath:     strings.TrimSpace(v.GetString("downloader.ytdlp_path")),
+			DouyinCommand: strings.TrimSpace(v.GetString("downloader.douyin_command")),
+			DouyinConfig:  strings.TrimSpace(v.GetString("downloader.douyin_config")),
 		},
 	}
 }

@@ -63,12 +63,14 @@ export interface Task {
     chapters?: { title: string; summary: string; start_time: number; end_time: number }[];
     /** 本地识别（local asr）：sherpa-onnx 只回整段文本，无分句时间戳 */
     text?: string;
+    /** 下载类任务（音乐/链接下载）：info.json 或「歌名 - 歌手」派生标题 */
+    title?: string;
     /** 录音笔记加工结果（/api/refine 写入，同模式覆盖、跨模式共存） */
     refined?: Refined;
   };
 }
 
-export type ArtifactKind = "audio" | "transcript" | "dialog" | "subtitle" | "translation" | "minutes";
+export type ArtifactKind = "audio" | "video" | "transcript" | "dialog" | "subtitle" | "translation" | "minutes";
 
 export interface Artifact {
   id: string;

@@ -58,7 +58,7 @@ type TaskInput struct {
 }
 
 type Artifact struct {
-	Kind       string         `json:"kind"` // audio|transcript|dialog|subtitle|translation|minutes
+	Kind       string         `json:"kind"` // audio|video|transcript|dialog|subtitle|translation|minutes
 	Path       string         `json:"path"` // data 目录相对路径；_out 重定向时可为绝对路径
 	Format     string         `json:"format"`
 	Size       int64          `json:"size"`

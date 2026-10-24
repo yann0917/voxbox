@@ -4,7 +4,9 @@ package modules
 
 import (
 	"github.com/yann0917/voxbox/internal/module"
+	"github.com/yann0917/voxbox/internal/modules/downloader"
 	"github.com/yann0917/voxbox/internal/modules/glossary"
+	"github.com/yann0917/voxbox/internal/modules/music"
 	"github.com/yann0917/voxbox/internal/modules/prompts"
 	"github.com/yann0917/voxbox/internal/modules/voicefavorites"
 )
@@ -15,5 +17,7 @@ func All() []module.Module {
 		prompts.Module(),
 		glossary.Module(),
 		voicefavorites.Module(),
+		music.Module(),
+		downloader.Module(),
 	}
 }

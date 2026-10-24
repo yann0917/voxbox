@@ -5,6 +5,7 @@ import {
   AudioWaveform,
   Calculator,
   Captions,
+  HardDriveDownload,
   History,
   Info,
   Languages,
@@ -48,6 +49,19 @@ export const features: FeatureDef[] = [
     desc: "工具总览与最近任务",
     icon: LayoutDashboard,
     component: () => import("./pages/WorkbenchPage"),
+  },
+  {
+    id: "library",
+    path: "/library",
+    title: "素材",
+    desc: "搜歌下载 · 链接下载 · 场景串链",
+    icon: HardDriveDownload,
+    component: () => import("./pages/LibraryPage"),
+    tools: [
+      { name: "music_download", label: "音乐下载", route: "/library" },
+      { name: "download", label: "链接下载", route: "/library" },
+    ],
+    workbench: { tool: "music_download", desc: "搜歌、贴链接下载，场景一键串到成品" },
   },
   {
     id: "tts",

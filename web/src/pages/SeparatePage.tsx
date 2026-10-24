@@ -162,7 +162,7 @@ export default function SeparatePage() {
       )
       .catch((e: Error) => toast({ tone: "error", title: "复制失败", description: e.message }));
 
-  // 跨页跳转水合（如音乐搜索页提交分离后带 ?task= 进入）：拉任务详情恢复
+  // 跨页跳转水合（如素材页音乐搜索「伴奏人声」场景串链后带 ?task= 进入）：拉任务详情恢复
   // 进度/产物视图，并按任务 provider 对齐引擎 Tab，后续 WS 事件照常驱动。
   useEffect(() => {
     const id = searchParams.get("task");

@@ -20,9 +20,11 @@ import (
 	"github.com/yann0917/voxbox/internal/pronunciation"
 	"github.com/yann0917/voxbox/internal/provider"
 	"github.com/yann0917/voxbox/internal/provider/audiotool"
+	"github.com/yann0917/voxbox/internal/provider/downloader"
 	"github.com/yann0917/voxbox/internal/provider/gsgc"
 	"github.com/yann0917/voxbox/internal/provider/local"
 	"github.com/yann0917/voxbox/internal/provider/minimax"
+	"github.com/yann0917/voxbox/internal/provider/music"
 	"github.com/yann0917/voxbox/internal/provider/mvsep"
 	"github.com/yann0917/voxbox/internal/provider/openrouter"
 	"github.com/yann0917/voxbox/internal/provider/qianwen"
@@ -41,6 +43,9 @@ type Service struct {
 	db     *store.DB
 	reg    *provider.Registry
 	engine *task.Engine
+
+	// dataDir 数据目录（构造期定死；SaveDataDir 改的是配置快照，重启才切换目录）。
+	dataDir string
 
 	// models 本地语音模型管理器:构造期扫盘恢复,与 config 热更新无关(模型目录随 dataDir)。
 	models *localmodel.Manager
@@ -99,6 +104,12 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 	if err := mvsep.RegisterAll(reg, *cfg, dataDir); err != nil {
 		return nil, err
 	}
+	if err := music.RegisterAll(reg, *cfg, dataDir); err != nil {
+		return nil, err
+	}
+	if err := downloader.RegisterAll(reg, *cfg, dataDir); err != nil {
+		return nil, err
+	}
 	if err := qianwen.RegisterAll(reg, *cfg, dataDir); err != nil {
 		return nil, err
 	}
@@ -122,7 +133,7 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 		return nil, err
 	}
 	models := localmodel.NewManager(dataDir)
-	s := &Service{db: db, reg: reg, models: models, voices: voicelib.New(dataDir)}
+	s := &Service{db: db, reg: reg, dataDir: dataDir, models: models, voices: voicelib.New(dataDir)}
 	// 本地推理工具注册:与 audiotool 同为无凭证本地能力,注册一次不参与热更新重注册。
 	ttsRuntime := localruntime.NewTTSRuntime(dataDir, models)
 	if err := local.RegisterAll(reg, dataDir, models, ttsRuntime, s.voices); err != nil {
