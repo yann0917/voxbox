@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,89 +9,133 @@ import {
   Loader2,
   MicVocal,
   Music,
-  Pause,
-  Play,
-  Scissors,
-  Search,
   Sparkles,
-  RefreshCw,
   Workflow,
 } from "lucide-react";
 import { fetchJSON } from "../lib/api";
 import { douyinNotesScenario, linkSubtitleScenario, songClipScenario, songStemsScenario } from "../lib/scenarios";
-
 import type { Scenario } from "../lib/scenarios";
 import { useScenarioRunner } from "../lib/useScenarioRunner";
+import { listMusicSources, type MusicTrack } from "../lib/music";
 import type { Artifact, Task, TaskDetail } from "../lib/types";
 import { ArtifactRow, formatSize } from "../components/ArtifactRow";
-import { Card, EmptyState, PageHeader } from "../ui";
-import { Tabs } from "../ui";
-import { ProgressBar } from "../ui";
-import { Button } from "../ui";
-import { useToast } from "../ui";
-import { Switch } from "../ui";
-
-/** 与 /api/music/sources 对齐 */
-interface SourceLine {
-  id: string;
-  name: string;
-  enabled: boolean;
-  levels: string[];
-}
-/** 与 qingmusic.Track 对齐 */
-interface Track {
-  source: string;
-  rid: string;
-  name: string;
-  artist: string;
-  album: string;
-  duration: number;
-  pic?: string;
-}
-interface ProbeMeta {
-  backend: "ytdlp" | "douyin";
-  probe?: string;
-  title?: string;
-  duration?: number;
-  uploader?: string;
-  site?: string;
-  playlist?: boolean;
-  n_entries?: number;
-  subtitle_langs?: string[];
-}
+import { Button, Card, EmptyState, PageHeader, ProgressBar, Switch, Tabs, useToast } from "../ui";
+import { MusicSearchView, MusicRanksView, MusicPlaylistsView, MusicMVView, MusicHistoryView } from "./library/MusicViews";
 
 type Tab = "music" | "link" | "scenario";
+type MusicSub = "search" | "ranks" | "playlists" | "mv" | "history";
 
 const TABS = [
-  { value: "music" as Tab, label: "音乐搜索", icon: <Music size={14} strokeWidth={1.75} /> },
+  { value: "music" as Tab, label: "音乐", icon: <Music size={14} strokeWidth={1.75} /> },
   { value: "link" as Tab, label: "链接下载", icon: <LinkIcon size={14} strokeWidth={1.75} /> },
   { value: "scenario" as Tab, label: "场景", icon: <Workflow size={14} strokeWidth={1.75} /> },
+];
+
+const MUSIC_TABS = [
+  { value: "search" as MusicSub, label: "搜索" },
+  { value: "ranks" as MusicSub, label: "排行榜" },
+  { value: "playlists" as MusicSub, label: "歌单" },
+  { value: "mv" as MusicSub, label: "MV" },
+  { value: "history" as MusicSub, label: "在听" },
 ];
 
 export default function LibraryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = (searchParams.get("tab") as Tab) || "music";
   const { run, start, reset, cancel } = useScenarioRunner();
+  // 空态（未导入音源）时音乐 Tab 里的视图们会因搜索/榜单不可用而难看，单独用 sources 查询判空态
+  const { data: sourcesData } = useQuery({ queryKey: ["music-sources"], queryFn: listMusicSources });
+  const sources = (sourcesData?.items ?? []).filter((l) => l.enabled);
+
+  const onStems = (t: MusicTrack) => start(songStemsScenario(t, "volcengine"));
+  const onClip = (t: MusicTrack) => start(songClipScenario(t));
 
   return (
     <div>
-      <PageHeader
-        title="素材"
-        description="搜歌、贴链接下载，或按场景一步串到成品"
-      />
+      <PageHeader title="素材" description="搜歌、贴链接下载，或按场景一步串到成品" />
       {run && <RunnerCard run={run} onCancel={cancel} onReset={reset} />}
       <div className="mb-5">
-        <Tabs
-          items={TABS}
-          value={TABS.some((t) => t.value === tab) ? tab : "music"}
-          onChange={(v) => setSearchParams(v === "music" ? {} : { tab: v })}
-        />
+        <Tabs items={TABS} value={TABS.some((t) => t.value === tab) ? tab : "music"} onChange={(v) => setSearchParams(v === "music" ? {} : { tab: v })} />
       </div>
-      {tab === "music" && <MusicTab onStartScenario={start} />}
+      {tab === "music" &&
+        (sources.length === 0 ? (
+          <MusicEmptyState />
+        ) : (
+          <MusicSection onStems={onStems} onClip={onClip} />
+        ))}
       {tab === "link" && <LinkTab />}
       {tab === "scenario" && <ScenarioTab onGoMusic={() => setSearchParams({ tab: "music" })} onStartScenario={start} />}
       <RecentMaterials />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- 音乐（二级视图）
+
+function MusicSection({ onStems, onClip }: { onStems: (t: MusicTrack) => void; onClip: (t: MusicTrack) => void }) {
+  const [sub, setSub] = useState<MusicSub>("search");
+  const props = { onStems, onClip };
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-1 text-xs">
+        {MUSIC_TABS.map((t) => (
+          <button
+            key={t.value}
+            type="button"
+            onClick={() => setSub(t.value)}
+            className={`cursor-pointer rounded-full px-3 py-1.5 transition-colors duration-150 ${
+              sub === t.value ? "bg-accent/10 text-accent" : "text-muted hover:text-fg-2"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {sub === "search" && <MusicSearchView {...props} />}
+      {sub === "ranks" && <MusicRanksView {...props} />}
+      {sub === "playlists" && <MusicPlaylistsView {...props} />}
+      {sub === "mv" && <MusicMVView {...props} />}
+      {sub === "history" && <MusicHistoryView {...props} />}
+    </div>
+  );
+}
+
+function MusicEmptyState() {
+  const syncSources = useMutation({
+    mutationFn: () => fetchJSON<{ lines: number }>("/api/music/sources/sync", { method: "POST" }),
+  });
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  return (
+    <Card>
+      <EmptyState
+        icon={<Music size={20} strokeWidth={1.5} />}
+        title="还没有音源"
+        description="填好同步地址后，点「同步音源」拉取音源配置（地址在设置页「音乐音源」维护），之后就能搜歌下载了"
+        action={
+          <Button
+            variant="primary"
+            loading={syncSources.isPending}
+            onClick={() =>
+              syncSources.mutate(undefined, {
+                onSuccess: (d) => {
+                  toast({ tone: "ok", title: `已同步 ${d.lines} 个音源`, description: "可以搜歌了" });
+                  void qc.invalidateQueries({ queryKey: ["music-sources"] });
+                },
+                onError: (e) =>
+                  toast({
+                    tone: "error",
+                    title: "同步失败",
+                    description: `${e instanceof Error ? e.message : String(e)}（同步地址在设置页「音乐音源」配置）`,
+                  }),
+              })
+            }
+          >
+            同步音源
+          </Button>
+        }
+      />
+    </Card>
   );
 }
 
@@ -155,255 +199,6 @@ function RunnerCard({
   );
 }
 
-// ---------------------------------------------------------------- 音乐搜索
-
-function MusicTab({ onStartScenario }: { onStartScenario: (s: Scenario) => void }) {
-  const { toast } = useToast();
-  const qc = useQueryClient();
-  const [keyword, setKeyword] = useState("");
-  const [sourcePick, setSourcePick] = useState("");
-  const [page, setPage] = useState(1);
-  const [items, setItems] = useState<Track[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState("");
-  const [played, setPlayed] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  const { data: sourcesData } = useQuery({
-    queryKey: ["music-sources"],
-    queryFn: () => fetchJSON<{ items: SourceLine[]; configured: boolean; sources_url: string }>("/api/music/sources"),
-  });
-  const sources = (sourcesData?.items ?? []).filter((l) => l.enabled);
-  // 未手选时回落第一个启用音源（派生值，无 effect 同步）
-  const source = sourcePick || sources[0]?.id || "";
-
-  const pageReqRef = useRef(1);
-  const doSearch = useMutation({
-    mutationFn: async (p: number) => {
-      pageReqRef.current = p;
-      setSearching(true);
-      setSearchError("");
-      try {
-        const d = await fetchJSON<{ items: Track[] }>(
-          `/api/music/search?source=${encodeURIComponent(source)}&keyword=${encodeURIComponent(keyword.trim())}&page=${p}`,
-        );
-        return d;
-      } finally {
-        setSearching(false);
-      }
-    },
-    onSuccess: (d) => {
-      setItems(d.items);
-      setPage(pageReqRef.current);
-    },
-    onError: (e) => {
-      setItems([]);
-      setSearchError(e instanceof Error ? e.message : String(e));
-    },
-  });
-
-  const submitDownload = useMutation({
-    mutationFn: (t: Track) =>
-      fetchJSON<{ task_id: string }>("/api/tasks", {
-        method: "POST",
-        body: JSON.stringify({
-          provider: "music",
-          tool: "music_download",
-          params: { source: t.source, rid: t.rid, name: t.name, artist: t.artist, duration_ms: t.duration },
-        }),
-      }),
-    onSuccess: () => {
-      toast({ tone: "ok", title: "已加入下载", description: "进度见下方最近素材或任务页" });
-      void qc.invalidateQueries({ queryKey: ["recent-materials"] });
-    },
-    onError: (e) => toast({ tone: "error", title: "提交失败", description: e instanceof Error ? e.message : String(e) }),
-  });
-
-  // 同步音源：从设置页配置的拉取地址取 music.json（填了地址 ≠ 已导入，导入靠这一步）
-  const syncSources = useMutation({
-    mutationFn: () => fetchJSON<{ lines: number }>("/api/music/sources/sync", { method: "POST" }),
-    onSuccess: (d) => {
-      toast({ tone: "ok", title: `已同步 ${d.lines} 个音源`, description: "可以搜歌了" });
-      void qc.invalidateQueries({ queryKey: ["music-sources"] });
-    },
-    onError: (e) =>
-      toast({
-        tone: "error",
-        title: "同步失败",
-        description: `${e instanceof Error ? e.message : String(e)}（同步地址在设置页「音乐音源」配置）`,
-      }),
-  });
-
-  const togglePlay = (t: Track) => {
-    if (played === t.rid) {
-      audioRef.current?.pause();
-      setPlayed(null);
-      return;
-    }
-    if (!audioRef.current) audioRef.current = new Audio();
-    audioRef.current.src = `/api/music/stream?source=${encodeURIComponent(t.source)}&rid=${encodeURIComponent(t.rid)}&level=`;
-    void audioRef.current.play().catch(() => toast({ tone: "error", title: "试听失败", description: "直链解析不可用" }));
-    setPlayed(t.rid);
-  };
-
-  const fmtDur = (ms: number) => {
-    if (!ms) return "—";
-    const s = Math.round(ms / 1000);
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-  };
-
-  return (
-    <div className="flex flex-col gap-4">
-      {!sourcesData ? null : sources.length === 0 ? (
-        <Card>
-          <EmptyState
-            icon={<Music size={20} strokeWidth={1.5} />}
-            title="还没有音源"
-            description="填好同步地址后，点「同步音源」拉取音源配置（地址在设置页「音乐音源」维护），之后就能搜歌下载了"
-            action={
-              <Button variant="primary" loading={syncSources.isPending} onClick={() => syncSources.mutate()}>
-                同步音源
-              </Button>
-            }
-          />
-        </Card>
-      ) : (
-        <>
-          <Card>
-            <div className="flex flex-wrap items-center gap-2 p-4">
-              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-3">
-                <Search size={15} className="shrink-0 text-muted" />
-                <input
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && keyword.trim() && source) doSearch.mutate(1);
-                  }}
-                  placeholder="搜歌名、歌手…"
-                  className="min-w-0 flex-1 bg-transparent py-2.5 text-sm outline-none placeholder:text-muted"
-                />
-              </div>
-              <button
-                type="button"
-                disabled={!keyword.trim() || !source || searching}
-                onClick={() => doSearch.mutate(1)}
-                className="btn-primary shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {searching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                搜索
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5 px-4 pb-4">
-              {sources.map((l) => (
-                <button
-                  key={l.id}
-                  type="button"
-                  onClick={() => setSourcePick(l.id)}
-                  className={`cursor-pointer rounded-full border px-3 py-1 text-xs transition-colors duration-150 ${
-                    source === l.id ? "border-accent/50 bg-accent/10 text-accent" : "border-line text-fg-2 hover:border-line-strong"
-                  }`}
-                >
-                  {l.name || l.id}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => syncSources.mutate()}
-                disabled={syncSources.isPending}
-                title="从设置页配置的音源地址重新拉取"
-                className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-line px-3 py-1 text-xs text-muted transition-colors duration-150 hover:border-line-strong hover:text-fg-2 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <RefreshCw size={11} className={syncSources.isPending ? "animate-spin" : ""} />
-                同步
-              </button>
-            </div>
-          </Card>
-
-          {searchError && <p className="text-xs text-danger">{searchError}</p>}
-          {items.length > 0 && (
-            <Card>
-              <div className="flex flex-col divide-y divide-line">
-                {items.map((t) => (
-                  <div key={`${t.source}-${t.rid}`} className="flex items-center gap-3 px-4 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => togglePlay(t)}
-                      title="试听"
-                      className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-line text-fg-2 transition-colors duration-150 hover:border-accent hover:text-accent"
-                    >
-                      {played === t.rid ? <Pause size={14} /> : <Play size={14} />}
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm">
-                        {t.name} <span className="text-fg-2">- {t.artist}</span>
-                      </p>
-                      <p className="truncate text-xs text-muted">
-                        {t.album || "未知专辑"} · {fmtDur(t.duration)}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => submitDownload.mutate(t)}
-                      title="下载入库（standard 档，写标签封面）"
-                      className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
-                    >
-                      <Download size={13} strokeWidth={1.75} />
-                      下载入库
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onStartScenario(songStemsScenario(t, "volcengine"))}
-                      title="下载后自动送人声分离（火山引擎）"
-                      className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
-                    >
-                      <MicVocal size={13} strokeWidth={1.75} />
-                      伴奏人声
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onStartScenario(songClipScenario(t))}
-                      title="下载后直达「切高潮」"
-                      className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
-                    >
-                      <Scissors size={13} strokeWidth={1.75} />
-                      切高潮
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-end gap-3 px-4 py-3 text-xs text-fg-2">
-                <button
-                  type="button"
-                  disabled={page <= 1 || searching}
-                  onClick={() => {
-                    const p = page - 1;
-                    doSearch.mutate(p);
-                  }}
-                  className="cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 hover:text-accent"
-                >
-                  上一页
-                </button>
-                <span className="text-muted tabular-nums">第 {page} 页</span>
-                <button
-                  type="button"
-                  disabled={items.length === 0 || searching}
-                  onClick={() => {
-                    const p = page + 1;
-                    doSearch.mutate(p);
-                  }}
-                  className="cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 hover:text-accent"
-                >
-                  下一页
-                </button>
-              </div>
-            </Card>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------- 链接下载
 
 function LinkTab() {
@@ -418,8 +213,7 @@ function LinkTab() {
   const [subs, setSubs] = useState(false);
 
   const doProbe = useMutation({
-    mutationFn: () =>
-      fetchJSON<ProbeMeta>("/api/downloader/probe", { method: "POST", body: JSON.stringify({ url: url.trim() }) }),
+    mutationFn: () => fetchJSON<ProbeMeta>("/api/downloader/probe", { method: "POST", body: JSON.stringify({ url: url.trim() }) }),
     onMutate: () => {
       setProbing(true);
       setProbeError("");
@@ -474,14 +268,9 @@ function LinkTab() {
             className="min-w-0 flex-1 bg-transparent py-2.5 text-sm outline-none placeholder:text-muted"
           />
         </div>
-        <button
-          type="button"
-          disabled={!url.trim() || probing}
-          onClick={() => doProbe.mutate()}
-          className="shrink-0 cursor-pointer rounded-[var(--radius-sm)] border border-line px-3 py-2 text-xs text-fg-2 transition-colors duration-150 hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {probing ? <Loader2 size={14} className="animate-spin" /> : "解析"}
-        </button>
+        <Button variant="secondary" loading={probing} disabled={!url.trim()} onClick={() => doProbe.mutate()}>
+          解析
+        </Button>
       </div>
 
       {probeError && <p className="px-4 pb-3 text-xs text-danger">{probeError}</p>}
@@ -533,15 +322,9 @@ function LinkTab() {
                 <span className="text-muted">同时下载字幕（srt）</span>
               </label>
             )}
-            <button
-              type="button"
-              disabled={submit.isPending}
-              onClick={() => submit.mutate()}
-              className="btn-primary ml-auto disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {submit.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            <Button variant="primary" loading={submit.isPending} onClick={() => submit.mutate()} icon={<Download size={14} />} className="ml-auto">
               开始下载
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -549,9 +332,27 @@ function LinkTab() {
   );
 }
 
+interface ProbeMeta {
+  backend: "ytdlp" | "douyin";
+  probe?: string;
+  title?: string;
+  duration?: number;
+  uploader?: string;
+  site?: string;
+  playlist?: boolean;
+  n_entries?: number;
+  subtitle_langs?: string[];
+}
+
 // ---------------------------------------------------------------- 场景
 
-function ScenarioTab({ onGoMusic, onStartScenario }: { onGoMusic: () => void; onStartScenario: (s: Scenario) => void }) {
+function ScenarioTab({
+  onGoMusic,
+  onStartScenario,
+}: {
+  onGoMusic: () => void;
+  onStartScenario: (s: Scenario) => void;
+}) {
   const [linkUrl, setLinkUrl] = useState("");
   const [linkAsr, setLinkAsr] = useState<"local" | "volcengine">("local");
   const [dyUrl, setDyUrl] = useState("");
@@ -577,14 +378,9 @@ function ScenarioTab({ onGoMusic, onStartScenario }: { onGoMusic: () => void; on
               className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-3 py-2 text-sm outline-none placeholder:text-muted"
             />
             <AsrSelect value={linkAsr} onChange={setLinkAsr} />
-            <button
-              type="button"
-              disabled={!linkUrl.trim()}
-              onClick={() => onStartScenario(linkSubtitleScenario(linkUrl.trim(), { engine: linkAsr }))}
-              className="btn-primary shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            <Button variant="primary" disabled={!linkUrl.trim()} onClick={() => onStartScenario(linkSubtitleScenario(linkUrl.trim(), { engine: linkAsr }))}>
               开始
-            </button>
+            </Button>
           </div>
         </div>
       </Card>
@@ -597,9 +393,9 @@ function ScenarioTab({ onGoMusic, onStartScenario }: { onGoMusic: () => void; on
           <p className="mt-1 text-xs text-muted">
             在音乐搜索里选歌：行内「伴奏人声」下载后自动送人声分离；「切高潮」下载后直达剪辑页。
           </p>
-          <button type="button" onClick={onGoMusic} className="btn-primary mt-3">
+          <Button variant="primary" onClick={onGoMusic} className="mt-3">
             去搜索选歌
-          </button>
+          </Button>
         </div>
       </Card>
       <Card>
@@ -619,14 +415,9 @@ function ScenarioTab({ onGoMusic, onStartScenario }: { onGoMusic: () => void; on
               className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-3 py-2 text-sm outline-none placeholder:text-muted"
             />
             <AsrSelect value={dyAsr} onChange={setDyAsr} />
-            <button
-              type="button"
-              disabled={!dyUrl.trim()}
-              onClick={() => onStartScenario(douyinNotesScenario(dyUrl.trim(), { engine: dyAsr }))}
-              className="btn-primary shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            <Button variant="primary" disabled={!dyUrl.trim()} onClick={() => onStartScenario(douyinNotesScenario(dyUrl.trim(), { engine: dyAsr }))}>
               开始
-            </button>
+            </Button>
           </div>
         </div>
       </Card>
@@ -661,7 +452,6 @@ function AsrSelect({ value, onChange }: { value: "local" | "volcengine"; onChang
 // ---------------------------------------------------------------- 最近素材
 
 function RecentMaterials() {
-  // 展开态与详情按任务 id 存增量表；列表本体从查询数据派生（无 effect 同步）。
   const [extra, setExtra] = useState<Map<string, { detail?: TaskDetail; open: boolean }>>(new Map());
 
   const { data, refetch } = useQuery({
@@ -669,10 +459,9 @@ function RecentMaterials() {
     queryFn: async () => {
       const music = await fetchJSON<{ items: Task[] }>("/api/tasks?provider=music&size=6");
       const dl = await fetchJSON<{ items: Task[] }>("/api/tasks?provider=downloader&size=6");
-      const all = [...music.items, ...dl.items]
+      return [...music.items, ...dl.items]
         .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
         .slice(0, 8);
-      return all;
     },
     refetchInterval: 5000,
   });
@@ -726,7 +515,11 @@ function RecentMaterials() {
               >
                 {open ? <ChevronDown size={14} className="shrink-0 text-muted" /> : <ChevronRight size={14} className="shrink-0 text-muted" />}
                 <span className="min-w-0 flex-1 truncate text-sm">{task.title || task.tool}</span>
-                <span className={`shrink-0 text-xs ${task.status === "succeeded" ? "text-fg-2" : task.status === "failed" ? "text-danger" : "text-accent"}`}>
+                <span
+                  className={`shrink-0 text-xs ${
+                    task.status === "succeeded" ? "text-fg-2" : task.status === "failed" ? "text-danger" : "text-accent"
+                  }`}
+                >
                   {task.status === "running" || task.status === "pending"
                     ? `进行中 ${task.progress}%`
                     : task.status === "succeeded"
@@ -755,7 +548,11 @@ function RecentMaterials() {
                   ) : (
                     <span className="text-xs text-muted">{task.error || "尚未产出"}</span>
                   )}
-                  {detail && <p className="text-[11px] text-muted">{detail.artifacts.length} 个产物 · {formatSize(detail.artifacts.reduce((n, a) => n + a.size, 0))}</p>}
+                  {detail && (
+                    <p className="text-[11px] text-muted">
+                      {detail.artifacts.length} 个产物 · {formatSize(detail.artifacts.reduce((n, a) => n + a.size, 0))}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

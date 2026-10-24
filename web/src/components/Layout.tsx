@@ -18,6 +18,7 @@ import { usePlayer } from "../lib/player";
 import { useWSStatus } from "../lib/ws";
 import { features } from "../features";
 import PlayerBar from "./PlayerBar";
+import MusicPlayerBar from "./MusicPlayerBar";
 import TaskToasts from "./TaskToasts";
 import AssistantWidget from "./AssistantWidget";
 import BrandMark from "./BrandMark";
@@ -312,6 +313,7 @@ export default function Layout() {
       </div>
 
       <PlayerBar />
+      <MusicPlayerBar />
       {me && (
         <ConfirmDialog
           open={logoutConfirm}

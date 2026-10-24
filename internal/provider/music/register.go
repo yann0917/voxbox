@@ -29,5 +29,6 @@ func ReRegisterAll(reg *provider.Registry, cfg config.Config, dataDir string) {
 func allTools(dataDir string) []provider.Tool {
 	return []provider.Tool{
 		NewTool(dataDir),
+		NewMVTool(dataDir),
 	}
 }

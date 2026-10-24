@@ -2,12 +2,13 @@ import { X } from "lucide-react";
 import { usePlayer } from "../lib/player";
 import { IconButton, WavePlayer } from "../ui";
 
-/** 全局播放条：跨页面常驻，保证任何页面的音频都在同一条通道上播放。 */
+/** 全局播放条：跨页面常驻，保证任何页面的音频都在同一条通道上播放。
+ *  音乐曲目（带队列/上一曲下一曲）由 MusicPlayerBar 渲染，本条让位。 */
 export default function PlayerBar() {
   const track = usePlayer((s) => s.track);
   const stop = usePlayer((s) => s.stop);
 
-  if (!track) return null;
+  if (!track || track.music) return null;
 
   return (
     <footer className="rise fixed inset-x-0 bottom-0 z-30 border-t border-line bg-panel/95 backdrop-blur">

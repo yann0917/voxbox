@@ -16,8 +16,8 @@ import (
 func TestNewRegistersTools(t *testing.T) {
 	svc := newTestService(t)
 	metas := svc.Registry().List()
-	if len(metas) != 49 { // 火山 8 + MVSep 1 + 音乐下载 1 + 链接下载 1 + 千问 2 + 小米 2 + 智谱 4 + OpenRouter 1 + MiniMax 3 + gsgc 11（1 分离 + 10 站点功能）+ zhuanhuanmao 1 分离 + 音频剪辑 12 + 本地推理 2
-		t.Fatalf("registered tools = %d, want 49", len(metas))
+	if len(metas) != 50 { // 火山 8 + MVSep 1 + 音乐 2（歌曲+MV）+ 链接下载 1 + 千问 2 + 小米 2 + 智谱 4 + OpenRouter 1 + MiniMax 3 + gsgc 11（1 分离 + 10 站点功能）+ zhuanhuanmao 1 分离 + 音频剪辑 12 + 本地推理 2
+		t.Fatalf("registered tools = %d, want 50", len(metas))
 	}
 	if _, ok := svc.Registry().Get("local", "tts"); !ok {
 		t.Error("local.tts not found")
@@ -97,8 +97,8 @@ func TestSaveProviderFieldsHotReload(t *testing.T) {
 	if _, ok := svc.Registry().Get("volcengine", "tts"); !ok {
 		t.Error("volcengine.tts missing after hot reload")
 	}
-	if len(svc.Registry().List()) != 49 {
-		t.Errorf("List len = %d, want 49（火山 8 + MVSep 1 + 音乐 1 + 下载器 1 + 千问 2 + 小米 2 + 智谱 4 + OpenRouter 1 + MiniMax 3 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12 + 本地推理 2）", len(svc.Registry().List()))
+	if len(svc.Registry().List()) != 50 {
+		t.Errorf("List len = %d, want 50（火山 8 + MVSep 1 + 音乐 2（歌曲+MV）+ 下载器 1 + 千问 2 + 小米 2 + 智谱 4 + OpenRouter 1 + MiniMax 3 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12 + 本地推理 2）", len(svc.Registry().List()))
 	}
 	// 持久化：重读磁盘配置与内存一致
 	persisted, err := config.Load()
@@ -153,8 +153,8 @@ func TestReloadVolcFromDisk(t *testing.T) {
 	if _, ok := svc.Registry().Get("volcengine", "tts"); !ok {
 		t.Error("volcengine.tts missing after reload")
 	}
-	if len(svc.Registry().List()) != 49 {
-		t.Errorf("List len = %d, want 49（火山 8 + MVSep 1 + 音乐 1 + 下载器 1 + 千问 2 + 小米 2 + 智谱 4 + OpenRouter 1 + MiniMax 3 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12 + 本地推理 2）", len(svc.Registry().List()))
+	if len(svc.Registry().List()) != 50 {
+		t.Errorf("List len = %d, want 50（火山 8 + MVSep 1 + 音乐 2（歌曲+MV）+ 下载器 1 + 千问 2 + 小米 2 + 智谱 4 + OpenRouter 1 + MiniMax 3 + gsgc 11 + zhuanhuanmao 1 + 音频剪辑 12 + 本地推理 2）", len(svc.Registry().List()))
 	}
 }
 
