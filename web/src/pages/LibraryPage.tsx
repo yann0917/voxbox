@@ -63,7 +63,7 @@ export default function LibraryPage() {
         ) : (
           <MusicSection onStems={onStems} onClip={onClip} />
         ))}
-      {tab === "link" && <LinkTab />}
+      {tab === "link" && <LinkTab onStartScenario={start} />}
       {tab === "scenario" && <ScenarioTab onGoMusic={() => setSearchParams({ tab: "music" })} onStartScenario={start} />}
       <RecentMaterials />
     </div>
@@ -231,7 +231,7 @@ function RunnerCard({
 
 // ---------------------------------------------------------------- 链接下载
 
-function LinkTab() {
+function LinkTab({ onStartScenario }: { onStartScenario: (s: Scenario) => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [url, setUrl] = useState("");
@@ -241,6 +241,9 @@ function LinkTab() {
   const [mode, setMode] = useState<"audio" | "video">("audio");
   const [maxItems, setMaxItems] = useState(1);
   const [subs, setSubs] = useState(false);
+  // 下载后自动转写并 AI 总结（复用场景执行器：下载→识别→总结，执行卡全程可见）
+  const [autoAsr, setAutoAsr] = useState(true);
+  const [asrEngine, setAsrEngine] = useState<"local" | "volcengine">("local");
 
   const doProbe = useMutation({
     mutationFn: () => fetchJSON<ProbeMeta>("/api/downloader/probe", { method: "POST", body: JSON.stringify({ url: url.trim() }) }),
@@ -302,9 +305,6 @@ function LinkTab() {
           解析
         </Button>
       </div>
-      <p className="px-4 pb-3 text-[11px] text-muted">
-        只要总结、思维导图和问答？到「场景」用『链接 → 字幕稿』，完成后自动出 AI 总结，任务详情里可生成导图。
-      </p>
 
       {probeError && <p className="px-4 pb-3 text-xs text-danger">{probeError}</p>}
 
@@ -355,8 +355,29 @@ function LinkTab() {
                 <span className="text-muted">同时下载字幕（srt）</span>
               </label>
             )}
-            <Button variant="primary" loading={submit.isPending} onClick={() => submit.mutate()} icon={<Download size={14} />} className="ml-auto">
-              开始下载
+            {mode === "audio" && (
+              <>
+                <label className="flex cursor-pointer items-center gap-2 text-fg-2" title="下载后自动转写，并由 AI 默认大模型生成总结（导图/问答在任务详情）">
+                  <Switch checked={autoAsr} onChange={setAutoAsr} />
+                  <span className="text-muted">转写并 AI 总结</span>
+                </label>
+                {autoAsr && <AsrSelect value={asrEngine} onChange={setAsrEngine} />}
+              </>
+            )}
+            <Button
+              variant="primary"
+              loading={submit.isPending}
+              onClick={() => {
+                if (mode === "audio" && autoAsr && url.trim()) {
+                  onStartScenario(linkSubtitleScenario(url.trim(), { engine: asrEngine }, true));
+                  return;
+                }
+                submit.mutate();
+              }}
+              icon={<Download size={14} />}
+              className="ml-auto"
+            >
+              {mode === "audio" && autoAsr ? "开始" : "开始下载"}
             </Button>
           </div>
         </div>
