@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/yann0917/voxbox/internal/provider"
@@ -153,12 +154,20 @@ func (t *Tool) runYtdlp(ctx context.Context, link, mode string, maxItems int, wa
 		args = append(args, "--playlist-items", fmt.Sprintf("1:%d", maxItems))
 	}
 	if wantSubs {
-		args = append(args, "--write-subs", "--write-auto-subs", "--sub-langs", "zh.*,en.*,ja.*,ko.*", "--convert-subs", "srt")
+		// 语言给具体枚举：通配（zh.*,en.*）会命中自动字幕的全部翻译组合轨道，
+		// YouTube 字幕端点直接 429 限流。--ignore-errors 让单条字幕 429 不拖垮
+		// 整体（主媒体缺失时 collectArtifacts 会兜底报错）。
+		args = append(args, "--write-subs", "--write-auto-subs", "--sub-langs", "zh-Hans,zh-Hant,en", "--convert-subs", "srt")
 	}
+	// ffmpeg 缺失时字幕转 srt 之类的后处理会挂；找得到就显式指路（桌面版 PATH 已含）。
+	if ff, err := exec.LookPath("ffmpeg"); err == nil {
+		args = append(args, "--ffmpeg-location", ff)
+	}
+	args = append(args, "--ignore-errors")
 	args = append(args, link)
 
 	report(3, "启动 yt-dlp…", nil)
-	stdoutTail, runErr := streamProcess(ctx, bin, args, func(line string) {
+	outTail, errTail, runErr := streamProcess(ctx, bin, args, func(line string) {
 		if m := ytdlpProgressRe.FindStringSubmatch(line); m != nil {
 			pct, _ := strconv.ParseFloat(m[1], 64)
 			p := 3 + int(pct)*95/100
@@ -169,7 +178,7 @@ func (t *Tool) runYtdlp(ctx context.Context, link, mode string, maxItems int, wa
 		}
 	})
 	if runErr != nil {
-		return provider.TaskOutput{}, fmt.Errorf("yt-dlp 下载失败: %s", firstMeaningful(stderrTail(stdoutTail, runErr), 400))
+		return provider.TaskOutput{}, fmt.Errorf("yt-dlp 下载失败: %s", ytdlpErrMessage(outTail, errTail, runErr))
 	}
 	report(99, "登记产物…", nil)
 	return collectArtifacts(t.dataDir, dir)
@@ -234,7 +243,7 @@ func (t *Tool) runDouyin(ctx context.Context, link, douyinMode string, maxItems 
 	args = args[1:]
 
 	report(5, "启动 douyin-downloader…", nil)
-	_, runErr := streamProcess(ctx, bin, args, nil)
+	_, _, runErr := streamProcess(ctx, bin, args, nil)
 	if runErr != nil {
 		if ctx.Err() != nil {
 			return provider.TaskOutput{}, ctx.Err()
@@ -311,6 +320,18 @@ func collectArtifacts(dataDir, dir string) (provider.TaskOutput, error) {
 	if len(arts) == 0 {
 		return provider.TaskOutput{}, fmt.Errorf("下载目录没有可用产物（视频可能被上游拦截或格式不受支持）")
 	}
+	// --ignore-errors 下主媒体失败、仅字幕落盘也会 exit 0：只捞到字幕视为主媒体失败，
+	// 不能把「没下到视频/音频」标成功
+	hasMedia := false
+	for _, a := range arts {
+		if a.Kind == "audio" || a.Kind == "video" {
+			hasMedia = true
+			break
+		}
+	}
+	if !hasMedia {
+		return provider.TaskOutput{}, fmt.Errorf("主媒体下载失败（只落了 %d 条字幕）：站点限流或视频被拦截，可稍后重试", len(arts))
+	}
 
 	summary := map[string]any{}
 	if len(titles) > 0 {
@@ -384,39 +405,44 @@ func intParam(params map[string]any, key string) int {
 }
 
 // streamProcess 流式跑外部命令：onLine 逐行消费 stdout（进度解析），
-// 返回 stdout/stderr 尾部若干行（错误信息提取用）。命令随 ctx 取消。
-func streamProcess(ctx context.Context, bin string, args []string, onLine func(string)) (tail []string, err error) {
+// 返回 stdout/stderr 各自的尾部若干行（错误信息提取用）。命令随 ctx 取消。
+func streamProcess(ctx context.Context, bin string, args []string, onLine func(string)) (outTail []string, errTail []string, err error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("启动 %s 失败: %w", bin, err)
+		return nil, nil, fmt.Errorf("启动 %s 失败: %w", bin, err)
 	}
 
-	scan := func(r io.Reader, isStdout bool) {
+	var outMu, errMu sync.Mutex
+	scan := func(r io.Reader, stdout bool) {
 		sc := bufio.NewScanner(r)
 		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for sc.Scan() {
 			line := sc.Text()
-			if isStdout {
+			if stdout {
 				if onLine != nil {
 					onLine(line)
 				}
-				tail = append(tail, line)
-				if len(tail) > 20 {
-					tail = tail[len(tail)-20:]
+				outMu.Lock()
+				outTail = append(outTail, line)
+				if len(outTail) > 30 {
+					outTail = outTail[len(outTail)-30:]
 				}
+				outMu.Unlock()
 			} else {
-				tail = append(tail, line)
-				if len(tail) > 20 {
-					tail = tail[len(tail)-20:]
+				errMu.Lock()
+				errTail = append(errTail, line)
+				if len(errTail) > 30 {
+					errTail = errTail[len(errTail)-30:]
 				}
+				errMu.Unlock()
 			}
 		}
 	}
@@ -426,23 +452,50 @@ func streamProcess(ctx context.Context, bin string, args []string, onLine func(s
 	<-done
 	<-done
 	runErr := cmd.Wait()
-	return tail, runErr
+	return outTail, errTail, runErr
 }
 
-// stderrTail 从尾部行里挑出最有信息量的一段（跳过空行）。
-func stderrTail(tail []string, err error) string {
-	lines := []string{}
-	for _, l := range tail {
-		if strings.TrimSpace(l) != "" {
-			lines = append(lines, l)
+// ytdlpErrMessage 从 stdout/stderr 尾部提取错误信息：过滤下载进度噪声行、
+// 单行截断（长路径会吃掉预算把真正的 ERROR 行挤没），优先带 ERROR 的行。
+func ytdlpErrMessage(outTail, errTail []string, err error) string {
+	clip := func(l string) string {
+		l = strings.TrimSpace(l)
+		if len([]rune(l)) > 120 {
+			l = string([]rune(l)[:120]) + "…"
+		}
+		return l
+	}
+	var meaningful, errLines []string
+	for _, l := range append(append([]string{}, errTail...), outTail...) {
+		l = clip(l)
+		if l == "" || l == "…" {
+			continue
+		}
+		// 进度/速率行纯噪声（[download] 42.3% …）；[info] 落盘路径行同理
+		if strings.HasPrefix(l, "[download]") && strings.Contains(l, "%") {
+			continue
+		}
+		if strings.HasPrefix(l, "[info]") && strings.Contains(l, "Destination") {
+			continue
+		}
+		meaningful = append(meaningful, l)
+		if strings.Contains(l, "ERROR") || strings.Contains(l, "error:") {
+			errLines = append(errLines, l)
 		}
 	}
-	if len(lines) > 6 {
-		lines = lines[len(lines)-6:]
+	pick := meaningful
+	if len(errLines) > 0 {
+		pick = errLines
 	}
-	out := strings.Join(lines, " | ")
+	if len(pick) > 4 {
+		pick = pick[len(pick)-4:]
+	}
+	out := strings.Join(pick, " | ")
 	if out == "" {
 		out = err.Error()
+	}
+	if len([]rune(out)) > 500 {
+		out = string([]rune(out)[:500]) + "…"
 	}
 	return out
 }
