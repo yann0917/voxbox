@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
@@ -19,7 +19,7 @@ import { useScenarioRunner } from "../lib/useScenarioRunner";
 import { listMusicSources, type MusicTrack } from "../lib/music";
 import type { Artifact, Task, TaskDetail } from "../lib/types";
 import { ArtifactRow, formatSize } from "../components/ArtifactRow";
-import { Button, Card, EmptyState, PageHeader, ProgressBar, Switch, Tabs, useToast } from "../ui";
+import { Button, Card, EmptyState, Markdown, PageHeader, ProgressBar, Switch, Tabs, useToast } from "../ui";
 import { MusicSearchView, MusicRanksView, MusicPlaylistsView, MusicMVView, MusicHistoryView } from "./library/MusicViews";
 
 type Tab = "music" | "link" | "scenario";
@@ -150,6 +150,7 @@ function RunnerCard({
   onCancel: () => void;
   onReset: () => void;
 }) {
+  const navigate = useNavigate();
   return (
     <Card className="mb-5">
       <div className="flex items-center justify-between gap-3 p-4 pb-0">
@@ -188,11 +189,40 @@ function RunnerCard({
           </div>
         ))}
       </div>
-      {run.status === "done" && run.artifacts.length > 0 && (
-        <div className="flex flex-col gap-2 px-4 pb-4">
-          {run.artifacts.map((a: Artifact) => (
-            <ArtifactRow key={a.id} a={a} />
-          ))}
+      {run.status === "done" && (
+        <div className="flex flex-col gap-3 px-4 pb-4">
+          {run.artifacts.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {run.artifacts.map((a: Artifact) => (
+                <ArtifactRow key={a.id} a={a} />
+              ))}
+            </div>
+          )}
+          {run.autoSummary !== undefined && (
+            <div className="rounded-[var(--radius-sm)] border border-line bg-inset px-3 py-2.5">
+              <p className="micro mb-1 flex items-center gap-1.5">
+                <Sparkles size={12} strokeWidth={1.75} className="text-accent" />
+                AI 总结
+              </p>
+              {run.autoSummary ? (
+                <div className="max-h-72 overflow-y-auto">
+                  <Markdown>{run.autoSummary}</Markdown>
+                </div>
+              ) : (
+                <p className="text-xs text-muted">正在阅读文字稿并总结…</p>
+              )}
+            </div>
+          )}
+          {run.autoSummaryError && <p className="text-xs text-muted">{run.autoSummaryError}</p>}
+          {run.lastTaskId && (
+            <button
+              type="button"
+              onClick={() => navigate(`/history?task=${run.lastTaskId}`)}
+              className="cursor-pointer self-start text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
+            >
+              打开任务详情：提炼 / 问答 / 思维导图 →
+            </button>
+          )}
         </div>
       )}
     </Card>
@@ -355,8 +385,10 @@ function ScenarioTab({
 }) {
   const [linkUrl, setLinkUrl] = useState("");
   const [linkAsr, setLinkAsr] = useState<"local" | "volcengine">("local");
+  const [linkAuto, setLinkAuto] = useState(true);
   const [dyUrl, setDyUrl] = useState("");
   const [dyAsr, setDyAsr] = useState<"local" | "volcengine">("local");
+  const [dyAuto, setDyAuto] = useState(true);
 
   return (
     <div className="flex flex-col gap-4">
@@ -378,7 +410,15 @@ function ScenarioTab({
               className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-3 py-2 text-sm outline-none placeholder:text-muted"
             />
             <AsrSelect value={linkAsr} onChange={setLinkAsr} />
-            <Button variant="primary" disabled={!linkUrl.trim()} onClick={() => onStartScenario(linkSubtitleScenario(linkUrl.trim(), { engine: linkAsr }))}>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-fg-2" title="完成后由 AI 默认大模型生成内容总结">
+              <Switch checked={linkAuto} onChange={setLinkAuto} />
+              自动总结
+            </label>
+            <Button
+              variant="primary"
+              disabled={!linkUrl.trim()}
+              onClick={() => onStartScenario(linkSubtitleScenario(linkUrl.trim(), { engine: linkAsr }, linkAuto))}
+            >
               开始
             </Button>
           </div>
@@ -415,7 +455,15 @@ function ScenarioTab({
               className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-3 py-2 text-sm outline-none placeholder:text-muted"
             />
             <AsrSelect value={dyAsr} onChange={setDyAsr} />
-            <Button variant="primary" disabled={!dyUrl.trim()} onClick={() => onStartScenario(douyinNotesScenario(dyUrl.trim(), { engine: dyAsr }))}>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-fg-2" title="完成后由 AI 默认大模型生成内容总结">
+              <Switch checked={dyAuto} onChange={setDyAuto} />
+              自动总结
+            </label>
+            <Button
+              variant="primary"
+              disabled={!dyUrl.trim()}
+              onClick={() => onStartScenario(douyinNotesScenario(dyUrl.trim(), { engine: dyAsr }, dyAuto))}
+            >
               开始
             </Button>
           </div>

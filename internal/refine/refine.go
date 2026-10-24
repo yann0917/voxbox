@@ -6,11 +6,12 @@ package refine
 
 import "strings"
 
-// 加工模式：三种内置 + custom（指令由调用方给定，handler 校验非空）。
+// 加工模式：四种内置 + custom（指令由调用方给定，handler 校验非空）。
 const (
 	ModeSummary = "summary"
 	ModeTodos   = "todos"
 	ModeEvents  = "events"
+	ModeMindmap = "mindmap"
 	ModeCustom  = "custom"
 )
 
@@ -23,7 +24,7 @@ const truncatedSuffix = "（转写过长，已截断）"
 // ValidMode mode 是否为合法加工模式。
 func ValidMode(mode string) bool {
 	switch mode {
-	case ModeSummary, ModeTodos, ModeEvents, ModeCustom:
+	case ModeSummary, ModeTodos, ModeEvents, ModeMindmap, ModeCustom:
 		return true
 	}
 	return false
@@ -39,6 +40,9 @@ const (
 	systemEvents = `从转写中提取日历级事件（会议/截止/约定时间），只输出 JSON 数组，元素形如 ` +
 		`{"title":"事件名","start":"YYYY-MM-DD HH:mm","end":"YYYY-MM-DD HH:mm 或空串","description":"上下文一句话"}。` +
 		`相对时间（如下周三）以录音日期为基准推算，录音日期会提供。不要输出 JSON 以外的任何文字。`
+	systemMindmap = `你是视频/录音内容结构化助手。基于给定转写输出内容思维导图，只输出嵌套无序列表：` +
+		`每行以 "- " 开头，子级用两个空格缩进，不得使用标题、序号或代码块。第一层 3~7 个主题分支，` +
+		`每个节点一句话（不超过 20 字），关键结论与数据放对应分支。只依据转写内容，不要编造。`
 )
 
 // BuildMessages 组装一次加工调用的 system 与 user 消息。instruction 仅 custom 模式
@@ -56,6 +60,8 @@ func BuildMessages(mode, instruction, transcript string) (system, user string) {
 		return systemTodos, "请从以下录音转写文本中提取待办事项：\n\n" + transcript
 	case ModeEvents:
 		return systemEvents, "请从以下录音转写文本中提取日历事件：\n\n" + transcript
+	case ModeMindmap:
+		return systemMindmap, "请把以下录音/视频转写整理成思维导图：\n\n" + transcript
 	case ModeCustom:
 		return instruction, transcript
 	}

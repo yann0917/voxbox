@@ -7,6 +7,7 @@ import {
   Copy,
   Download,
   ListTodo,
+  Network,
   NotebookPen,
   RefreshCw,
   Sparkles,
@@ -16,6 +17,7 @@ import {
 import { useDefaultAssistantModel } from "../../lib/assistant";
 import { downloadICS, icsEventCount } from "../../lib/ics";
 import type { RefineEvent, RefineTodo, Refined } from "../../lib/types";
+import { Mindmap } from "./Mindmap";
 import { Button, Card, CardBody, CardHeader, Field, IconButton, Markdown, Textarea, useToast } from "../../ui";
 import {
   asEvents,
@@ -40,6 +42,7 @@ export interface RefinePanelProps {
 
 const MODE_ICONS: Record<RefineMode, LucideIcon> = {
   summary: NotebookPen,
+  mindmap: Network,
   todos: ListTodo,
   events: CalendarRange,
   custom: Sparkles,
@@ -304,7 +307,7 @@ function ResultBlock({
           {label}
         </p>
         <div className="flex items-center gap-0.5">
-          {(mode === "summary" || mode === "custom") && typeof value === "string" && (
+          {(mode === "summary" || mode === "mindmap" || mode === "custom") && typeof value === "string" && (
             <IconButton size="sm" label={`复制${label}结果`} onClick={() => onCopy(value)}>
               <Copy size={13} strokeWidth={1.75} />
             </IconButton>
@@ -328,6 +331,8 @@ function ResultBlock({
             modelMissing={modelMissing}
             onRetry={onRerun}
           />
+        ) : mode === "mindmap" ? (
+          <Mindmap markdown={value} />
         ) : (
           <Markdown>{value}</Markdown>
         )

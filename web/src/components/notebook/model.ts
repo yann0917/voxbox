@@ -20,10 +20,11 @@ export function speakerStats(segs: QNSegment[]) {
 
 /* ---------- 加工区（/api/refine）：模式、请求与结果归一 ---------- */
 
-export type RefineMode = "summary" | "todos" | "events" | "custom";
+export type RefineMode = "summary" | "todos" | "events" | "mindmap" | "custom";
 
 export const REFINE_MODES: { value: RefineMode; label: string }[] = [
   { value: "summary", label: "总结" },
+  { value: "mindmap", label: "导图" },
   { value: "todos", label: "待办" },
   { value: "events", label: "事件" },
   { value: "custom", label: "自定义" },
@@ -62,8 +63,9 @@ export function parseRefinedArray(raw: string): unknown[] | null {
   }
 }
 
-/** 单模式的加工值形态：summary/custom 为 markdown 文本，todos/events 为结构化数组
- *  （解析失败时持久层存原文字符串，回显直接当文本展示并给重试入口）。 */
+/** 单模式的加工值形态：summary/mindmap/custom 为 markdown 文本（mindmap 由
+ *  Mindmap 组件渲染成导图树），todos/events 为结构化数组（解析失败时持久层存
+ *  原文字符串，回显直接当文本展示并给重试入口）。 */
 export type ModeValue = string | RefineTodo[] | RefineEvent[];
 
 /** 宽容归一 todos：字段缺失/类型漂移按空串兜底（LLM 输出不保证字段齐整）。 */

@@ -111,6 +111,8 @@ export interface Refined {
   summary?: string;
   todos?: RefineTodo[] | string;
   events?: RefineEvent[] | string;
+  /** 思维导图（mindmap 模式）：嵌套无序列表 markdown，Mindmap 组件渲染 */
+  mindmap?: string;
   custom?: string;
   /** 最近一次加工时间（RFC3339），跨模式共用 */
   updated_at?: string;

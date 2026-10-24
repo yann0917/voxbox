@@ -28,7 +28,7 @@ var refineStream = assistant.StreamCompose
 // refineReq 加工请求：task_id 为任务 uuid（store.Task.ID string 主键）。
 type refineReq struct {
 	TaskID      string `json:"task_id"`
-	Mode        string `json:"mode"`        // summary | todos | events | custom
+	Mode        string `json:"mode"`        // summary | todos | events | mindmap | custom
 	Instruction string `json:"instruction"` // mode=custom 时必填
 	Provider    string `json:"provider"`
 	Model       string `json:"model"`
@@ -41,7 +41,7 @@ func (s *Server) refine(c *gin.Context) {
 		return
 	}
 	if !refine.ValidMode(req.Mode) {
-		fail(c, CodeBadRequest, "参数错误：mode 须为 summary/todos/events/custom")
+		fail(c, CodeBadRequest, "参数错误：mode 须为 summary/todos/events/mindmap/custom")
 		return
 	}
 	if req.Mode == refine.ModeCustom && strings.TrimSpace(req.Instruction) == "" {
@@ -154,7 +154,7 @@ func (s *Server) persistRefined(t *store.Task, mode, out string) error {
 			refined[mode] = out // 原文兜底，不丢数据
 			log.Printf("[refine] task %s mode %s: 大模型输出非合法 JSON 数组，原文已存入 refined.%s", t.ID, mode, mode)
 		}
-	default: // summary | custom：自由文本
+	default: // summary | mindmap | custom：自由文本
 		refined[mode] = strings.TrimSpace(out)
 	}
 	refined["updated_at"] = time.Now().Format(time.RFC3339)

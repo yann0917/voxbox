@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { fetchJSON } from "./api";
+import { useDefaultAssistantModel } from "./assistant";
+import { streamRefine } from "../components/notebook/model";
 import { onTaskEvent } from "./ws";
 import type { Artifact, TaskDetail } from "./types";
 import type { Scenario, ScenarioStep } from "./scenarios";
@@ -22,6 +24,11 @@ export interface ScenarioRunState {
   /** 终态产物（逐步累积，含末步全部产物） */
   artifacts: Artifact[];
   error?: string;
+  /** 末步任务 id（打开任务详情：提炼/问答/导图都在那里） */
+  lastTaskId?: string;
+  /** 自动 AI 总结：SSE 流式累积上屏（scenario.autoSummary 且已配默认模型时） */
+  autoSummary?: string;
+  autoSummaryError?: string;
 }
 
 /** 场景执行器：按序提交任务，WS 终态驱动下一步（产物走 artifact_input 通道）。
@@ -32,7 +39,14 @@ export function useScenarioRunner() {
   const [run, setRun] = useState<ScenarioRunState | null>(null);
   const stateRef = useRef<ScenarioRunState | null>(null);
   const stepsRef = useRef<ScenarioStep[]>([]);
+  const scenarioRef = useRef<Scenario | null>(null);
   const currentRef = useRef<number>(-1);
+  // 自动总结消费默认模型：ref 镜像供 WS 回调读取（避免闭包过期值）
+  const defaultModel = useDefaultAssistantModel();
+  const modelRef = useRef(defaultModel);
+  useEffect(() => {
+    modelRef.current = defaultModel;
+  }, [defaultModel]);
   const qc = useQueryClient();
   const navigate = useNavigate();
 
@@ -83,6 +97,7 @@ export function useScenarioRunner() {
   const start = useCallback(
     (scenario: Scenario) => {
       stepsRef.current = scenario.steps;
+      scenarioRef.current = scenario;
       currentRef.current = -1;
       commit({
         title: scenario.title,
@@ -155,10 +170,11 @@ export function useScenarioRunner() {
               const withArts: ScenarioRunState = { ...base, artifacts: [...base.artifacts, ...arts] };
               const isLast = idx === stepsRef.current.length - 1;
               if (isLast) {
-                commit({ ...withArts, status: "done" });
+                commit({ ...withArts, status: "done", lastTaskId: ev.task_id });
                 const goto = def.goto?.(arts) ?? null;
                 if (goto) navigate(goto);
                 void qc.invalidateQueries({ queryKey: ["recent-materials"] });
+                if (scenarioRef.current?.autoSummary && ev.task_id) runAutoSummary(ev.task_id);
                 return;
               }
               const nextInput = def.wants ? (picked[0]?.id ?? "") : "";
@@ -176,6 +192,35 @@ export function useScenarioRunner() {
         }
       }),
     [commit, fail, navigate, qc, submitStep],
+  );
+
+  /** 自动 AI 总结：末步（识别类任务）成功后跑一次 summary 模式，流进执行卡。
+   *  未配默认模型/失败都不影响主链路——只挂提示，任务详情里仍可手动加工。 */
+  const runAutoSummary = useCallback(
+    (taskId: string) => {
+      const model = modelRef.current;
+      const cur = stateRef.current;
+      if (!cur) return;
+      if (!model) {
+        commit({ ...cur, autoSummaryError: "未配置 AI 默认大模型：可到任务详情手动加工（提炼/问答/导图）" });
+        return;
+      }
+      commit({ ...cur, autoSummary: "" });
+      let acc = "";
+      void streamRefine(
+        { task_id: taskId, mode: "summary", provider: model.provider, model: model.model },
+        (delta) => {
+          acc += delta;
+          const base = stateRef.current;
+          if (base && base.status === "done") commit({ ...base, autoSummary: acc });
+        },
+      )
+        .catch((e) => {
+          const base = stateRef.current;
+          if (base) commit({ ...base, autoSummaryError: e instanceof Error ? e.message : String(e) });
+        });
+    },
+    [commit],
   );
 
   return { run, start, reset, cancel };

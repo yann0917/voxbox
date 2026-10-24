@@ -15,6 +15,8 @@ export interface ScenarioStep {
 export interface Scenario {
   title: string;
   steps: ScenarioStep[];
+  /** 末步为识别类任务时，完成后自动跑一次 AI 总结（SSE 流进执行卡） */
+  autoSummary?: boolean;
 }
 
 /** 识别步骤的引擎口径：本地识别无凭证离线可用（任意时长）；
@@ -43,10 +45,11 @@ function asrStep({ engine }: AsrChoice): ScenarioStep {
       };
 }
 
-/** 链接 → 字幕稿：下载音频 → 识别出字幕/文稿。 */
-export function linkSubtitleScenario(url: string, asr: AsrChoice): Scenario {
+/** 链接 → 字幕稿：下载音频 → 识别出字幕/文稿 → 自动 AI 总结。 */
+export function linkSubtitleScenario(url: string, asr: AsrChoice, autoSummary = true): Scenario {
   return {
     title: "链接 → 字幕稿",
+    autoSummary,
     steps: [
       {
         key: "download",
@@ -119,10 +122,11 @@ export function songClipScenario(track: { source: string; rid: string; name: str
   };
 }
 
-/** 抖音链接 → 转写笔记：下载音频 → 识别，历史详情里可 AI 提炼与问答。 */
-export function douyinNotesScenario(url: string, asr: AsrChoice): Scenario {
+/** 抖音链接 → 转写笔记：下载音频 → 识别 → 自动 AI 总结。 */
+export function douyinNotesScenario(url: string, asr: AsrChoice, autoSummary = true): Scenario {
   return {
     title: "抖音链接 → 转写笔记",
+    autoSummary,
     steps: [
       {
         key: "download",
