@@ -302,6 +302,9 @@ function LinkTab() {
           解析
         </Button>
       </div>
+      <p className="px-4 pb-3 text-[11px] text-muted">
+        只要总结、思维导图和问答？到「场景」用『链接 → 字幕稿』，完成后自动出 AI 总结，任务详情里可生成导图。
+      </p>
 
       {probeError && <p className="px-4 pb-3 text-xs text-danger">{probeError}</p>}
 

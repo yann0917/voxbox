@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Captions, Download, Eraser, FileVideo, Languages, ListTree, Plus, RotateCcw, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import { apiBase, fetchJSON } from "../lib/api";
 import { streamPostSSEEvents } from "../lib/sse";
@@ -176,19 +177,36 @@ export default function SubtitlesPage() {
       setKaraoke(p.karaoke);
     }
   };
-  // 配音即字幕：长文本 TTS 勾选时间戳后同样带分句时间戳，与识别/妙记任务同源可导
+  // 配音即字幕：长文本 TTS 勾选时间戳后同样带分句时间戳，与识别/妙记任务同源可导；
+  // 下载类任务（链接/音乐下载）的分句为空，但其字幕文件产物（yt-dlp 落盘的 SRT/VTT）
+  // 可经 prepare 解析导入——下载→字幕工坊一条直路。
   const candidates = (tasks.data?.items ?? []).filter(
     (t) =>
       t.status === "succeeded" &&
-      (t.tool === "asr" || t.tool === "minutes" || t.tool === "tts_long" || t.tool === "tts_stream"),
+      (t.tool === "asr" ||
+        t.tool === "minutes" ||
+        t.tool === "tts_long" ||
+        t.tool === "tts_stream" ||
+        t.tool === "download" ||
+        t.tool === "music_download"),
   );
 
   const importFromTask = useMutation({
     mutationFn: async (taskId: string) => {
       const d = await fetchJSON<TaskDetail>(`/api/tasks/${taskId}`);
       const segs = d.task.summary?.segments ?? [];
-      if (segs.length === 0) throw new Error("该任务没有分句时间戳");
-      return segs;
+      if (segs.length > 0) return segs;
+      const sub = d.artifacts?.find((a) => a.kind === "subtitle");
+      if (!sub) throw new Error("该任务没有分句时间戳，也没有字幕文件产物");
+      const resp = await fetch(`${apiBase}/api/artifacts/${sub.id}/download`);
+      if (!resp.ok) throw new Error(`读取字幕文件失败：HTTP ${resp.status}`);
+      const content = await resp.text();
+      return (
+        await fetchJSON<{ segments: SubSeg[] }>("/api/subtitles/prepare", {
+          method: "POST",
+          body: JSON.stringify({ mode: "srt", content }),
+        })
+      ).segments;
     },
     onSuccess: (segs) => {
       setSegments(segs);
@@ -196,6 +214,38 @@ export default function SubtitlesPage() {
     },
     onError: (e: Error) => setImportError(e.message),
   });
+
+  // 深链导入：?artifact=<id>（产物行「去字幕工坊」带参进来）——拉字幕文件原文
+  // 交 prepare 解析（ParseSRT 兼容 VTT 时间轴），一步进编辑器。
+  const [searchParams] = useSearchParams();
+  const artifactId = searchParams.get("artifact");
+  useEffect(() => {
+    if (!artifactId) return;
+    let alive = true;
+    (async () => {
+      try {
+        const resp = await fetch(`${apiBase}/api/artifacts/${artifactId}/download`);
+        if (!resp.ok) throw new Error(`读取字幕文件失败：HTTP ${resp.status}`);
+        const content = await resp.text();
+        const segs = (
+          await fetchJSON<{ segments: SubSeg[] }>("/api/subtitles/prepare", {
+            method: "POST",
+            body: JSON.stringify({ mode: "srt", content }),
+          })
+        ).segments;
+        if (!alive) return;
+        setSegments(segs);
+        setImportError("");
+        toast({ tone: "ok", title: `已导入 ${segs.length} 条字幕` });
+      } catch (e) {
+        if (alive) setImportError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artifactId]);
 
   const prepare = useMutation({
     mutationFn: async () => {
@@ -387,7 +437,7 @@ export default function SubtitlesPage() {
 
             {source === "task" && (
               <div className="space-y-2">
-                <Field label="选择已完成的识别/配音任务" hint="取分句时间戳作为字幕轴（火山配音需勾选时间戳输出）">
+                <Field label="选择已完成的任务" hint="识别/配音取分句时间戳；链接下载取其字幕文件产物（yt-dlp 的 SRT/VTT）">
                   {({ id, ...rest }) => (
                     <Select
                       id={id}
@@ -395,7 +445,7 @@ export default function SubtitlesPage() {
                       onChange={(e) => importFromTask.mutate(e.target.value)}
                       {...rest}
                     >
-                      <option value="">{candidates.length > 0 ? "选择任务导入…" : "暂无已完成的识别/配音任务"}</option>
+                      <option value="">{candidates.length > 0 ? "选择任务导入…" : "暂无已完成任务"}</option>
                       {candidates.map((t) => (
                         <option key={t.id} value={t.id}>
                           {taskOptionLabel(t)}

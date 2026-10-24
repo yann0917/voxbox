@@ -75,8 +75,8 @@ export function ArtifactRow({ a }: { a: Artifact }) {
       {a.kind === "subtitle" && (
         <button
           type="button"
-          onClick={() => navigate("/subtitles")}
-          title="到字幕工坊导入该任务分句，样式化后导出 SRT/ASS"
+          onClick={() => navigate(`/subtitles?artifact=${a.id}`)}
+          title="携这条字幕到字幕工坊：样式化、翻译后导出 SRT/ASS"
           className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
         >
           <Captions size={13} strokeWidth={1.75} />
