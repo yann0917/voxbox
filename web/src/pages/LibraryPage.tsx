@@ -14,6 +14,7 @@ import {
   Scissors,
   Search,
   Sparkles,
+  RefreshCw,
   Workflow,
 } from "lucide-react";
 import { fetchJSON } from "../lib/api";
@@ -26,6 +27,7 @@ import { ArtifactRow, formatSize } from "../components/ArtifactRow";
 import { Card, EmptyState, PageHeader } from "../ui";
 import { Tabs } from "../ui";
 import { ProgressBar } from "../ui";
+import { Button } from "../ui";
 import { useToast } from "../ui";
 import { Switch } from "../ui";
 
@@ -217,6 +219,21 @@ function MusicTab({ onStartScenario }: { onStartScenario: (s: Scenario) => void 
     onError: (e) => toast({ tone: "error", title: "提交失败", description: e instanceof Error ? e.message : String(e) }),
   });
 
+  // 同步音源：从设置页配置的拉取地址取 music.json（填了地址 ≠ 已导入，导入靠这一步）
+  const syncSources = useMutation({
+    mutationFn: () => fetchJSON<{ lines: number }>("/api/music/sources/sync", { method: "POST" }),
+    onSuccess: (d) => {
+      toast({ tone: "ok", title: `已同步 ${d.lines} 个音源`, description: "可以搜歌了" });
+      void qc.invalidateQueries({ queryKey: ["music-sources"] });
+    },
+    onError: (e) =>
+      toast({
+        tone: "error",
+        title: "同步失败",
+        description: `${e instanceof Error ? e.message : String(e)}（同步地址在设置页「音乐音源」配置）`,
+      }),
+  });
+
   const togglePlay = (t: Track) => {
     if (played === t.rid) {
       audioRef.current?.pause();
@@ -242,7 +259,12 @@ function MusicTab({ onStartScenario }: { onStartScenario: (s: Scenario) => void 
           <EmptyState
             icon={<Music size={20} strokeWidth={1.5} />}
             title="还没有音源"
-            description="到设置页「音乐音源」同步音源配置，或导入一份 music.json，之后就能搜歌下载了"
+            description="填好同步地址后，点「同步音源」拉取音源配置（地址在设置页「音乐音源」维护），之后就能搜歌下载了"
+            action={
+              <Button variant="primary" loading={syncSources.isPending} onClick={() => syncSources.mutate()}>
+                同步音源
+              </Button>
+            }
           />
         </Card>
       ) : (
@@ -271,7 +293,7 @@ function MusicTab({ onStartScenario }: { onStartScenario: (s: Scenario) => void 
                 搜索
               </button>
             </div>
-            <div className="flex flex-wrap gap-1.5 px-4 pb-4">
+            <div className="flex flex-wrap items-center gap-1.5 px-4 pb-4">
               {sources.map((l) => (
                 <button
                   key={l.id}
@@ -284,6 +306,16 @@ function MusicTab({ onStartScenario }: { onStartScenario: (s: Scenario) => void 
                   {l.name || l.id}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => syncSources.mutate()}
+                disabled={syncSources.isPending}
+                title="从设置页配置的音源地址重新拉取"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-line px-3 py-1 text-xs text-muted transition-colors duration-150 hover:border-line-strong hover:text-fg-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw size={11} className={syncSources.isPending ? "animate-spin" : ""} />
+                同步
+              </button>
             </div>
           </Card>
 

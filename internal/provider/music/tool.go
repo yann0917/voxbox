@@ -28,7 +28,7 @@ func SourcesFile(dataDir string) string {
 func LoadSources(dataDir string) (*qingmusic.SourceConfig, error) {
 	cfg, err := qingmusic.LoadSourceConfig(SourcesFile(dataDir))
 	if errors.Is(err, qingmusic.ErrNoSourceConfig) {
-		return nil, fmt.Errorf("尚未导入音源配置：到设置页同步音源或导入 music.json")
+		return nil, fmt.Errorf("尚未导入音源配置：在素材页点「同步音源」拉取，或到设置页导入 music.json")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("音源配置不可用: %w", err)
