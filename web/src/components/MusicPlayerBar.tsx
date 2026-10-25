@@ -23,9 +23,11 @@ const fmt = (sec: number) => {
   return `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 };
 
-/** 音乐悬浮播放条：试听走全局单实例播放器（与产物音频共用通道，天然不叠加）。
- *  控制：上一曲 / 播停 / 下一曲 + 队列面板（连播队列与收听历史）+ 关闭。
- *  队列随刷新恢复（localStorage），没在播但队列非空时也渲染，点播放接续。 */
+/** 全局悬浮播放条（右下角）：音乐队列与非音乐播放（产物试听等）共用同一条——
+ * 全局单实例播放器保证不同来源音频天然不叠加，非队列曲目（产物试听）的
+ * 上一曲/下一曲自动禁用。控制：上一曲 / 播停 / 下一曲 + 队列面板（连播队列
+ * 与收听历史）+ 关闭（停播并清队列）。队列随刷新恢复（localStorage），
+ * 没在播但队列非空时也渲染，点播放接续。 */
 export default function MusicPlayerBar() {
   const track = usePlayer((s) => s.track);
   const playing = usePlayer((s) => s.playing);
