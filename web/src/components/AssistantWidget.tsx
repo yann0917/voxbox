@@ -24,8 +24,8 @@ export default function AssistantWidget() {
   const { toast } = useToast();
   // 播放条可见时给足抬升：音乐条（含换行/面板态可到 ~130px）> 任务条 ~76px，
   // 否则悬浮球会盖住播放条右端的关闭按钮（用户点了永远没反应）。
-  const musicBarVisible = usePlayer((s) => Boolean(s.track?.music) || s.queue.length > 0);
-  const hasTrack = usePlayer((s) => Boolean(s.track));
+  // 悬浮播放条（右下角）可见时整体上抬让位：有曲目或队列非空都会渲染
+  const musicBarVisible = usePlayer((s) => Boolean(s.track) || s.queue.length > 0);
 
   const { data: platforms } = useAssistantModels();
   const { data: settings } = useSettings();
@@ -165,8 +165,7 @@ export default function AssistantWidget() {
     }
   }
 
-  // PlayerBar 常驻底部时整体上抬让位；面板贴着按钮上方展开
-  const bottom = musicBarVisible ? 150 : hasTrack ? 96 : 24;
+  const bottom = musicBarVisible ? 150 : 24;
 
   if (!open) {
     return (
