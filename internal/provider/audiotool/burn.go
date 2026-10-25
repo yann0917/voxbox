@@ -1,8 +1,8 @@
 // 字幕烧录 audio.subtitle_burn：SRT/ASS 烧进视频（本地 ffmpeg subtitles 滤镜）。
-// 输入形态刻意单通道：视频走文件通道（Files["audio"]），字幕全文走文本参数——
-// 双文件通道（file_ids XOR artifact_inputs 互斥）无法混传上传视频+产物字幕，
-// 字幕通常几十 KB 内联最稳；ASS 保真自带样式，SRT 可选三档 force_style 预设。
-// 思路借鉴 ffmpeg-skill 的 caption.py（MIT），能力面收敛到 voxbox 字幕链闭环。
+// 视频走文件通道（Files["audio"]）；字幕双通道：Files["audio2"] 字幕文件
+// （工作流连线：上游 ASR/翻译的 subtitle 产物直连，格式按扩展名探测）优先，
+// 文本参数 subtitle_text 兜底（单文件上传+手贴场景）。ASS 保真自带样式，
+// SRT 可选三档 force_style 预设。思路借鉴 ffmpeg-skill 的 caption.py（MIT）。
 package audiotool
 
 import (
@@ -73,8 +73,8 @@ func (t *burnTool) Meta() provider.ToolMeta {
 
 func (t *burnTool) ParamSpecs() []provider.ParamSpec {
 	return []provider.ParamSpec{
-		{Key: "subtitle_text", Label: "字幕内容", Type: provider.ParamText, Required: true, Group: "字幕",
-			Placeholder: "SRT 或 ASS 全文（工作流可引用输入槽 {{inputs.xxx}}）"},
+		{Key: "subtitle_text", Label: "字幕内容", Type: provider.ParamText, Group: "字幕",
+			Placeholder: "SRT 或 ASS 全文；不填则取「字幕文件」输入端口（工作流连线）"},
 		{Key: "subtitle_format", Label: "字幕格式", Type: provider.ParamEnum, Default: "srt", Group: "字幕",
 			Options: []provider.ParamOption{{Value: "srt", Label: "SRT"}, {Value: "ass", Label: "ASS（保留样式）"}}},
 		{Key: "style", Label: "样式（仅 SRT）", Type: provider.ParamEnum, Default: "white-outline", Group: "字幕",
@@ -87,18 +87,36 @@ func (t *burnTool) Run(ctx context.Context, in provider.TaskInput, report provid
 	if src == "" {
 		return provider.TaskOutput{}, fmt.Errorf("缺少输入：请上传视频文件")
 	}
-	text := paramString(in.Params, "subtitle_text")
-	if text == "" {
-		return provider.TaskOutput{}, fmt.Errorf("缺少字幕内容")
+	// 字幕双通道：文件端口（上游 subtitle 产物连线，扩展名定格式）优先，参数兜底
+	text := ""
+	format := ""
+	if subFile := in.Files["audio2"]; subFile != "" {
+		b, err := os.ReadFile(subFile)
+		if err != nil {
+			return provider.TaskOutput{}, fmt.Errorf("读取字幕文件失败: %w", err)
+		}
+		text = string(b)
+		switch ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(subFile)), "."); ext {
+		case "srt", "ass", "vtt":
+			format = ext
+		default:
+			format = "srt" // 未知扩展名按内容猜，落 srt 容器
+		}
 	}
-	format := paramString(in.Params, "subtitle_format")
+	if text == "" {
+		text = paramString(in.Params, "subtitle_text")
+		format = paramString(in.Params, "subtitle_format")
+	}
+	if text == "" {
+		return provider.TaskOutput{}, fmt.Errorf("缺少字幕：请连线字幕产物（输入端口）或填写字幕内容参数")
+	}
 	if format == "" {
 		format = "srt"
 	}
 	switch format {
-	case "srt", "ass":
+	case "srt", "ass", "vtt":
 	default:
-		return provider.TaskOutput{}, fmt.Errorf("字幕格式仅支持 srt/ass，收到 %q", format)
+		return provider.TaskOutput{}, fmt.Errorf("字幕格式仅支持 srt/ass/vtt，收到 %q", format)
 	}
 	if err := ensureFFmpeg(); err != nil {
 		return provider.TaskOutput{}, err

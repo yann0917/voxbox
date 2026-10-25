@@ -45,6 +45,35 @@ var Templates = []Template{
 		},
 	},
 	{
+		Key:         "link-subtitled",
+		Name:        "链接 → 字幕成片",
+		Description: "贴视频链接，下载后本地转写并把字幕直接烧进视频，出一条带字幕的成片",
+		Graph: workflow.Graph{
+			Inputs: []workflow.InputSlot{
+				{Key: "url", Label: "视频链接", Type: "string", Required: true, Placeholder: "https://…"},
+			},
+			Nodes: []workflow.Node{
+				{
+					Key: "download", Provider: "downloader", Tool: "download",
+					Params: map[string]any{"url": "{{inputs.url}}", "mode": "video", "max_items": 1, "subtitles": false},
+					X: 40, Y: 80,
+				},
+				{
+					Key: "asr", Provider: "local", Tool: "asr",
+					Params:     map[string]any{"model": "sensevoice", "language": "auto", "itn": true, "srt": true},
+					InputsFrom: map[string]string{"audio": "download"},
+					X: 320, Y: 40,
+				},
+				{
+					Key: "burn", Provider: "audio", Tool: "subtitle_burn",
+					Params:     map[string]any{"style": "white-outline"},
+					InputsFrom: map[string]string{"audio": "download", "audio2": "asr"},
+					X: 600, Y: 80,
+				},
+			},
+		},
+	},
+	{
 		Key:         "link-minutes",
 		Name:        "链接 → 语音妙记",
 		Description: "贴视频链接，下载后转结构化纪要：转写+说话人+全文总结（需火山凭证）",
