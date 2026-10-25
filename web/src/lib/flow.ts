@@ -189,7 +189,7 @@ export const FLOW_PORTS: Record<string, ToolPort> = {
   "minimax.asr": { in: [{ key: "audio", kind: "audio", label: "音频" }], outKinds: ["transcript", "subtitle"], chainable: true },
   "minimax.tts": { in: [], outKinds: ["audio"], chainable: true },
   "minimax.tts_long": { in: [], outKinds: ["audio"], chainable: true },
-  "local.asr": { in: [{ key: "audio", kind: "audio", label: "音频" }], outKinds: ["transcript", "subtitle"], chainable: true },
+  "local.asr": { in: [{ key: "audio", kind: "file", label: "音视频" }], outKinds: ["transcript", "subtitle"], chainable: true },
   "local.tts": { in: [], outKinds: ["audio"], chainable: true },
   "mvsep.separate": { in: [{ key: "audio", kind: "audio", label: "音频" }], outKinds: ["audio"], chainable: true },
   "zhuanhuanmao.separate": { in: [{ key: "audio", kind: "audio", label: "音频" }], outKinds: ["audio"], chainable: true },
@@ -218,7 +218,13 @@ export const FLOW_PORTS: Record<string, ToolPort> = {
   },
   "audio.silence_cut": { in: [{ key: "audio", kind: "audio", label: "音频" }], outKinds: ["audio"], chainable: true },
   "audio.scene_detect": { in: [{ key: "audio", kind: "video", label: "视频" }], outKinds: ["scenes", "image"], chainable: true },
-  "audio.subtitle_burn": { in: [{ key: "audio", kind: "video", label: "视频" }], outKinds: ["video"], chainable: true },
+  "audio.subtitle_burn": {
+    in: [
+      { key: "audio", kind: "video", label: "视频" },
+      { key: "audio2", kind: "subtitle", label: "字幕" },
+    ],
+    outKinds: ["video"], chainable: true,
+  },
   "gsgc.video-format-convert": { in: [{ key: "audio", kind: "video", label: "视频" }], outKinds: ["video"], chainable: true },
   "gsgc.video-compression": { in: [{ key: "audio", kind: "video", label: "视频" }], outKinds: ["video"], chainable: true },
   "gsgc.video-extract-audio": { in: [{ key: "audio", kind: "video", label: "视频" }], outKinds: ["audio"], chainable: true },

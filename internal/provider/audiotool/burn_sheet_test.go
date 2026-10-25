@@ -135,6 +135,45 @@ func TestSubtitleBurnASS(t *testing.T) {
 	}
 }
 
+// 烧录双文件通道（流水线形态）：Files[audio]=视频、Files[audio2]=SRT 文件，
+// 扩展名探测格式，subtitle_text 参数不填——工作流连线的真实路径。
+func TestSubtitleBurnFileChannel(t *testing.T) {
+	dir := t.TempDir()
+	src := makeTwoSceneMP4(t, dir, true)
+	sub := filepath.Join(dir, "sub.srt")
+	if err := os.WriteFile(sub, []byte("1\n00:00:00,000 --> 00:00:01,500\n红色场景\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tool := &burnTool{baseTool: baseTool{outDir: dir}}
+	out, err := tool.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{}, // 全空参数：字幕只能来自文件通道
+		Files:  map[string]string{"audio": src, "audio2": sub},
+	}, func(_ int, _ string, _ map[string]any) {})
+	if err != nil {
+		t.Fatalf("文件通道烧录失败: %v", err)
+	}
+	if len(out.Artifacts) != 1 || out.Artifacts[0].Kind != "video" {
+		t.Fatalf("应产出 video 产物: %+v", out.Artifacts)
+	}
+	if out.Summary["subtitle_format"] != "srt" {
+		t.Errorf("格式应按扩展名探测 srt: %v", out.Summary["subtitle_format"])
+	}
+}
+
+// 双通道都缺：明确报错（不静默产出无字幕视频）。
+func TestSubtitleBurnMissingBoth(t *testing.T) {
+	dir := t.TempDir()
+	src := makeTwoSceneMP4(t, dir, false)
+	tool := &burnTool{baseTool: baseTool{outDir: dir}}
+	_, err := tool.Run(context.Background(), provider.TaskInput{
+		Params: map[string]any{},
+		Files:  map[string]string{"audio": src},
+	}, func(_ int, _ string, _ map[string]any) {})
+	if err == nil || !strings.Contains(err.Error(), "缺少字幕") {
+		t.Fatalf("双通道全缺应报错，得到: %v", err)
+	}
+}
+
 func probeDurationGeneric(t *testing.T, path string) float64 {
 	t.Helper()
 	out, err := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", path).Output()
