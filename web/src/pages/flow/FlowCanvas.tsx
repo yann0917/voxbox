@@ -41,6 +41,8 @@ export interface FlowCanvasProps {
   /** 图变化回传（工具节点/输入源节点的增删移动连线） */
   onChange: (nodes: FlowNodeSpec[], inputs: InputSlot[]) => void;
   onOpenParams: (nodeKey: string) => void;
+  /** 点击工具节点（运行监控态用于查看节点执行详情；编辑态不触发） */
+  onNodeSelect?: (nodeKey: string) => void;
 }
 
 interface ToolNodeData {
@@ -174,7 +176,7 @@ function inputTypeLabel(type: string) {
   return { track: "歌曲搜索", string: "链接", text: "文本", file: "文件上传" }[type] ?? type;
 }
 
-const nodeTypes = { tool: ToolNode, input: InputNode };
+const nodeTypes = { tool: ToolNode, source: InputNode };
 
 function countParamRefs(params: Record<string, unknown>): number {
   return Object.values(params ?? {}).filter((v) => typeof v === "string" && v.includes("{{inputs.")).length;
@@ -213,7 +215,7 @@ export function FlowCanvas(props: FlowCanvasProps) {
   );
 }
 
-function FlowCanvasInner({ nodes, inputs, tools, badges, readOnly, onChange, onOpenParams }: FlowCanvasProps) {
+function FlowCanvasInner({ nodes, inputs, tools, badges, readOnly, onChange, onOpenParams, onNodeSelect }: FlowCanvasProps) {
   const seqRef = useRef(nodes.length + inputs.length);
   const [search, setSearch] = useState("");
   const [panelOpen, setPanelOpen] = useState(true);
@@ -230,7 +232,7 @@ function FlowCanvasInner({ nodes, inputs, tools, badges, readOnly, onChange, onO
     () => [
       ...inputs.map((slot) => ({
         id: `${INPUT_ID_PREFIX}${slot.key}`,
-        type: "input" as const,
+        type: "source" as const,
         position: { x: slot.x ?? 0, y: slot.y ?? 0 },
         data: { slot } satisfies InputNodeData as unknown as Record<string, unknown>,
       })),
@@ -494,6 +496,7 @@ function FlowCanvasInner({ nodes, inputs, tools, badges, readOnly, onChange, onO
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         onNodeDoubleClick={(_, n) => !readOnly && !n.id.startsWith(INPUT_ID_PREFIX) && onOpenParams(n.id)}
+        onNodeClick={(_, n) => readOnly && !n.id.startsWith(INPUT_ID_PREFIX) && onNodeSelect?.(n.id)}
         fitView
         minZoom={0.2}
         proOptions={{ hideAttribution: true }}

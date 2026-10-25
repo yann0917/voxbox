@@ -4,9 +4,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Copy, FilePlus2, ListChecks, Music, Pencil, Play, Plus, Square, Trash2, Workflow } from "lucide-react";
+import { ChevronRight, Copy, FilePlus2, ListChecks, Music, Pencil, Play, Plus, RotateCcw, Square, Trash2, Workflow } from "lucide-react";
 import { ArtifactRow } from "../../components/ArtifactRow";
 import { FileDrop } from "../../components/FileDrop";
+import { fetchJSON } from "../../lib/api";
 import { onTaskEvent } from "../../lib/ws";
 import { searchMusicAll, type MusicTrack } from "../../lib/music";
 import {
@@ -29,7 +30,7 @@ import {
   type WorkflowRunDTO,
 } from "../../lib/flow";
 import type { Artifact, TaskDetail } from "../../lib/types";
-import { Button, Card, EmptyState, Field, Input, Modal, PageHeader, Tabs, Textarea, useToast } from "../../ui";
+import { Button, Card, EmptyState, Field, Input, Modal, PageHeader, ProgressBar, Tabs, Textarea, useToast } from "../../ui";
 import { FlowCanvas, type NodeBadge } from "./FlowCanvas";
 import { NodeParamDrawer } from "./NodeParamDrawer";
 
@@ -693,6 +694,8 @@ function RunMonitor({
   });
   const run = runQ.data;
   const [badges, setBadges] = useState<Record<string, NodeBadge>>({});
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [rerunOpen, setRerunOpen] = useState(false);
   const taskNode = useRef(new Map<string, string>()); // task_id → node key
 
   // run 详情到达时重建 task→node 映射
@@ -747,6 +750,11 @@ function RunMonitor({
         <p className="min-w-0 flex-1 truncate text-sm font-medium">{run.name}</p>
         <RunStatusBadge status={run.status} />
         {run.workflow_key === "song-clip" && run.status === "done" && <ClipJumpButton run={run} />}
+        {!active && (run.graph?.inputs?.length ?? 0) > 0 && (
+          <Button variant="secondary" size="sm" icon={<RotateCcw size={12} strokeWidth={1.75} />} onClick={() => setRerunOpen(true)}>
+            改输入重跑
+          </Button>
+        )}
         {active && (
           <Button variant="secondary" size="sm" icon={<Square size={12} strokeWidth={1.75} />} onClick={() => void doCancel()}>
             取消
@@ -756,7 +764,16 @@ function RunMonitor({
       {run.error && <p className="border-b border-line bg-danger/10 px-4 py-1.5 text-xs text-danger">{run.error}</p>}
       <div className="flex min-h-0 flex-1">
         <div className="hidden min-w-0 flex-1 md:block">
-          <FlowCanvas nodes={runGraphNodes(run)} inputs={run.graph?.inputs ?? []} tools={tools} badges={badges} readOnly onOpenParams={() => {}} onChange={() => {}} />
+          <FlowCanvas
+            nodes={runGraphNodes(run)}
+            inputs={run.graph?.inputs ?? []}
+            tools={tools}
+            badges={badges}
+            readOnly
+            onOpenParams={() => {}}
+            onChange={() => {}}
+            onNodeSelect={(key) => setSelectedNode(key)}
+          />
         </div>
         <aside className="w-full shrink-0 overflow-y-auto border-l border-line md:w-96">
           <div className="flex flex-col gap-2 p-3">
@@ -766,7 +783,166 @@ function RunMonitor({
           </div>
         </aside>
       </div>
+      {selectedNode && (
+        <NodeRunPopup
+          run={run}
+          nodeKey={selectedNode}
+          badge={badges[selectedNode]}
+          onClose={() => setSelectedNode(null)}
+        />
+      )}
+      {rerunOpen && <RerunDialog run={run} onClose={() => setRerunOpen(false)} />}
     </div>
+  );
+}
+
+/** 节点执行详情：运行监控点画布节点弹层——任务参数/进度/耗时/错误/产物。 */
+function NodeRunPopup({
+  run,
+  nodeKey,
+  badge,
+  onClose,
+}: {
+  run: WorkflowRunDTO;
+  nodeKey: string;
+  badge?: NodeBadge;
+  onClose: () => void;
+}) {
+  const node = (run.nodes ?? []).find((n) => n.key === nodeKey);
+  const toolNode = run.graph?.nodes?.find((n) => n.key === nodeKey);
+  const detailQ = useQuery({
+    queryKey: ["task-detail", node?.task_id],
+    queryFn: () => fetchJSON<TaskDetail>(`/api/tasks/${node?.task_id}`),
+    enabled: !!node?.task_id,
+  });
+  const status = badge?.status ?? node?.status ?? "pending";
+  const title = toolNode ? `${toolNode.provider}.${toolNode.tool}` : nodeKey;
+  return (
+    <Modal open title={`节点执行：${nodeKey}`} onClose={onClose} width={560}>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-2 py-0.5 text-[11px] ${badgeStyle2(status)}`}>{statusLabel(status)}</span>
+          <span className="text-xs text-muted">{title}</span>
+          {detailQ.data?.task.cost_ms != null && <span className="ml-auto text-xs text-muted">耗时 {(detailQ.data.task.cost_ms / 1000).toFixed(1)}s</span>}
+        </div>
+        {badge?.status === "running" && badge.progress != null && (
+          <ProgressBar value={badge.progress} />
+        )}
+        {(node?.error || badge?.note) && status !== "done" && (
+          <p className="rounded-[var(--radius-sm)] bg-danger/10 px-3 py-2 text-xs text-danger">{node?.error || badge?.note}</p>
+        )}
+        {detailQ.data?.task.error && (
+          <p className="rounded-[var(--radius-sm)] bg-danger/10 px-3 py-2 text-xs text-danger">{detailQ.data.task.error}</p>
+        )}
+        {detailQ.data && detailQ.data.artifacts.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <p className="micro">产物</p>
+            {detailQ.data.artifacts.map((a) => (
+              <ArtifactRow key={a.id} a={a} />
+            ))}
+          </div>
+        )}
+        {detailQ.data?.task && (
+          <details className="text-xs text-muted">
+            <summary className="cursor-pointer select-none">任务参数</summary>
+            <pre className="mt-1.5 max-h-40 overflow-auto rounded-[var(--radius-sm)] bg-inset p-2 text-[11px] leading-relaxed">{JSON.stringify(detailQ.data.task.params ?? {}, null, 2)}</pre>
+          </details>
+        )}
+        {!detailQ.data && !detailQ.isLoading && <p className="text-xs text-muted">该节点尚未执行</p>}
+      </div>
+    </Modal>
+  );
+}
+
+/** 改输入重跑：回填上次运行的输入槽值（track/file/text 全类型），改完即重跑。
+ *  提交目标=原工作流（用户保存的）或原模板（内置直跑）。 */
+function RerunDialog({ run, onClose }: { run: WorkflowRunDTO; onClose: () => void }) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [fileIDs, setFileIDs] = useState<Record<string, string>>({});
+  const [tracks, setTracks] = useState<Record<string, TrackValue | null>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  // 初值回填（只跑一次：run 对象轮询期间会换引用）
+  const initialized = useRef(false);
+  if (!initialized.current) {
+    initialized.current = true;
+    const prev = (run.inputs ?? {}) as Record<string, unknown>;
+    for (const slot of run.graph?.inputs ?? []) {
+      const v = prev[slot.key];
+      if (slot.type === "file" && typeof v === "string") fileIDs[slot.key] = v;
+      else if (slot.type === "track" && v && typeof v === "object") tracks[slot.key] = v as TrackValue;
+      else if (typeof v === "string") values[slot.key] = v;
+    }
+  }
+
+  const inputs = run.graph?.inputs ?? [];
+  const missing = inputs.some((s) => {
+    if (!s.required) return false;
+    if (s.type === "file") return !fileIDs[s.key];
+    if (s.type === "track") return !tracks[s.key];
+    return !values[s.key]?.trim();
+  });
+
+  const submit = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const payload: Record<string, unknown> = {};
+      for (const s of inputs) {
+        if (s.type === "file") payload[s.key] = fileIDs[s.key] ?? "";
+        else if (s.type === "track") payload[s.key] = tracks[s.key] ?? null;
+        else payload[s.key] = values[s.key] ?? "";
+      }
+      const r =
+        run.workflow_id > 0
+          ? await runWorkflow(run.workflow_id, payload)
+          : await runTemplate(run.workflow_key, payload);
+      toast({ tone: "ok", title: "已开始重跑" });
+      void qc.invalidateQueries({ queryKey: ["workflow-runs"] });
+      onClose();
+      navigate(`/flow?run=${r.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open title={`改输入重跑：${run.name}`} onClose={onClose} width={520}>
+      <div className="flex flex-col gap-3">
+        {inputs.map((s) =>
+          s.type === "file" ? (
+            <FileSlotField key={s.key} slot={s} fileID={fileIDs[s.key] ?? ""} onFileID={(id) => setFileIDs((f) => ({ ...f, [s.key]: id }))} />
+          ) : s.type === "track" ? (
+            <TrackPickerField key={s.key} slot={s} track={tracks[s.key] ?? null} onTrack={(t) => setTracks((f) => ({ ...f, [s.key]: t }))} />
+          ) : (
+            <Field key={s.key} label={s.label} required={s.required} aside={s.placeholder}>
+              {({ id }) =>
+                s.type === "text" ? (
+                  <Textarea id={id} rows={5} value={values[s.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [s.key]: e.target.value }))} placeholder={s.placeholder} />
+                ) : (
+                  <Input id={id} value={values[s.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [s.key]: e.target.value }))} placeholder={s.placeholder} />
+                )
+              }
+            </Field>
+          ),
+        )}
+        {error && <p className="text-xs text-danger">{error}</p>}
+      </div>
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>
+          取消
+        </Button>
+        <Button variant="primary" loading={busy} disabled={missing} onClick={() => void submit()}>
+          重新运行
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
