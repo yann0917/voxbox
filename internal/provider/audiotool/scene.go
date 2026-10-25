@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -141,6 +142,7 @@ func (t *sceneDetectTool) ParamSpecs() []provider.ParamSpec {
 			Placeholder: "0.01 ~ 0.99，帧间差异分超过该值判为切换（默认 0.3）"},
 		{Key: "min_scene", Label: "最短场景（秒）", Type: provider.ParamFloat, Default: 1, Group: "检测",
 			Placeholder: "0 ~ 60，短于此的场景并入前一镜（过滤抖动误检）"},
+		{Key: "sheet", Label: "生成联络表（场景缩略图拼图）", Type: provider.ParamBool, Default: true, Group: "产物"},
 	}
 }
 
@@ -175,19 +177,83 @@ func (t *sceneDetectTool) Run(ctx context.Context, in provider.TaskInput, report
 		return provider.TaskOutput{}, fmt.Errorf("写入产物失败: %w", err)
 	}
 	rel, _ := filepath.Rel(t.outDir, final)
+	arts := []provider.Artifact{{
+		Kind: "scenes", Path: rel, Format: "json", Size: int64(len(payload)),
+	}}
+	summary := map[string]any{
+		"scenes":       len(cuts),
+		"cuts":         len(marks),
+		"threshold":    threshold,
+		"duration_sec": round2(totalSec),
+		"source":       srcBaseName(src),
+	}
+	// 联络表：每场景中点抽一帧拼网格 PNG（一眼看完整条视频结构）
+	if paramBool(in.Params, "sheet") || in.Params["sheet"] == nil {
+		if sheetPath, size, err := buildContactSheet(ctx, src, cuts, dir, 320); err == nil {
+			sheetRel, _ := filepath.Rel(t.outDir, sheetPath)
+			arts = append(arts, provider.Artifact{Kind: "image", Path: sheetRel, Format: "png", Size: size})
+			summary["contact_sheet"] = true
+		}
+		// 联络表失败不挡主产物（切点列表已就绪）
+	}
 	report(100, "场景检测完成", nil)
-	return provider.TaskOutput{
-		Artifacts: []provider.Artifact{{
-			Kind: "scenes", Path: rel, Format: "json", Size: int64(len(payload)),
-		}},
-		Summary: map[string]any{
-			"scenes":       len(cuts),
-			"cuts":         len(marks),
-			"threshold":    threshold,
-			"duration_sec": round2(totalSec),
-			"source":       srcBaseName(src),
-		},
-	}, nil
+	return provider.TaskOutput{Artifacts: arts, Summary: summary}, nil
+}
+
+// buildContactSheet 联络表：逐场景中点抽帧（fast seek 近似）→ 统一宽缩略 →
+// tile 拼网格 PNG（列数≈√n 自动布局，至多 36 格防爆图）。帧抽取失败的场景
+// 跳过（部分帧不足以拼图时返回错误由调用方降级）。
+func buildContactSheet(ctx context.Context, src string, cuts []sceneCut, dir string, thumbW int) (string, int64, error) {
+	if len(cuts) == 0 {
+		return "", 0, fmt.Errorf("无场景可抽帧")
+	}
+	const maxTiles = 36
+	shown := cuts
+	if len(shown) > maxTiles {
+		shown = shown[:maxTiles]
+	}
+	// 抽帧成功后重编号写连续序列（image2 要求编号无空洞，跳过失败帧才不截断）
+	thumbs := make([]string, 0, len(shown))
+	seq := 0
+	for _, c := range shown {
+		mid := (c.Start + c.End) / 2
+		out := filepath.Join(dir, fmt.Sprintf("seq_%03d.jpg", seq))
+		args := []string{"-hide_banner", "-nostdin", "-v", "error", "-y",
+			"-ss", trimFloat(mid), "-i", src, "-frames:v", "1",
+			"-vf", fmt.Sprintf("scale=%d:-2", thumbW), out}
+		if err := exec.CommandContext(ctx, "ffmpeg", args...).Run(); err != nil {
+			continue // 个别场景抽帧失败跳过
+		}
+		thumbs = append(thumbs, out)
+		seq++
+	}
+	if len(thumbs) == 0 {
+		return "", 0, fmt.Errorf("全部场景抽帧失败")
+	}
+	// tile 拼网格：列数取 √n 向上取整（≥2），行数按剩余补齐（ffmpeg 9 的
+	// tile 不再支持 rows=0 自动行数，须显式 COLSxROWS；nb_frames 防尾行不满格时超时等待）
+	cols := int(math.Ceil(math.Sqrt(float64(len(thumbs)))))
+	if cols < 2 {
+		cols = 2
+	}
+	rows := (len(thumbs) + cols - 1) / cols
+	sheet := filepath.Join(dir, fmt.Sprintf("%s_contact_sheet.png", srcBaseName(src)))
+	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-y",
+		"-start_number", "0", "-i", filepath.Join(dir, "seq_%03d.jpg"),
+		"-frames:v", "1",
+		"-vf", fmt.Sprintf("tile=layout=%dx%d:nb_frames=%d", cols, rows, len(thumbs)), sheet}
+	if err := exec.CommandContext(ctx, "ffmpeg", args...).Run(); err != nil {
+		return "", 0, fmt.Errorf("拼接联络表失败: %w", err)
+	}
+	// 清理缩略帧（联络表已含全部内容）
+	for _, th := range thumbs {
+		_ = os.Remove(th)
+	}
+	st, err := os.Stat(sheet)
+	if err != nil {
+		return "", 0, err
+	}
+	return sheet, st.Size(), nil
 }
 
 // probeVideoDuration 容器级时长探测（视频无音频流时 probeAudio 会失败，

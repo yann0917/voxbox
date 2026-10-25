@@ -131,8 +131,8 @@ func TestSceneDetectReal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("场景检测失败: %v", err)
 	}
-	if len(out.Artifacts) != 1 || out.Artifacts[0].Kind != "scenes" {
-		t.Fatalf("应产出 scenes 产物: %+v", out.Artifacts)
+	if len(out.Artifacts) != 2 || out.Artifacts[0].Kind != "scenes" || out.Artifacts[1].Kind != "image" {
+		t.Fatalf("应产出 scenes+联络表 image 两产物: %+v", out.Artifacts)
 	}
 	final := filepath.Join(dir, out.Artifacts[0].Path)
 	payload, err := os.ReadFile(final)
