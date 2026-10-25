@@ -26,11 +26,13 @@ type Graph struct {
 // （值为一首歌的字段集，节点参数按 {{inputs.key.字段}} 取值——曲目标识这类
 // 业务上下文用户无从手填，表单控件渲染为搜索选歌）。
 type InputSlot struct {
-	Key         string `json:"key"`
-	Label       string `json:"label"`
-	Type        string `json:"type"` // string|text|file|track
-	Required    bool   `json:"required,omitempty"`
-	Placeholder string `json:"placeholder,omitempty"`
+	Key         string  `json:"key"`
+	Label       string  `json:"label"`
+	Type        string  `json:"type"` // string|text|file|track
+	Required    bool    `json:"required,omitempty"`
+	Placeholder string  `json:"placeholder,omitempty"`
+	X           float64 `json:"x,omitempty"` // 画布坐标（可视化编辑用，执行器不读）
+	Y           float64 `json:"y,omitempty"`
 }
 
 // Node 一个工具节点。InputsFrom 即边集合（引擎 Files 键→上游节点引用），

@@ -87,6 +87,7 @@ export default function FlowPage() {
         editor={editor}
         tools={tools}
         onSpecs={(specs) => setEditor((e) => (e ? { ...e, specs } : e))}
+        onInputs={(inputs) => setEditor((e) => (e ? { ...e, inputs } : e))}
         onExit={() => {
           setEditor(null);
           void qc.invalidateQueries({ queryKey: ["workflows"] });
@@ -514,6 +515,7 @@ function FlowEditor({
   editor,
   tools,
   onSpecs,
+  onInputs,
   onExit,
   onRunning,
   toast,
@@ -521,6 +523,7 @@ function FlowEditor({
   editor: EditorState;
   tools: Awaited<ReturnType<typeof listTools>>;
   onSpecs: (specs: FlowNodeSpec[]) => void;
+  onInputs: (inputs: InputSlot[]) => void;
   onExit: () => void;
   onRunning: (runID: number) => void;
   toast: ReturnType<typeof useToast>["toast"];
@@ -600,8 +603,12 @@ function FlowEditor({
       {saveError && <p className="border-b border-line bg-danger/10 px-4 py-1.5 text-xs text-danger">{saveError}</p>}
       <FlowCanvas
         nodes={editor.specs}
+        inputs={editor.inputs}
         tools={tools}
-        onChange={onSpecs}
+        onChange={(specs, inputs) => {
+          onSpecs(specs);
+          onInputs(inputs);
+        }}
         onOpenParams={(key) => setParamKey(key)}
       />
       {paramNode && (
@@ -749,7 +756,7 @@ function RunMonitor({
       {run.error && <p className="border-b border-line bg-danger/10 px-4 py-1.5 text-xs text-danger">{run.error}</p>}
       <div className="flex min-h-0 flex-1">
         <div className="hidden min-w-0 flex-1 md:block">
-          <FlowCanvas nodes={runGraphNodes(run)} tools={tools} badges={badges} readOnly onOpenParams={() => {}} onChange={() => {}} />
+          <FlowCanvas nodes={runGraphNodes(run)} inputs={run.graph?.inputs ?? []} tools={tools} badges={badges} readOnly onOpenParams={() => {}} onChange={() => {}} />
         </div>
         <aside className="w-full shrink-0 overflow-y-auto border-l border-line md:w-96">
           <div className="flex flex-col gap-2 p-3">

@@ -11,6 +11,9 @@ export interface InputSlot {
   type: "string" | "text" | "file" | "track";
   required?: boolean;
   placeholder?: string;
+  /** 画布坐标（输入源节点位置） */
+  x?: number;
+  y?: number;
 }
 
 /** 选歌槽的值：/api/music 聚合搜索结果行（喂给 music_download 的字段） */
