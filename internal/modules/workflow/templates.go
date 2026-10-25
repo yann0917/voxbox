@@ -9,12 +9,15 @@ import (
 // 内置模板：随版本发布的预置工作流（不入库，「复制为我的」另存后即用户编排）。
 // 模板升级随版本走；用户已保存的副本不受影响。
 
-// Template 内置模板定义。
+// Template 内置模板定义。Internal=true 表示由业务上下文驱动的内部编排
+// （如歌曲行内按钮自带曲目参数）：不进模板库列表，仅供快捷跑端点使用——
+// 曲目 ID 这类参数用户无从手填，模板卡不该 asks 用户。
 type Template struct {
 	Key         string
 	Name        string
 	Description string
 	Graph       workflow.Graph
+	Internal    bool
 }
 
 // Templates 内置模板清单（顺序即前端模板库展示顺序）。
@@ -67,6 +70,7 @@ var Templates = []Template{
 		Key:         "song-stems",
 		Name:        "歌曲 → 伴奏人声",
 		Description: "下载歌曲并自动人声分离，产出人声与伴奏双轨（音乐搜索行内按钮同款）",
+		Internal:    true, // 参数来自选歌上下文（音源/曲目 ID），不进模板库
 		Graph: workflow.Graph{
 			Inputs: []workflow.InputSlot{
 				{Key: "source", Label: "音源", Type: "string", Required: true, Placeholder: "kw / kg / wy / tx / mg"},
@@ -95,6 +99,7 @@ var Templates = []Template{
 		Key:         "song-clip",
 		Name:        "歌曲 → 切高潮",
 		Description: "下载歌曲后直达音频剪辑的切高潮页（副歌候选+选区切片）",
+		Internal:    true, // 参数来自选歌上下文，不进模板库；完成态由前端给「去剪辑」深链
 		Graph: workflow.Graph{
 			Inputs: []workflow.InputSlot{
 				{Key: "source", Label: "音源", Type: "string", Required: true, Placeholder: "kw / kg / wy / tx / mg"},

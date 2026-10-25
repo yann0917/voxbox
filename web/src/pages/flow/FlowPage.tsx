@@ -641,6 +641,7 @@ function RunMonitor({
         </Button>
         <p className="min-w-0 flex-1 truncate text-sm font-medium">{run.name}</p>
         <RunStatusBadge status={run.status} />
+        {run.workflow_key === "song-clip" && run.status === "done" && <ClipJumpButton run={run} />}
         {active && (
           <Button variant="secondary" size="sm" icon={<Square size={12} strokeWidth={1.75} />} onClick={() => void doCancel()}>
             取消
@@ -685,6 +686,37 @@ function fromNodeRuns(run: WorkflowRunDTO): Record<string, NodeBadge> {
     out[n.key] = { status: n.status, progress: n.status === "done" ? 100 : undefined, note: n.error };
   }
   return out;
+}
+
+/** 「切高潮」模板完成态的收口：取产物音频直跳剪辑页（旧场景 goto 语义） */
+function ClipJumpButton({ run }: { run: WorkflowRunDTO }) {
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const { toast } = useToast();
+  const go = async () => {
+    const last = [...(run.nodes ?? [])].reverse().find((n) => n.status === "done" && n.task_id);
+    if (!last?.task_id) return;
+    setBusy(true);
+    try {
+      const { fetchJSON } = await import("../../lib/api");
+      const d = await fetchJSON<TaskDetail>(`/api/tasks/${last.task_id}`);
+      const audio = (d.artifacts ?? []).find((a) => a.kind === "audio");
+      if (!audio) {
+        toast({ tone: "error", title: "没有可用的音频产物" });
+        return;
+      }
+      navigate(`/post?tab=clip&artifact=${audio.id}`);
+    } catch (e) {
+      toast({ tone: "error", title: "打开失败", description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button variant="primary" size="sm" loading={busy} onClick={() => void go()}>
+      去剪辑
+    </Button>
+  );
 }
 
 /** 任务详情深链（路由跳转，与全站 BrowserRouter 一致） */

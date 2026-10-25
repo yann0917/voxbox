@@ -98,8 +98,15 @@ func (h handlers) list(c *gin.Context) {
 	for _, w := range mine {
 		items = append(items, toWorkflowDTO(w))
 	}
-	templates := make([]workflowDTO, 0, len(Templates))
+	// Internal 模板由业务上下文驱动（曲目 ID 等参数用户无从手填），不进模板库
+	visible := make([]Template, 0, len(Templates))
 	for _, t := range Templates {
+		if !t.Internal {
+			visible = append(visible, t)
+		}
+	}
+	templates := make([]workflowDTO, 0, len(visible))
+	for _, t := range visible {
 		templates = append(templates, workflowDTO{
 			ID: 0, Key: t.Key, Name: t.Name, Description: t.Description,
 			Graph: t.Graph,
