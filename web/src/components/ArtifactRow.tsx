@@ -30,14 +30,16 @@ export function formatSize(bytes: number): string {
 
 /** 产物行：音频走波形播放器，其余显示文件名；统一提供大小与下载入口。
  *  音频产物附「去闪避」：携产物为人声跳 /duck（audio 产物皆可作闪避人声输入，
- *  不按来源工具设门——TTS/分离/历史各处行为一致）。 */
-export function ArtifactRow({ a }: { a: Artifact }) {
+ *  不按来源工具设门——TTS/分离/历史各处行为一致）。
+ *  compact=窄容器形态（工作流侧栏/弹层）：只留标签+播放器+下载，
+ *  跨页功能按钮与大小列隐藏——固定元素总宽超容器会 flex 溢出与时间戳重叠。 */
+export function ArtifactRow({ a, compact = false }: { a: Artifact; compact?: boolean }) {
   const navigate = useNavigate();
   const isAudio = a.kind === "audio";
   const label = a.meta?.track ? trackLabel[a.meta.track] : artifactLabel[a.kind] ?? a.kind;
   return (
     <div className="flex items-center gap-3 rounded-[var(--radius-sm)] border border-line bg-raise-2 p-3">
-      <span className="w-16 shrink-0 text-xs text-fg-2">{label}</span>
+      <span className={`shrink-0 text-xs text-fg-2 ${compact ? "w-12" : "w-16"}`}>{label}</span>
       {isAudio ? (
         <WavePlayer
           src={`${apiBase}/api/artifacts/${a.id}/stream`}
@@ -49,8 +51,8 @@ export function ArtifactRow({ a }: { a: Artifact }) {
       ) : (
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">{a.filename}</span>
       )}
-      <span className="hidden shrink-0 font-mono text-[11px] text-muted sm:inline">{formatSize(a.size)}</span>
-      {isAudio && (
+      {!compact && <span className="hidden shrink-0 font-mono text-[11px] text-muted sm:inline">{formatSize(a.size)}</span>}
+      {isAudio && !compact && (
         <button
           type="button"
           onClick={() => navigate(`/post?tab=duck&vocal=${a.id}`)}
@@ -61,7 +63,7 @@ export function ArtifactRow({ a }: { a: Artifact }) {
           去闪避
         </button>
       )}
-      {isAudio && (
+      {isAudio && !compact && (
         <button
           type="button"
           onClick={() => navigate(`/asr?artifact=${a.id}`)}
@@ -72,7 +74,7 @@ export function ArtifactRow({ a }: { a: Artifact }) {
           送识别
         </button>
       )}
-      {a.kind === "subtitle" && (
+      {a.kind === "subtitle" && !compact && (
         <button
           type="button"
           onClick={() => navigate(`/subtitles?artifact=${a.id}`)}

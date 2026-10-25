@@ -838,7 +838,7 @@ function NodeRunPopup({
           <div className="flex flex-col gap-1.5">
             <p className="micro">产物</p>
             {detailQ.data.artifacts.map((a) => (
-              <ArtifactRow key={a.id} a={a} />
+              <ArtifactRow key={a.id} a={a} compact />
             ))}
           </div>
         )}
@@ -1064,7 +1064,7 @@ function StepCard({ node, badge }: { node: NodeRun; badge?: NodeBadge }) {
         <div className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2">
           {arts.length === 0 && <p className="text-[11px] text-muted">产物已不可用</p>}
           {arts.map((a) => (
-            <ArtifactRow key={a.id} a={a} />
+            <ArtifactRow key={a.id} a={a} compact />
           ))}
         </div>
       )}
