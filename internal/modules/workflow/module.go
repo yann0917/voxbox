@@ -87,7 +87,7 @@ type runDTO struct {
 
 // ---- 查询面 ----
 
-func (h handlers) list(c *gin.Context) {
+func (h *handlers) list(c *gin.Context) {
 	p := httpx.PrincipalFrom(c)
 	mine, err := h.svc.DB().ListWorkflows(p.ID)
 	if err != nil {
@@ -115,7 +115,7 @@ func (h handlers) list(c *gin.Context) {
 	httpx.OK(c, gin.H{"items": items, "templates": templates})
 }
 
-func (h handlers) get(c *gin.Context) {
+func (h *handlers) get(c *gin.Context) {
 	p := httpx.PrincipalFrom(c)
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -141,7 +141,7 @@ type saveReq struct {
 	Graph       workflow.Graph `json:"graph"`
 }
 
-func (h handlers) create(c *gin.Context) {
+func (h *handlers) create(c *gin.Context) {
 	p := httpx.PrincipalFrom(c)
 	var req saveReq
 	if err := c.ShouldBindJSON(&req); err != nil || req.Name == "" {
@@ -161,7 +161,7 @@ func (h handlers) create(c *gin.Context) {
 	httpx.OK(c, toWorkflowDTO(*w))
 }
 
-func (h handlers) update(c *gin.Context) {
+func (h *handlers) update(c *gin.Context) {
 	p := httpx.PrincipalFrom(c)
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -187,7 +187,7 @@ func (h handlers) update(c *gin.Context) {
 	httpx.OK(c, toWorkflowDTO(*fresh))
 }
 
-func (h handlers) delete(c *gin.Context) {
+func (h *handlers) delete(c *gin.Context) {
 	p := httpx.PrincipalFrom(c)
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -207,7 +207,7 @@ type runReq struct {
 	Inputs map[string]any `json:"inputs"`
 }
 
-func (h handlers) runWorkflow(c *gin.Context) {
+func (h *handlers) runWorkflow(c *gin.Context) {
 	p := httpx.PrincipalFrom(c)
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -237,7 +237,7 @@ func (h handlers) runWorkflow(c *gin.Context) {
 	httpx.OK(c, toRunDTO(*run))
 }
 
-func (h handlers) runTemplate(c *gin.Context) {
+func (h *handlers) runTemplate(c *gin.Context) {
 	p := httpx.PrincipalFrom(c)
 	t, ok := TemplateByKey(c.Param("key"))
 	if !ok {
@@ -256,7 +256,7 @@ func (h handlers) runTemplate(c *gin.Context) {
 
 // ---- 运行记录 ----
 
-func (h handlers) listRuns(c *gin.Context) {
+func (h *handlers) listRuns(c *gin.Context) {
 	p := httpx.PrincipalFrom(c)
 	var wfID uint
 	if v := c.Query("workflow_id"); v != "" {
@@ -278,7 +278,7 @@ func (h handlers) listRuns(c *gin.Context) {
 	httpx.OK(c, gin.H{"items": dtos, "total": total})
 }
 
-func (h handlers) getRun(c *gin.Context) {
+func (h *handlers) getRun(c *gin.Context) {
 	p := httpx.PrincipalFrom(c)
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -296,7 +296,7 @@ func (h handlers) getRun(c *gin.Context) {
 	httpx.OK(c, toRunDTO(*r))
 }
 
-func (h handlers) cancelRun(c *gin.Context) {
+func (h *handlers) cancelRun(c *gin.Context) {
 	p := httpx.PrincipalFrom(c)
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
