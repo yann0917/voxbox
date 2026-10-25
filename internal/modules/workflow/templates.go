@@ -56,19 +56,19 @@ var Templates = []Template{
 				{
 					Key: "download", Provider: "downloader", Tool: "download",
 					Params: map[string]any{"url": "{{inputs.url}}", "mode": "video", "max_items": 1, "subtitles": false},
-					X: 40, Y: 80,
+					X:      40, Y: 80,
 				},
 				{
 					Key: "asr", Provider: "local", Tool: "asr",
 					Params:     map[string]any{"model": "sensevoice", "language": "auto", "itn": true, "srt": true},
 					InputsFrom: map[string]string{"audio": "download"},
-					X: 320, Y: 40,
+					X:          320, Y: 40,
 				},
 				{
 					Key: "burn", Provider: "audio", Tool: "subtitle_burn",
 					Params:     map[string]any{"style": "white-outline"},
 					InputsFrom: map[string]string{"audio": "download", "audio2": "asr"},
-					X: 600, Y: 80,
+					X:          600, Y: 80,
 				},
 			},
 		},
