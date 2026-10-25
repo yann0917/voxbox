@@ -18,6 +18,7 @@ import {
   Sparkles,
   Timer,
   Undo2,
+  VolumeX,
   Volume2,
 } from "lucide-react";
 import { fetchJSON } from "../lib/api";
@@ -44,10 +45,11 @@ import {
 
 const AUDIO_ACCEPT = ".mp3,.wav,.flac,.ogg,.m4a,.aac,.wma,.amr";
 
-type TabKey = "cut" | "join" | "pitch" | "analyze" | "eq" | "volume" | "fade" | "reverse";
+type TabKey = "cut" | "silence" | "join" | "pitch" | "analyze" | "eq" | "volume" | "fade" | "reverse";
 
 const TABS: { value: TabKey; label: string; icon: React.ReactNode }[] = [
   { value: "cut", label: "切割器", icon: <Scissors size={13} strokeWidth={1.75} /> },
+  { value: "silence", label: "剪静音", icon: <VolumeX size={13} strokeWidth={1.75} /> },
   { value: "join", label: "合并器", icon: <Layers size={13} strokeWidth={1.75} /> },
   { value: "pitch", label: "变调变速", icon: <Music2 size={13} strokeWidth={1.75} /> },
   { value: "analyze", label: "调·BPM 查询", icon: <Sparkles size={13} strokeWidth={1.75} /> },
@@ -226,7 +228,7 @@ export default function AudioEditorPage() {
       <PageHeader
         icon={<AudioLines size={18} strokeWidth={1.75} />}
         title="音频剪辑"
-        description="本地剪辑八件套：切割 / 合并 / 变调变速 / 乐调与 BPM 查询 / 均衡器 / 音量响度 / 淡入淡出 / 倒放。"
+        description="本地剪辑九件套：切割 / 剪静音 / 合并 / 变调变速 / 乐调与 BPM 查询 / 均衡器 / 音量响度 / 淡入淡出 / 倒放。"
       />
 
       <Card>
@@ -241,6 +243,9 @@ export default function AudioEditorPage() {
 
           <div className={tab === "cut" ? "" : "hidden"}>
             {src && <CutForm src={src} disabled={running("cut")} task={tasks.cut} onSubmit={(p) => submit("cut", "trim", p, [src.fileId])} />}
+          </div>
+          <div className={tab === "silence" ? "" : "hidden"}>
+            {src && <SilenceCutForm disabled={running("silence")} task={tasks.silence} onSubmit={(p) => submit("silence", "silence_cut", p, [src.fileId])} />}
           </div>
           <div className={tab === "join" ? "" : "hidden"}>
             <JoinForm disabled={running("join")} task={tasks.join} onSubmit={(p, ids) => submit("join", "merge", p, ids)} />
@@ -341,6 +346,73 @@ function OutputFields({ format, bitrate, onChange }: {
 // ============================================================
 
 interface Selection { start: number; end: number }
+
+// ============================================================
+// 剪静音（auto-editor 思路：按响度自动剪除长静音段）
+// ============================================================
+
+function SilenceCutForm({ disabled, task, onSubmit }: {
+  disabled: boolean;
+  task?: EditorTask;
+  onSubmit: (params: Record<string, unknown>) => void;
+}) {
+  const [threshold, setThreshold] = useState(-35);
+  const [minSilence, setMinSilence] = useState(0.5);
+  const [padding, setPadding] = useState(0.1);
+  const [format, setFormat] = useState("auto");
+  const [bitrate, setBitrate] = useState("192k");
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted">
+        自动剪除长静音段：口播、播客去水分，或转写前裁剪提速。短停顿（换气）默认保留。
+      </p>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="space-y-1.5">
+          <span className="micro">静音阈值 {threshold} dB</span>
+          <input
+            type="range" min={-60} max={-10} step={1} value={threshold}
+            onChange={(e) => setThreshold(Number(e.target.value))}
+            className="w-full accent-[var(--accent)]"
+            aria-label="静音阈值 dB"
+          />
+          <span className="text-[11px] text-muted">低于该响度视为静音</span>
+        </div>
+        <div className="space-y-1.5">
+          <span className="micro">最短静音 {minSilence}s</span>
+          <input
+            type="range" min={0.1} max={3} step={0.1} value={minSilence}
+            onChange={(e) => setMinSilence(Number(e.target.value))}
+            className="w-full accent-[var(--accent)]"
+            aria-label="最短静音秒数"
+          />
+          <span className="text-[11px] text-muted">短于此的停顿保留</span>
+        </div>
+        <div className="space-y-1.5">
+          <span className="micro">切口缓冲 {padding.toFixed(1)}s</span>
+          <input
+            type="range" min={0} max={0.5} step={0.05} value={padding}
+            onChange={(e) => setPadding(Number(e.target.value))}
+            className="w-full accent-[var(--accent)]"
+            aria-label="切口缓冲秒数"
+          />
+          <span className="text-[11px] text-muted">每段静音保留量，防切字头字尾</span>
+        </div>
+      </div>
+      <OutputFields format={format} bitrate={bitrate} onChange={(p) => { if (p.format) setFormat(p.format); if (p.bitrate) setBitrate(p.bitrate); }} />
+      <div className="flex items-center gap-3">
+        <Button
+          variant="primary"
+          disabled={disabled}
+          onClick={() => onSubmit({ threshold, min_silence: minSilence, padding, format, bitrate })}
+        >
+          剪除静音
+        </Button>
+      </div>
+      <TaskResult task={task} emptyHint="剪静音结果会显示在这里" />
+    </div>
+  );
+}
 
 function CutForm({ src, disabled, task, onSubmit }: {
   src: SourceState;
