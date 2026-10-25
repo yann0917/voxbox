@@ -24,6 +24,8 @@ func AllTools(dataDir string) []provider.Tool {
 		&hookTool{base},
 		&clipTool{base},
 		&duckTool{base},
+		&silenceCutTool{base},
+		&sceneDetectTool{base},
 	}
 }
 

@@ -12,6 +12,7 @@ const artifactLabel: Record<string, string> = {
   translation: "译文文本",
   minutes: "纪要文件",
   archive: "压缩包",
+  scenes: "场景切点",
 };
 
 const trackLabel: Record<string, string> = {
