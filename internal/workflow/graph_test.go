@@ -83,6 +83,46 @@ func TestGraphExpandFileSlot(t *testing.T) {
 	}
 }
 
+func TestGraphExpandTrackSlot(t *testing.T) {
+	g := &Graph{
+		Inputs: []InputSlot{{Key: "track", Label: "选歌", Type: "track", Required: true}},
+		Nodes: []Node{
+			{Key: "dl", Provider: "music", Tool: "music_download", Params: map[string]any{
+				"source": "{{inputs.track.source}}", "rid": "{{inputs.track.rid}}",
+				"duration_ms": "{{inputs.track.duration}}",
+			}},
+		},
+	}
+	out, _, err := g.Expand(map[string]any{
+		"track": map[string]any{"source": "kw", "rid": "42", "duration": 210000},
+	})
+	if err != nil {
+		t.Fatalf("track 槽展开失败: %v", err)
+	}
+	if out["dl"]["source"] != "kw" || out["dl"]["rid"] != "42" {
+		t.Errorf("字段引用未展开: %v", out["dl"])
+	}
+	if out["dl"]["duration_ms"] != "210000" {
+		t.Errorf("duration 字段未展开: %v", out["dl"]["duration_ms"])
+	}
+	// 整槽引用（不带字段）禁止——选歌槽必须按字段取
+	g2 := &Graph{
+		Inputs: []InputSlot{{Key: "track", Label: "选歌", Type: "track"}},
+		Nodes:  []Node{{Key: "n", Params: map[string]any{"x": "{{inputs.track}}"}}},
+	}
+	if _, _, err := g2.Expand(map[string]any{"track": map[string]any{"source": "kw"}}); err == nil || !strings.Contains(err.Error(), "字段") {
+		t.Errorf("整槽引用应报错，得到: %v", err)
+	}
+	// 非对象值（选歌控件漏传）拒绝
+	if _, _, err := g.Expand(map[string]any{"track": "kw-42"}); err == nil {
+		t.Error("track 槽非对象值应报错")
+	}
+	// 必填缺失
+	if _, _, err := g.Expand(map[string]any{}); err == nil {
+		t.Error("track 必填槽缺失应报错")
+	}
+}
+
 func TestParseUpstreamRef(t *testing.T) {
 	cases := map[string]UpstreamRef{
 		"dl":              {Node: "dl"},

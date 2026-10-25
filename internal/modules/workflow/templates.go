@@ -69,21 +69,18 @@ var Templates = []Template{
 	{
 		Key:         "song-stems",
 		Name:        "歌曲 → 伴奏人声",
-		Description: "下载歌曲并自动人声分离，产出人声与伴奏双轨（音乐搜索行内按钮同款）",
-		Internal:    true, // 参数来自选歌上下文（音源/曲目 ID），不进模板库
+		Description: "搜索选一首歌，下载并自动人声分离，产出人声与伴奏双轨",
 		Graph: workflow.Graph{
 			Inputs: []workflow.InputSlot{
-				{Key: "source", Label: "音源", Type: "string", Required: true, Placeholder: "kw / kg / wy / tx / mg"},
-				{Key: "rid", Label: "曲目 ID", Type: "string", Required: true},
-				{Key: "name", Label: "歌名", Type: "string", Required: true},
-				{Key: "artist", Label: "歌手", Type: "string"},
+				{Key: "track", Label: "选歌", Type: "track", Required: true, Placeholder: "搜索歌名或歌手，选一首"},
 			},
 			Nodes: []workflow.Node{
 				{
 					Key: "download", Provider: "music", Tool: "music_download",
 					Params: map[string]any{
-						"source": "{{inputs.source}}", "rid": "{{inputs.rid}}",
-						"name": "{{inputs.name}}", "artist": "{{inputs.artist}}",
+						"source": "{{inputs.track.source}}", "rid": "{{inputs.track.rid}}",
+						"name": "{{inputs.track.name}}", "artist": "{{inputs.track.artist}}",
+						"duration_ms": "{{inputs.track.duration}}",
 					},
 					X: 60, Y: 80,
 				},
@@ -98,21 +95,18 @@ var Templates = []Template{
 	{
 		Key:         "song-clip",
 		Name:        "歌曲 → 切高潮",
-		Description: "下载歌曲后直达音频剪辑的切高潮页（副歌候选+选区切片）",
-		Internal:    true, // 参数来自选歌上下文，不进模板库；完成态由前端给「去剪辑」深链
+		Description: "搜索选一首歌，下载后直达音频剪辑的切高潮页（副歌候选+选区切片）",
 		Graph: workflow.Graph{
 			Inputs: []workflow.InputSlot{
-				{Key: "source", Label: "音源", Type: "string", Required: true, Placeholder: "kw / kg / wy / tx / mg"},
-				{Key: "rid", Label: "曲目 ID", Type: "string", Required: true},
-				{Key: "name", Label: "歌名", Type: "string", Required: true},
-				{Key: "artist", Label: "歌手", Type: "string"},
+				{Key: "track", Label: "选歌", Type: "track", Required: true, Placeholder: "搜索歌名或歌手，选一首"},
 			},
 			Nodes: []workflow.Node{
 				{
 					Key: "download", Provider: "music", Tool: "music_download",
 					Params: map[string]any{
-						"source": "{{inputs.source}}", "rid": "{{inputs.rid}}",
-						"name": "{{inputs.name}}", "artist": "{{inputs.artist}}",
+						"source": "{{inputs.track.source}}", "rid": "{{inputs.track.rid}}",
+						"name": "{{inputs.track.name}}", "artist": "{{inputs.track.artist}}",
+						"duration_ms": "{{inputs.track.duration}}",
 					},
 					X: 60, Y: 80,
 				},

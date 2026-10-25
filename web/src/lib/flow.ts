@@ -4,13 +4,22 @@ import { fetchJSON } from "./api";
 import type { ToolInfo } from "./api";
 export type { ToolInfo };
 
-/** 运行时输入槽声明 */
+/** 运行时输入槽声明。track=选歌槽（值为一首歌字段集，参数按槽.字段引用） */
 export interface InputSlot {
   key: string;
   label: string;
-  type: "string" | "text" | "file";
+  type: "string" | "text" | "file" | "track";
   required?: boolean;
   placeholder?: string;
+}
+
+/** 选歌槽的值：/api/music 聚合搜索结果行（喂给 music_download 的字段） */
+export interface TrackValue {
+  source: string;
+  rid: string;
+  name: string;
+  artist?: string;
+  duration?: number;
 }
 
 /** 工作流节点（画布） */

@@ -22,11 +22,13 @@ type Graph struct {
 }
 
 // InputSlot 运行时输入槽：string/text 进节点参数（{{inputs.key}} 引用），
-// file 进引擎文件通道（前端先传 /api/uploads，值=file_id）。
+// file 进引擎文件通道（前端先传 /api/uploads，值=file_id），track 是选歌槽
+// （值为一首歌的字段集，节点参数按 {{inputs.key.字段}} 取值——曲目标识这类
+// 业务上下文用户无从手填，表单控件渲染为搜索选歌）。
 type InputSlot struct {
 	Key         string `json:"key"`
 	Label       string `json:"label"`
-	Type        string `json:"type"` // string|text|file
+	Type        string `json:"type"` // string|text|file|track
 	Required    bool   `json:"required,omitempty"`
 	Placeholder string `json:"placeholder,omitempty"`
 }
@@ -95,26 +97,39 @@ func ParseUpstreamRef(v string) (UpstreamRef, error) {
 // Expand 把 inputs 注入图：校验必填槽、深拷贝各节点 params 并展开
 // {{inputs.key}} 引用。返回展开后的节点参数副本与 file 型槽取值
 // （slotKey→file_id，供执行器进文件通道），不改原图。
+// track 槽的值是字段集（map），按 {{inputs.key.字段}} 取值。
 func (g *Graph) Expand(inputs map[string]any) (map[string]map[string]any, map[string]string, error) {
 	vals := map[string]string{}
+	trackVals := map[string]map[string]string{}
 	fileVals := map[string]string{}
 	for _, slot := range g.Inputs {
 		v, ok := inputs[slot.Key]
-		if !ok || strings.TrimSpace(toExpandString(v)) == "" {
+		if !ok || v == nil || (slot.Type != "track" && strings.TrimSpace(toExpandString(v)) == "") {
 			if slot.Required {
 				return nil, nil, fmt.Errorf("缺少必填输入: %s", slot.Label)
 			}
 			continue
 		}
-		if slot.Type == "file" {
+		switch slot.Type {
+		case "file":
 			fileVals[slot.Key] = toExpandString(v) // file_id，执行器解析进文件通道
-			continue
+		case "track":
+			m, isMap := v.(map[string]any)
+			if !isMap || len(m) == 0 {
+				return nil, nil, fmt.Errorf("输入槽 %s 需要选歌（字段集）", slot.Label)
+			}
+			fields := make(map[string]string, len(m))
+			for fk, fv := range m {
+				fields[fk] = toExpandString(fv)
+			}
+			trackVals[slot.Key] = fields
+		default:
+			vals[slot.Key] = toExpandString(v)
 		}
-		vals[slot.Key] = toExpandString(v)
 	}
 	out := make(map[string]map[string]any, len(g.Nodes))
 	for _, n := range g.Nodes {
-		p, err := expandParams(n.Params, vals)
+		p, err := expandParams(n.Params, vals, trackVals)
 		if err != nil {
 			return nil, nil, fmt.Errorf("节点 %s: %w", n.Key, err)
 		}
@@ -131,15 +146,15 @@ func toExpandString(v any) string {
 	return fmt.Sprint(v)
 }
 
-// expandParams 深拷贝并展开：字符串值内的 {{inputs.key}} 逐个替换，
-// 未声明的引用报错（写错槽名在提交前暴露，而不是运行中参数为空难排查）。
-func expandParams(params map[string]any, vals map[string]string) (map[string]any, error) {
+// expandParams 深拷贝并展开：字符串值内的 {{inputs.key}} / {{inputs.key.字段}}
+// 逐个替换，未声明的引用报错（写错槽名在提交前暴露，而不是运行中参数为空难排查）。
+func expandParams(params map[string]any, vals map[string]string, trackVals map[string]map[string]string) (map[string]any, error) {
 	if params == nil {
 		return map[string]any{}, nil
 	}
 	out := make(map[string]any, len(params))
 	for k, v := range params {
-		ev, err := expandValue(v, vals)
+		ev, err := expandValue(v, vals, trackVals)
 		if err != nil {
 			return nil, fmt.Errorf("参数 %s: %w", k, err)
 		}
@@ -148,16 +163,16 @@ func expandParams(params map[string]any, vals map[string]string) (map[string]any
 	return out, nil
 }
 
-func expandValue(v any, vals map[string]string) (any, error) {
+func expandValue(v any, vals map[string]string, trackVals map[string]map[string]string) (any, error) {
 	switch t := v.(type) {
 	case string:
-		return expandString(t, vals)
+		return expandString(t, vals, trackVals)
 	case map[string]any:
-		return expandParams(t, vals)
+		return expandParams(t, vals, trackVals)
 	case []any:
 		out := make([]any, len(t))
 		for i, item := range t {
-			ev, err := expandValue(item, vals)
+			ev, err := expandValue(item, vals, trackVals)
 			if err != nil {
 				return nil, err
 			}
@@ -169,7 +184,7 @@ func expandValue(v any, vals map[string]string) (any, error) {
 	}
 }
 
-func expandString(s string, vals map[string]string) (any, error) {
+func expandString(s string, vals map[string]string, trackVals map[string]map[string]string) (any, error) {
 	if !strings.Contains(s, "{{") {
 		return s, nil
 	}
@@ -191,8 +206,21 @@ func expandString(s string, vals map[string]string) (any, error) {
 		if !ok || key == "" {
 			return nil, fmt.Errorf("未知引用: {{%s}}", ref)
 		}
+		// inputs.<槽>.<字段>：track 选歌槽按字段取值
+		if strings.Contains(key, ".") {
+			sk, fk, _ := strings.Cut(key, ".")
+			if fields, isTrack := trackVals[sk]; isTrack {
+				b.WriteString(fields[fk])
+				s = s[end+2:]
+				continue
+			}
+			return nil, fmt.Errorf("输入槽 %s 不支持字段引用: {{%s}}", sk, ref)
+		}
 		v, ok := vals[key]
 		if !ok {
+			if _, isTrack := trackVals[key]; isTrack {
+				return nil, fmt.Errorf("选歌槽 %s 须按字段引用（{{inputs.%s.字段}}）", key, key)
+			}
 			return nil, fmt.Errorf("输入槽 %s 未提供", key)
 		}
 		b.WriteString(v)
@@ -224,7 +252,7 @@ func (g *Graph) Validate() error {
 		}
 		slotKeys[s.Key] = true
 		switch s.Type {
-		case "string", "text", "file":
+		case "string", "text", "file", "track":
 		default:
 			return fmt.Errorf("输入槽 %s 类型非法: %s", s.Key, s.Type)
 		}

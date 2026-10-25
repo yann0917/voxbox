@@ -4,10 +4,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Copy, FilePlus2, ListChecks, Pencil, Play, Plus, Square, Trash2, Workflow } from "lucide-react";
+import { ChevronRight, Copy, FilePlus2, ListChecks, Music, Pencil, Play, Plus, Square, Trash2, Workflow } from "lucide-react";
 import { ArtifactRow } from "../../components/ArtifactRow";
 import { FileDrop } from "../../components/FileDrop";
 import { onTaskEvent } from "../../lib/ws";
+import { searchMusicAll, type MusicTrack } from "../../lib/music";
 import {
   cancelRun,
   createWorkflow,
@@ -21,6 +22,7 @@ import {
   runWorkflow,
   type FlowGraph,
   type FlowNodeSpec,
+  type TrackValue,
   type InputSlot,
   type NodeRun,
   type WorkflowDTO,
@@ -313,6 +315,7 @@ function RunButton({
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [fileIDs, setFileIDs] = useState<Record<string, string>>({});
+  const [tracks, setTracks] = useState<Record<string, TrackValue | null>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -326,6 +329,7 @@ function RunButton({
       const payload: Record<string, unknown> = {};
       for (const s of inputs) {
         if (s.type === "file") payload[s.key] = fileIDs[s.key] ?? "";
+        else if (s.type === "track") payload[s.key] = tracks[s.key] ?? null;
         else payload[s.key] = values[s.key] ?? "";
       }
       const r = await run(payload);
@@ -340,7 +344,12 @@ function RunButton({
     }
   };
 
-  const missing = inputs.some((s) => s.required && !(s.type === "file" ? fileIDs[s.key] : values[s.key])?.trim?.());
+  const missing = inputs.some((s) => {
+    if (!s.required) return false;
+    if (s.type === "file") return !fileIDs[s.key];
+    if (s.type === "track") return !tracks[s.key];
+    return !values[s.key]?.trim();
+  });
 
   return (
     <>
@@ -352,6 +361,8 @@ function RunButton({
           {inputs.map((s) =>
             s.type === "file" ? (
               <FileSlotField key={s.key} slot={s} fileID={fileIDs[s.key] ?? ""} onFileID={(id) => setFileIDs((f) => ({ ...f, [s.key]: id }))} />
+            ) : s.type === "track" ? (
+              <TrackPickerField key={s.key} slot={s} track={tracks[s.key] ?? null} onTrack={(t) => setTracks((f) => ({ ...f, [s.key]: t }))} />
             ) : (
               <Field key={s.key} label={s.label} required={s.required} aside={s.placeholder}>
                 {({ id }) =>
@@ -404,6 +415,93 @@ function FileSlotField({ slot, fileID, onFileID }: { slot: InputSlot; fileID: st
           </Button>
         ) : (
           <FileDrop label="输入文件" accept=".mp3,.wav,.flac,.ogg,.m4a,.aac,.mp4,.mkv,.webm,.mov" emptyHint="音频或视频文件（≤500MB）" file={null} onFile={(f) => void upload(f)} />
+        )
+      }
+    </Field>
+  );
+}
+
+/** 选歌槽控件：聚合搜索 → 下拉列表 → 选中回填（参数由槽字段引用带入节点） */
+function TrackPickerField({ slot, track, onTrack }: { slot: InputSlot; track: TrackValue | null; onTrack: (t: TrackValue | null) => void }) {
+  const [kw, setKw] = useState("");
+  const [items, setItems] = useState<MusicTrack[]>([]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [searched, setSearched] = useState(false);
+
+  const search = async () => {
+    if (!kw.trim()) return;
+    setBusy(true);
+    try {
+      const d = await searchMusicAll(kw.trim(), 1);
+      setItems(d.items ?? []);
+      setErrors(d.errors ?? {});
+      setSearched(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sourceLabel: Record<string, string> = { kw: "酷我", kg: "酷狗", wy: "网易", tx: "QQ", mg: "咪咕" };
+
+  return (
+    <Field label={slot.label} required={slot.required} aside={track ? `${track.name} · ${track.artist ?? ""}` : slot.placeholder}>
+      {() =>
+        track ? (
+          <div className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-3 py-2">
+            <Music size={14} className="shrink-0 text-accent" />
+            <span className="min-w-0 flex-1 truncate text-sm">
+              {track.name} <span className="text-muted">{track.artist}</span>
+              <span className="ml-1.5 text-[11px] text-muted">{sourceLabel[track.source] ?? track.source}</span>
+            </span>
+            <Button variant="secondary" size="sm" onClick={() => onTrack(null)}>
+              重选
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <Input
+                value={kw}
+                onChange={(e) => setKw(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void search()}
+                placeholder="搜索歌名或歌手"
+                aria-label="搜索歌曲"
+              />
+              <Button variant="secondary" loading={busy} disabled={!kw.trim()} onClick={() => void search()}>
+                搜索
+              </Button>
+            </div>
+            {searched && items.length === 0 && <p className="text-xs text-muted">没有找到结果，换个关键词试试</p>}
+            {items.length > 0 && (
+              <div className="max-h-52 overflow-y-auto rounded-[var(--radius-sm)] border border-line">
+                {items.slice(0, 20).map((t, i) => (
+                  <button
+                    key={`${t.source}-${t.rid}-${i}`}
+                    type="button"
+                    onClick={() => {
+                      onTrack({ source: t.source, rid: t.rid, name: t.name, artist: t.artist, duration: t.duration });
+                      setItems([]);
+                      setSearched(false);
+                      setKw("");
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-2 border-b border-line px-3 py-2 text-left text-xs last:border-b-0 transition-colors duration-150 hover:bg-raise-2"
+                  >
+                    <span className="shrink-0 rounded bg-raise-2 px-1.5 py-0.5 text-[10px] text-muted">{sourceLabel[t.source] ?? t.source}</span>
+                    <span className="min-w-0 flex-1 truncate">{t.name}</span>
+                    <span className="shrink-0 truncate text-muted">{t.artist}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {Object.keys(errors).length > 0 && (
+              <p className="text-[11px] text-muted">
+                {Object.entries(errors)
+                  .map(([k, v]) => `${k}: ${v}`)
+                  .join(" · ")}
+              </p>
+            )}
+          </div>
         )
       }
     </Field>
