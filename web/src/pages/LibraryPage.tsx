@@ -6,29 +6,22 @@ import {
   ChevronRight,
   Download,
   Link as LinkIcon,
-  Loader2,
-  MicVocal,
   Music,
-  Sparkles,
-  Workflow,
 } from "lucide-react";
 import { fetchJSON } from "../lib/api";
-import { douyinNotesScenario, linkSubtitleScenario, songClipScenario, songStemsScenario } from "../lib/scenarios";
-import type { Scenario } from "../lib/scenarios";
-import { useScenarioRunner } from "../lib/useScenarioRunner";
+import { runTemplate } from "../lib/flow";
 import { listMusicSources, type MusicTrack } from "../lib/music";
-import type { Artifact, Task, TaskDetail } from "../lib/types";
+import type { Task, TaskDetail } from "../lib/types";
 import { ArtifactRow, formatSize } from "../components/ArtifactRow";
-import { Button, Card, EmptyState, Markdown, PageHeader, ProgressBar, Switch, Tabs, useToast } from "../ui";
+import { Button, Card, EmptyState, PageHeader, ProgressBar, Switch, Tabs, useToast } from "../ui";
 import { MusicSearchView, MusicRanksView, MusicPlaylistsView, MusicMVView, MusicHistoryView } from "./library/MusicViews";
 
-type Tab = "music" | "link" | "scenario";
+type Tab = "music" | "link";
 type MusicSub = "search" | "ranks" | "playlists" | "mv" | "history";
 
 const TABS = [
   { value: "music" as Tab, label: "音乐", icon: <Music size={14} strokeWidth={1.75} /> },
   { value: "link" as Tab, label: "链接下载", icon: <LinkIcon size={14} strokeWidth={1.75} /> },
-  { value: "scenario" as Tab, label: "场景", icon: <Workflow size={14} strokeWidth={1.75} /> },
 ];
 
 const MUSIC_TABS = [
@@ -42,18 +35,24 @@ const MUSIC_TABS = [
 export default function LibraryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = (searchParams.get("tab") as Tab) || "music";
-  const { run, start, reset, cancel } = useScenarioRunner();
+  const navigate = useNavigate();
+  const { toast } = useToast();
   // 空态（未导入音源）时音乐 Tab 里的视图们会因搜索/榜单不可用而难看，单独用 sources 查询判空态
   const { data: sourcesData } = useQuery({ queryKey: ["music-sources"], queryFn: listMusicSources });
   const sources = (sourcesData?.items ?? []).filter((l) => l.enabled);
 
-  const onStems = (t: MusicTrack) => start(songStemsScenario(t, "volcengine"));
-  const onClip = (t: MusicTrack) => start(songClipScenario(t));
+  // 行内「伴奏人声 / 切高潮」走内置模板（服务端编排，进度跳工作流运行页）
+  const runSongTemplate = (key: string, t: MusicTrack) => {
+    runTemplate(key, { source: t.source, rid: t.rid, name: t.name, artist: t.artist })
+      .then((r) => navigate(`/flow?run=${r.id}`))
+      .catch((e) => toast({ tone: "error", title: "启动失败", description: e instanceof Error ? e.message : String(e) }));
+  };
+  const onStems = (t: MusicTrack) => runSongTemplate("song-stems", t);
+  const onClip = (t: MusicTrack) => runSongTemplate("song-clip", t);
 
   return (
     <div>
-      <PageHeader title="素材" description="搜歌、贴链接下载，或按场景一步串到成品" />
-      {run && <RunnerCard run={run} onCancel={cancel} onReset={reset} />}
+      <PageHeader title="素材" description="搜歌、贴链接下载；串流程到工作流页" />
       <div className="mb-5">
         <Tabs items={TABS} value={TABS.some((t) => t.value === tab) ? tab : "music"} onChange={(v) => setSearchParams(v === "music" ? {} : { tab: v })} />
       </div>
@@ -63,8 +62,7 @@ export default function LibraryPage() {
         ) : (
           <MusicSection onStems={onStems} onClip={onClip} />
         ))}
-      {tab === "link" && <LinkTab onStartScenario={start} />}
-      {tab === "scenario" && <ScenarioTab onGoMusic={() => setSearchParams({ tab: "music" })} onStartScenario={start} />}
+      {tab === "link" && <LinkTab />}
       <RecentMaterials />
     </div>
   );
@@ -139,101 +137,12 @@ function MusicEmptyState() {
   );
 }
 
-// ---------------------------------------------------------------- 场景执行卡
-
-function RunnerCard({
-  run,
-  onCancel,
-  onReset,
-}: {
-  run: NonNullable<ReturnType<typeof useScenarioRunner>["run"]>;
-  onCancel: () => void;
-  onReset: () => void;
-}) {
-  const navigate = useNavigate();
-  return (
-    <Card className="mb-5">
-      <div className="flex items-center justify-between gap-3 p-4 pb-0">
-        <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
-          {run.status === "running" && <Loader2 size={15} className="shrink-0 animate-spin text-accent" />}
-          <Sparkles size={15} className={run.status === "running" ? "hidden" : "shrink-0 text-accent"} />
-          <span className="truncate">{run.title}</span>
-        </div>
-        {run.status === "running" ? (
-          <button type="button" onClick={onCancel} className="cursor-pointer text-xs text-fg-2 hover:text-accent">
-            取消
-          </button>
-        ) : (
-          <button type="button" onClick={onReset} className="cursor-pointer text-xs text-fg-2 hover:text-accent">
-            关闭
-          </button>
-        )}
-      </div>
-      <div className="flex flex-wrap gap-2 p-4">
-        {run.steps.map((s, i) => (
-          <div
-            key={i}
-            className={`flex items-center gap-2 rounded-[var(--radius-sm)] border px-3 py-1.5 text-xs ${
-              s.status === "failed"
-                ? "border-danger/40 text-danger"
-                : s.status === "done"
-                  ? "border-line bg-raise-2 text-fg-2"
-                  : s.status === "running"
-                    ? "border-accent/40 text-fg"
-                    : "border-line text-muted"
-            }`}
-          >
-            <span>{s.label}</span>
-            {s.status === "running" && <span className="tabular-nums text-muted">{s.progress}%</span>}
-            {s.status === "failed" && <span className="max-w-40 truncate">{run.error || s.note}</span>}
-          </div>
-        ))}
-      </div>
-      {run.status === "done" && (
-        <div className="flex flex-col gap-3 px-4 pb-4">
-          {run.artifacts.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {run.artifacts.map((a: Artifact) => (
-                <ArtifactRow key={a.id} a={a} />
-              ))}
-            </div>
-          )}
-          {run.autoSummary !== undefined && (
-            <div className="rounded-[var(--radius-sm)] border border-line bg-inset px-3 py-2.5">
-              <p className="micro mb-1 flex items-center gap-1.5">
-                <Sparkles size={12} strokeWidth={1.75} className="text-accent" />
-                AI 总结
-              </p>
-              {run.autoSummary ? (
-                <div className="max-h-72 overflow-y-auto">
-                  <Markdown>{run.autoSummary}</Markdown>
-                </div>
-              ) : (
-                <p className="text-xs text-muted">正在阅读文字稿并总结…</p>
-              )}
-            </div>
-          )}
-          {run.autoSummaryError && <p className="text-xs text-muted">{run.autoSummaryError}</p>}
-          {run.lastTaskId && (
-            <button
-              type="button"
-              onClick={() => navigate(`/history?task=${run.lastTaskId}`)}
-              className="cursor-pointer self-start text-xs text-fg-2 transition-colors duration-150 hover:text-accent"
-            >
-              打开任务详情：提炼 / 问答 / 思维导图 →
-            </button>
-          )}
-        </div>
-      )}
-    </Card>
-  );
-}
-
 // ---------------------------------------------------------------- 链接下载
 
-function LinkTab({ onStartScenario }: { onStartScenario: (s: Scenario) => void }) {
+function LinkTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [url, setUrl] = useState("");
   const [probing, setProbing] = useState(false);
   const [probe, setProbe] = useState<ProbeMeta | null>(null);
@@ -241,9 +150,16 @@ function LinkTab({ onStartScenario }: { onStartScenario: (s: Scenario) => void }
   const [mode, setMode] = useState<"audio" | "video">("audio");
   const [maxItems, setMaxItems] = useState(1);
   const [subs, setSubs] = useState(false);
-  // 下载后自动转写并 AI 总结（复用场景执行器：下载→识别→总结，执行卡全程可见）
+  // 下载后自动转写（内置模板「链接 → 字幕稿」：服务端编排，进度跳工作流运行页）
   const [autoAsr, setAutoAsr] = useState(true);
-  const [asrEngine, setAsrEngine] = useState<"local" | "volcengine">("local");
+  const runSubtitle = useMutation({
+    mutationFn: () => runTemplate("link-subtitle", { url: url.trim() }),
+    onSuccess: (r) => {
+      toast({ tone: "ok", title: "已开始转写流程", description: "下载 → 识别服务端串跑，进度见工作流页" });
+      navigate(`/flow?run=${r.id}`);
+    },
+    onError: (e) => toast({ tone: "error", title: "启动失败", description: e instanceof Error ? e.message : String(e) }),
+  });
 
   const doProbe = useMutation({
     mutationFn: () => fetchJSON<ProbeMeta>("/api/downloader/probe", { method: "POST", body: JSON.stringify({ url: url.trim() }) }),
@@ -356,20 +272,17 @@ function LinkTab({ onStartScenario }: { onStartScenario: (s: Scenario) => void }
               </label>
             )}
             {mode === "audio" && (
-              <>
-                <label className="flex cursor-pointer items-center gap-2 text-fg-2" title="下载后自动转写，并由 AI 默认大模型生成总结（导图/问答在任务详情）">
-                  <Switch checked={autoAsr} onChange={setAutoAsr} />
-                  <span className="text-muted">转写并 AI 总结</span>
-                </label>
-                {autoAsr && <AsrSelect value={asrEngine} onChange={setAsrEngine} />}
-              </>
+              <label className="flex cursor-pointer items-center gap-2 text-fg-2" title="下载后自动转写产出字幕与文稿（服务端串跑，进度见工作流页）">
+                <Switch checked={autoAsr} onChange={setAutoAsr} />
+                <span className="text-muted">下载后转写</span>
+              </label>
             )}
             <Button
               variant="primary"
-              loading={submit.isPending}
+              loading={submit.isPending || runSubtitle.isPending}
               onClick={() => {
                 if (mode === "audio" && autoAsr && url.trim()) {
-                  onStartScenario(linkSubtitleScenario(url.trim(), { engine: asrEngine }, true));
+                  runSubtitle.mutate();
                   return;
                 }
                 submit.mutate();
@@ -396,129 +309,6 @@ interface ProbeMeta {
   playlist?: boolean;
   n_entries?: number;
   subtitle_langs?: string[];
-}
-
-// ---------------------------------------------------------------- 场景
-
-function ScenarioTab({
-  onGoMusic,
-  onStartScenario,
-}: {
-  onGoMusic: () => void;
-  onStartScenario: (s: Scenario) => void;
-}) {
-  const [linkUrl, setLinkUrl] = useState("");
-  const [linkAsr, setLinkAsr] = useState<"local" | "volcengine">("local");
-  const [linkAuto, setLinkAuto] = useState(true);
-  const [dyUrl, setDyUrl] = useState("");
-  const [dyAsr, setDyAsr] = useState<"local" | "volcengine">("local");
-  const [dyAuto, setDyAuto] = useState(true);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="text-xs text-muted">
-        场景把「下载 → 识别 / 分离」串成一步：每步都是普通任务，进度实时可见，中断后单步可重跑。
-      </p>
-      <Card>
-        <div className="p-4">
-          <div className="flex items-center gap-2">
-            <Workflow size={15} className="text-accent" />
-            <p className="text-sm font-medium">链接 → 字幕稿</p>
-          </div>
-          <p className="mt-1 text-xs text-muted">贴视频或合集链接，自动下载音频并转写，产出 SRT 与文稿，可去字幕工坊样式化。</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <input
-              value={linkUrl}
-              onChange={(e) => setLinkUrl(e.target.value)}
-              placeholder="视频链接"
-              className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-3 py-2 text-sm outline-none placeholder:text-muted"
-            />
-            <AsrSelect value={linkAsr} onChange={setLinkAsr} />
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-fg-2" title="完成后由 AI 默认大模型生成内容总结">
-              <Switch checked={linkAuto} onChange={setLinkAuto} />
-              自动总结
-            </label>
-            <Button
-              variant="primary"
-              disabled={!linkUrl.trim()}
-              onClick={() => onStartScenario(linkSubtitleScenario(linkUrl.trim(), { engine: linkAsr }, linkAuto))}
-            >
-              开始
-            </Button>
-          </div>
-        </div>
-      </Card>
-      <Card>
-        <div className="p-4">
-          <div className="flex items-center gap-2">
-            <MicVocal size={15} className="text-accent" />
-            <p className="text-sm font-medium">歌曲 → 伴奏人声</p>
-          </div>
-          <p className="mt-1 text-xs text-muted">
-            在音乐搜索里选歌：行内「伴奏人声」下载后自动送人声分离；「切高潮」下载后直达剪辑页。
-          </p>
-          <Button variant="primary" onClick={onGoMusic} className="mt-3">
-            去搜索选歌
-          </Button>
-        </div>
-      </Card>
-      <Card>
-        <div className="p-4">
-          <div className="flex items-center gap-2">
-            <Sparkles size={15} className="text-accent" />
-            <p className="text-sm font-medium">抖音链接 → 转写笔记</p>
-          </div>
-          <p className="mt-1 text-xs text-muted">
-            抖音分享链接下载音频并转写；完成后到任务详情可 AI 提炼与问答。需在设置页配置 douyin-downloader。
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <input
-              value={dyUrl}
-              onChange={(e) => setDyUrl(e.target.value)}
-              placeholder="抖音分享链接"
-              className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-3 py-2 text-sm outline-none placeholder:text-muted"
-            />
-            <AsrSelect value={dyAsr} onChange={setDyAsr} />
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-fg-2" title="完成后由 AI 默认大模型生成内容总结">
-              <Switch checked={dyAuto} onChange={setDyAuto} />
-              自动总结
-            </label>
-            <Button
-              variant="primary"
-              disabled={!dyUrl.trim()}
-              onClick={() => onStartScenario(douyinNotesScenario(dyUrl.trim(), { engine: dyAsr }, dyAuto))}
-            >
-              开始
-            </Button>
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function AsrSelect({ value, onChange }: { value: "local" | "volcengine"; onChange: (v: "local" | "volcengine") => void }) {
-  return (
-    <div className="flex items-center gap-1 rounded-[var(--radius-sm)] border border-line p-0.5 text-xs">
-      {(
-        [
-          { v: "local", label: "本地识别" },
-          { v: "volcengine", label: "火山（≤60s）" },
-        ] as const
-      ).map((o) => (
-        <button
-          key={o.v}
-          type="button"
-          onClick={() => onChange(o.v)}
-          className={`cursor-pointer rounded-[calc(var(--radius-sm)-2px)] px-2.5 py-1.5 transition-colors duration-150 ${
-            value === o.v ? "bg-accent/10 text-accent" : "text-fg-2 hover:text-fg"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------- 最近素材

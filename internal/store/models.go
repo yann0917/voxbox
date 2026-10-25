@@ -115,3 +115,35 @@ type TranslateGlossary struct {
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `gorm:"index:idx_glossary_lang_updated,priority:2" json:"updated_at"`
 }
+
+// Workflow 用户保存的工作流编排图（Graph 为 workflow.Graph 的 JSON）。
+// 内置模板烤在 internal/workflow 不入库——随版本升级、无 seed 同步问题，
+// 「复制为我的」另存后即普通用户行。
+type Workflow struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	UserID      string    `gorm:"size:36;index" json:"-"` // 所有者，按人隔离
+	Name        string    `gorm:"size:128" json:"name"`
+	Description string    `gorm:"size:255" json:"description"`
+	Graph       string    `gorm:"type:text" json:"graph"` // workflow.Graph JSON
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// WorkflowRun 一次工作流执行的编排状态：每个节点对应一个普通任务（节点任务
+// 自带完整历史/WS/重跑），Nodes 快照记录各节点 task id、状态与产物归属。
+// Graph 快照整张编排图——运行记录可完整还原当时结构，前端监控页免回查。
+// WorkflowID=0 表示直接跑内置模板，WorkflowKey 溯源模板键。
+type WorkflowRun struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	UserID      string    `gorm:"size:36;index" json:"-"`
+	WorkflowID  uint      `gorm:"index" json:"workflow_id"`
+	WorkflowKey string    `gorm:"size:48;index" json:"workflow_key"`
+	Name        string    `gorm:"size:128" json:"name"` // 快照工作流名，列表展示不联表
+	Status      string    `gorm:"size:16;index" json:"status"`
+	Inputs      string    `gorm:"type:text" json:"inputs"` // 运行时输入槽 JSON
+	Graph       string    `gorm:"type:text" json:"-"`      // 编排图快照（workflow.Graph JSON）
+	Nodes       string    `gorm:"type:text" json:"nodes"`  // []workflow.NodeRun JSON
+	Error       string    `gorm:"type:text" json:"error"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

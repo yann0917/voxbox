@@ -9,6 +9,7 @@ import (
 	"github.com/yann0917/voxbox/internal/modules/music"
 	"github.com/yann0917/voxbox/internal/modules/prompts"
 	"github.com/yann0917/voxbox/internal/modules/voicefavorites"
+	"github.com/yann0917/voxbox/internal/modules/workflow"
 )
 
 // All 全部功能模块（挂载顺序即清单顺序）。
@@ -19,5 +20,6 @@ func All() []module.Module {
 		voicefavorites.Module(),
 		music.Module(),
 		downloader.Module(),
+		workflow.Module(),
 	}
 }

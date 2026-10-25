@@ -18,6 +18,7 @@ import {
   Settings,
   SlidersHorizontal,
   Waves,
+  Workflow,
   Wrench,
 } from "lucide-react";
 
@@ -54,14 +55,23 @@ export const features: FeatureDef[] = [
     id: "library",
     path: "/library",
     title: "素材",
-    desc: "搜歌下载 · 链接下载 · 场景串链",
+    desc: "搜歌下载 · 链接下载",
     icon: HardDriveDownload,
     component: () => import("./pages/LibraryPage"),
     tools: [
       { name: "music_download", label: "音乐下载", route: "/library" },
       { name: "download", label: "链接下载", route: "/library" },
     ],
-    workbench: { tool: "music_download", desc: "搜歌、贴链接下载，场景一键串到成品" },
+    workbench: { tool: "music_download", desc: "搜歌、贴链接下载" },
+  },
+  {
+    id: "flow",
+    path: "/flow",
+    title: "工作流",
+    desc: "工具串流程：拖拽编排一键跑完",
+    icon: Workflow,
+    component: () => import("./pages/flow/FlowPage"),
+    workbench: { tool: "flow", desc: "拖拽把工具串成流程，服务端一次跑完" },
   },
   {
     id: "tts",
