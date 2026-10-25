@@ -81,8 +81,11 @@ var ports = map[string]ToolSpec{
 	}, OutKinds: []string{"audio"}, Chainable: true},
 	// 剪静音：ASR/播客前置裁剪（auto-editor 思路本地化）
 	"audio.silence_cut": {In: []InPort{audioIn}, OutKinds: []string{"audio"}, Chainable: true},
-	// 场景切点：视频镜头切换列表（PySceneDetect 思路，ffmpeg 原生 scene 检测）
-	"audio.scene_detect": {In: []InPort{{Key: "audio", Kind: "video", Label: "视频"}}, OutKinds: []string{"scenes"}, Chainable: true},
+	// 场景切点：视频镜头切换列表（PySceneDetect 思路，ffmpeg 原生 scene 检测）；
+	// 联络表随场景切点附带产出（image）
+	"audio.scene_detect": {In: []InPort{{Key: "audio", Kind: "video", Label: "视频"}}, OutKinds: []string{"scenes", "image"}, Chainable: true},
+	// 字幕烧录：字幕全文走参数，视频走文件端口
+	"audio.subtitle_burn": {In: []InPort{{Key: "audio", Kind: "video", Label: "视频"}}, OutKinds: []string{"video"}, Chainable: true},
 
 	// ---- 格式工厂（gsgc 站点工具，图片类吃 image，其余按媒体类型）----
 	"gsgc.video-format-convert": {In: []InPort{{Key: "audio", Kind: "video", Label: "视频"}}, OutKinds: []string{"video"}, Chainable: true},

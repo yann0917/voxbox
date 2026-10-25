@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Captions, Download, Eraser, FileVideo, Languages, ListTree, Plus, RotateCcw, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { Captions, Download, Eraser, FileVideo, Flame, Languages, ListTree, Plus, RotateCcw, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import { apiBase, fetchJSON } from "../lib/api";
 import { streamPostSSEEvents } from "../lib/sse";
 import { toolLabel } from "../lib/toolNames";
@@ -15,6 +15,7 @@ import {
   Field,
   IconButton,
   Input,
+  Modal,
   PageHeader,
   Select,
   Switch,
@@ -22,6 +23,7 @@ import {
   Textarea,
   useToast,
 } from "../ui";
+import { FileDrop } from "../components/FileDrop";
 
 /** 与后端 internal/subtitle.Segment / subtitle.Style 对齐 */
 interface SubSeg {
@@ -121,6 +123,7 @@ async function downloadExport(segs: SubSeg[], format: "srt" | "ass", style: Reco
 
 export default function SubtitlesPage() {
   const [source, setSource] = useState<"task" | "srt" | "text">("task");
+  const [burnOpen, setBurnOpen] = useState(false);
   const [segments, setSegments] = useState<SubSeg[]>([]);
   const [preset, setPreset] = useState(FALLBACK_STYLE.name);
   const [fontSize, setFontSize] = useState(64);
@@ -614,6 +617,15 @@ export default function SubtitlesPage() {
               >
                 导出 SRT
               </Button>
+              <Button
+                variant="secondary"
+                className="w-full"
+                icon={<Flame size={15} strokeWidth={1.75} />}
+                disabled={segments.length === 0}
+                onClick={() => setBurnOpen(true)}
+              >
+                烧录进视频
+              </Button>
             </div>
           </CardBody>
         </Card>
@@ -871,6 +883,112 @@ export default function SubtitlesPage() {
           </CardBody>
         )}
       </Card>
+
+      <BurnModal
+        open={burnOpen}
+        onClose={() => setBurnOpen(false)}
+        segments={segments}
+        style={{ name: preset, font_size: fontSize, margin_v: marginV, karaoke }}
+      />
     </>
+  );
+}
+
+/** 烧录进视频：选本地视频 → 取当前工坊字幕（ASS 保真样式）→ 提交后台烧录任务 */
+function BurnModal({
+  open,
+  onClose,
+  segments,
+  style,
+}: {
+  open: boolean;
+  onClose: () => void;
+  segments: SubSeg[];
+  style: Record<string, unknown>;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    try {
+      // 1) 上传视频
+      setUploading(true);
+      const fd = new FormData();
+      fd.append("file", file);
+      const up = await fetchJSON<{ file_id: string }>("/api/uploads", { method: "POST", body: fd, headers: {} });
+      setUploading(false);
+      // 2) 取当前字幕的 ASS 全文（保真工坊样式；失败回落 SRT）
+      let subtitleText = "";
+      let subtitleFormat = "ass";
+      const resp = await fetch(`${apiBase}/api/subtitles/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ segments, format: "ass", style }),
+      });
+      if (resp.ok && !(resp.headers.get("content-type") ?? "").includes("application/json")) {
+        subtitleText = await resp.text();
+      } else {
+        const srt = await fetch(`${apiBase}/api/subtitles/export`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ segments, format: "srt", style }),
+        });
+        subtitleText = await srt.text();
+        subtitleFormat = "srt";
+      }
+      // 3) 提交烧录任务
+      await fetchJSON<{ task_id: string }>("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "audio",
+          tool: "subtitle_burn",
+          params: { subtitle_text: subtitleText, subtitle_format: subtitleFormat },
+          file_ids: [up.file_id],
+        }),
+      });
+      toast({ tone: "ok", title: "已开始烧录", description: "视频重编码需要一些时间，进度与成品见任务页" });
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+      setFile(null);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploading(false);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open={open} title="烧录进视频" onClose={onClose} width={520}>
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-muted">
+          选一个视频，把当前工坊的字幕（{segments.length} 条，含样式）烧录进去。视频将重编码为 MP4，音频直通。
+        </p>
+        <FileDrop
+          label="视频文件"
+          file={file}
+          onFile={setFile}
+          accept=".mp4,.mkv,.webm,.mov,.avi,.ts"
+          emptyHint="mp4 / mkv / webm / mov"
+        />
+        {uploading && <p className="text-xs text-muted">正在上传视频…</p>}
+        {error && <p className="text-xs text-danger">{error}</p>}
+      </div>
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>
+          取消
+        </Button>
+        <Button variant="primary" loading={busy} disabled={!file} onClick={() => void submit()}>
+          开始烧录
+        </Button>
+      </div>
+    </Modal>
   );
 }
