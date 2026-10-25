@@ -1,6 +1,8 @@
-import { Captions, Download, MicVocal, Speech } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Captions, Download, Film, MicVocal, Speech } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { apiBase } from "../lib/api";
+import { useToast } from "../ui";
+import { apiBase, fetchJSON } from "../lib/api";
 import type { Artifact } from "../lib/types";
 import { WavePlayer } from "../ui";
 
@@ -36,6 +38,21 @@ export function formatSize(bytes: number): string {
  *  跨页功能按钮与大小列隐藏——固定元素总宽超容器会 flex 溢出与时间戳重叠。 */
 export function ArtifactRow({ a, compact = false }: { a: Artifact; compact?: boolean }) {
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  // 场景切点检测（视频产物行内一键，本地 ffmpeg 后台跑，结果在任务详情）
+  const detect = useMutation({
+    mutationFn: () =>
+      fetchJSON<{ task_id: string }>("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({ provider: "audio", tool: "scene_detect", params: {}, artifact_input: a.id }),
+      }),
+    onSuccess: () => {
+      toast({ tone: "ok", title: "已开始场景检测", description: "切点列表与进度见任务页" });
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+    onError: (e) => toast({ tone: "error", title: "提交失败", description: e instanceof Error ? e.message : String(e) }),
+  });
   const isAudio = a.kind === "audio";
   const label = a.meta?.track ? trackLabel[a.meta.track] : artifactLabel[a.kind] ?? a.kind;
   return (
@@ -73,6 +90,18 @@ export function ArtifactRow({ a, compact = false }: { a: Artifact; compact?: boo
         >
           <Speech size={13} strokeWidth={1.75} />
           送识别
+        </button>
+      )}
+      {a.kind === "video" && (
+        <button
+          type="button"
+          onClick={() => detect.mutate()}
+          disabled={detect.isPending}
+          title="检测该视频的镜头切换点，产出场景切分列表（本地处理）"
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs text-fg-2 transition-colors duration-150 hover:text-accent disabled:opacity-50"
+        >
+          <Film size={13} strokeWidth={1.75} />
+          检测场景
         </button>
       )}
       {a.kind === "subtitle" && !compact && (
