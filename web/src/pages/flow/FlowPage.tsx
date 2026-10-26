@@ -580,8 +580,9 @@ function FlowEditor({
     }
   };
 
+  // 高度 = 视口 - 顶栏 h-14 - main 包裹层上下 padding（py-6 / md:py-8）；Layout 改尺寸须同步
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] flex-col">
+    <div className="flex h-[calc(100vh-6.5rem)] flex-col md:h-[calc(100vh-7.5rem)]">
       <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
         <Button variant="ghost" size="sm" onClick={onExit}>
           返回
@@ -744,7 +745,7 @@ function RunMonitor({
 
   const active = run.status === "running" || run.status === "pending";
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] flex-col">
+    <div className="flex h-[calc(100vh-6.5rem)] flex-col md:h-[calc(100vh-7.5rem)]">
       <header className="flex items-center gap-3 border-b border-line px-4 py-2.5">
         <Button variant="ghost" size="sm" onClick={onExit}>
           返回

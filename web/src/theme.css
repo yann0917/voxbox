@@ -88,6 +88,13 @@
   --xy-edge-stroke-selected-default: var(--accent);
   --xy-connectionline-stroke-default: var(--accent-hi);
   --xy-handle-background-color-default: var(--accent);
+  --xy-background-pattern-dots-color-default: rgba(240, 205, 155, 0.07);
+  --xy-controls-box-shadow-default: var(--elev-1);
+  --xy-controls-button-background-color-default: var(--raise-2);
+  --xy-controls-button-background-color-hover-default: color-mix(in oklab, var(--raise-2), var(--fg) 8%);
+  --xy-controls-button-border-color-default: var(--line);
+  --xy-controls-button-color-default: var(--fg-2);
+  --xy-controls-button-color-hover-default: var(--fg);
 
   --elev-1: 0 1px 2px rgba(4, 2, 0, 0.4), 0 10px 28px -14px rgba(4, 2, 0, 0.55), inset 0 1px 0 rgba(255, 225, 180, 0.06);
   --elev-2: 0 12px 32px -12px rgba(4, 2, 0, 0.65), inset 0 1px 0 rgba(255, 225, 180, 0.06);
@@ -130,6 +137,13 @@
   --xy-edge-stroke-selected-default: var(--accent);
   --xy-connectionline-stroke-default: var(--accent-hi);
   --xy-handle-background-color-default: var(--accent);
+  --xy-background-pattern-dots-color-default: rgba(111, 77, 48, 0.12);
+  --xy-controls-box-shadow-default: var(--elev-1);
+  --xy-controls-button-background-color-default: var(--raise-2);
+  --xy-controls-button-background-color-hover-default: color-mix(in oklab, var(--raise-2), var(--fg) 6%);
+  --xy-controls-button-border-color-default: var(--line);
+  --xy-controls-button-color-default: var(--fg-2);
+  --xy-controls-button-color-hover-default: var(--fg);
 
   --elev-1: 0 1px 2px rgba(83, 51, 25, 0.06), 0 8px 24px -12px rgba(83, 51, 25, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8);
   --elev-2: 0 12px 32px -14px rgba(83, 51, 25, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.8);

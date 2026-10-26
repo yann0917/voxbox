@@ -506,8 +506,8 @@ function FlowCanvasInner({ nodes, inputs, tools, badges, readOnly, onChange, onO
         deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
       >
         <Background gap={24} />
-        {/* readOnly 运行监控态右上是悬浮步骤面板，缩放控件挪左下避让 */}
-        <Controls showInteractive={false} position={readOnly ? "bottom-left" : "bottom-right"} />
+        {/* 右下角被常驻播放条占据，缩放控件统一放左下 */}
+        <Controls showInteractive={false} position="bottom-left" />
         {!readOnly && panelOpen && (
           <div className="absolute left-3 top-3 z-10 flex w-56 flex-col gap-1.5 rounded-lg border border-line bg-raise/95 p-2 shadow-sm backdrop-blur">
             <div className="flex items-center gap-1.5 rounded-md border border-line bg-raise-2 px-2">
