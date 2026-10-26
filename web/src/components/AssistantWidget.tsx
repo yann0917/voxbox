@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowUp, Sparkles, Square, X } from "lucide-react";
 import { useAssistantModels } from "../lib/assistant";
 import { usePlayer } from "../lib/player";
@@ -7,10 +7,32 @@ import { IconButton, Markdown, Select, Textarea, useToast, WaveLoader } from "..
 
 type ChatMsg = { role: "user" | "assistant" | "error"; content: string };
 
-/** 悬浮 AI 助手：登录后全页面常驻（Layout 挂载）。模型目录来自 /api/assistant/models
- *  （后端单一事实来源，未配置凭证的平台组禁用）；对话走 POST /api/assistant/chat 的
- *  SSE 流——预检错误响应 application/json 统一包络，流内错误为 {"error":...} 事件，
- *  正常终止为 {"done":true}。会话仅存于内存（切页不丢，刷新即清）。 */
+/** 悬浮球停靠位：side=吸附缘，y=球顶坐标（localStorage 记忆，刷新保持） */
+type Dock = { side: "left" | "right"; y: number };
+const DOCK_KEY = "assistant.dock";
+const BALL = 48; // 球径
+const EDGE = 20; // 吸附边距（与 right-5 一致）
+const TOP_SAFE = 64; // 顶栏 h-14 + 余量，拖动/吸附都不越过
+
+function clamp(v: number, lo: number, hi: number) {
+  return Math.min(Math.max(v, lo), Math.max(lo, hi));
+}
+
+function readDock(): Dock | null {
+  try {
+    const d = JSON.parse(localStorage.getItem(DOCK_KEY) ?? "null") as Dock | null;
+    if (d && (d.side === "left" || d.side === "right") && typeof d.y === "number") return d;
+  } catch {
+    // 损坏数据当无记忆处理
+  }
+  return null;
+}
+
+/** 悬浮 AI 助手：登录后全页面常驻（Layout 挂载）。悬浮球可拖动，松手吸附左/右缘，
+ *  位置存 localStorage（assistant.dock）；展开面板贴球同侧弹出。模型目录来自
+ *  /api/assistant/models（后端单一事实来源，未配置凭证的平台组禁用）；对话走
+ *  POST /api/assistant/chat 的 SSE 流——预检错误响应 application/json 统一包络，
+ *  流内错误为 {"error":...} 事件，正常终止为 {"done":true}。会话仅存于内存（切页不丢，刷新即清）。 */
 export default function AssistantWidget() {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
@@ -26,6 +48,74 @@ export default function AssistantWidget() {
   // 否则悬浮球会盖住播放条右端的关闭按钮（用户点了永远没反应）。
   // 悬浮播放条（右下角）可见时整体上抬让位：有曲目或队列非空都会渲染
   const musicBarVisible = usePlayer((s) => Boolean(s.track) || s.queue.length > 0);
+
+  // ---- 位置：可拖动 + 左右缘吸附 + 记忆 ----
+  // 默认（从未拖过）：贴右缘、底部让位播放条（历史行为）；拖过后位置固定不再自动让位，
+  // 用户显式放置优先于自动避让。拖动中自由跟随，松手按球心所在半屏吸附左/右缘。
+  const [dock, setDock] = useState<Dock | null>(readDock);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; moved: boolean } | null>(null);
+  const posRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressClick = useRef(false);
+  const dragging = dragPos != null;
+
+  // 窗口缩放后 clamp 依赖视口尺寸，需要一个重渲染信号
+  const [, setViewportTick] = useState(0);
+  useEffect(() => {
+    const onResize = () => setViewportTick((t) => t + 1);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const defaultBallTop = window.innerHeight - (musicBarVisible ? 150 : 24) - BALL;
+  const ballSide = dock?.side ?? "right";
+  const ballTop = dragPos ? dragPos.y : dock ? clamp(dock.y, TOP_SAFE, window.innerHeight - BALL - 8) : defaultBallTop;
+
+  const endDrag = (commit: boolean) => {
+    const pos = posRef.current;
+    dragRef.current = null;
+    posRef.current = null;
+    setDragPos(null);
+    if (commit && pos) {
+      const next: Dock = { side: pos.x + BALL / 2 < window.innerWidth / 2 ? "left" : "right", y: pos.y };
+      setDock(next);
+      try {
+        localStorage.setItem(DOCK_KEY, JSON.stringify(next));
+      } catch {
+        // 存储不可写（隐私模式等）则本次会话内仍然生效
+      }
+    }
+  };
+
+  const onBallPointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    suppressClick.current = false; // 上次拖动的 click 拦截标记作废（防 click 未派发时残留吞点击）
+    const rect = e.currentTarget.getBoundingClientRect();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, baseX: rect.left, baseY: rect.top, moved: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onBallPointerMove = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return; // 阈值内不算拖动（保留点击）
+    d.moved = true;
+    const pos = {
+      x: clamp(d.baseX + dx, 8, window.innerWidth - BALL - 8),
+      y: clamp(d.baseY + dy, TOP_SAFE, window.innerHeight - BALL - 8),
+    };
+    posRef.current = pos;
+    setDragPos(pos);
+  };
+  const onBallPointerUp = () => {
+    if (dragRef.current?.moved) {
+      suppressClick.current = true; // 拖完松手派生的 click 不应打开面板
+      endDrag(true);
+    } else {
+      dragRef.current = null; // 原地点击，交给 onClick 打开
+    }
+  };
 
   const { data: platforms } = useAssistantModels();
   const { data: settings } = useSettings();
@@ -165,29 +255,49 @@ export default function AssistantWidget() {
     }
   }
 
-  const bottom = musicBarVisible ? 150 : 24;
-
   if (!open) {
+    const ballStyle: CSSProperties = dragPos
+      ? { left: dragPos.x, top: dragPos.y }
+      : ballSide === "left"
+        ? { left: EDGE, top: ballTop }
+        : { right: EDGE, top: ballTop };
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
         aria-label="打开 AI 助手"
-        title="AI 助手"
-        style={{ bottom }}
-        className="rise fixed right-5 z-40 flex size-12 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-panel text-accent shadow-[var(--shadow-2)] backdrop-blur-xl transition-colors duration-150 hover:border-accent hover:text-accent-hi"
+        title="AI 助手（按住可拖动）"
+        style={ballStyle}
+        onPointerDown={onBallPointerDown}
+        onPointerMove={onBallPointerMove}
+        onPointerUp={onBallPointerUp}
+        onPointerCancel={() => endDrag(false)}
+        onClick={() => {
+          if (suppressClick.current) {
+            suppressClick.current = false;
+            return;
+          }
+          setOpen(true);
+        }}
+        className={`rise fixed z-40 flex size-12 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-panel text-accent shadow-[var(--shadow-2)] backdrop-blur-xl transition-colors duration-150 hover:border-accent hover:text-accent-hi [touch-action:none] ${
+          dragging ? "cursor-grabbing shadow-[var(--shadow-3)]" : "cursor-grab"
+        }`}
       >
         <Sparkles size={20} strokeWidth={1.75} />
       </button>
     );
   }
 
+  // 面板贴着停靠球的同一侧展开；垂直方向优先完整落在视口内、尽量贴近球顶
+  const panelH = Math.min(560, window.innerHeight - 176);
+  const panelTop = clamp(ballTop - panelH - 8, TOP_SAFE, window.innerHeight - panelH - 16);
+  const panelStyle: CSSProperties = { top: panelTop, ...(ballSide === "left" ? { left: EDGE } : { right: EDGE }) };
+
   return (
     <div
       role="dialog"
       aria-label="AI 助手"
-      style={{ bottom: bottom + 60 }}
-      className="rise fixed right-5 z-40 flex h-[min(560px,calc(100vh-11rem))] w-[380px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-line bg-panel shadow-[var(--shadow-3)] backdrop-blur-xl"
+      style={panelStyle}
+      className="rise fixed z-40 flex h-[min(560px,calc(100vh-11rem))] w-[380px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-line bg-panel shadow-[var(--shadow-3)] backdrop-blur-xl"
     >
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
         <Sparkles size={15} strokeWidth={1.75} className="shrink-0 text-accent" />
