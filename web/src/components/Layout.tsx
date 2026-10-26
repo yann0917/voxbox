@@ -222,7 +222,8 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen">
-      {/* 左上暖光晕：与 body::before 主晕错相呼吸（theme.css .atmosphere-b） */}
+      {/* 氛围光呼吸：主晕居中、次晕左上，各自以光心膨胀收缩（theme.css .atmosphere-a/b） */}
+      <div aria-hidden className="atmosphere-a" />
       <div aria-hidden className="atmosphere-b" />
       {/* 左侧导轨：lg 全宽（可手动收起），md 图标态 */}
       <aside
