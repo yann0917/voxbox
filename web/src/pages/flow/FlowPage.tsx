@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Copy, FilePlus2, ListChecks, Music, Pencil, Play, Plus, RotateCcw, Square, Trash2, Workflow } from "lucide-react";
+import { ChevronRight, Copy, FilePlus2, ListChecks, Music, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, RotateCcw, Square, Trash2, Workflow } from "lucide-react";
 import { ArtifactRow } from "../../components/ArtifactRow";
 import { FileDrop } from "../../components/FileDrop";
 import { fetchJSON } from "../../lib/api";
@@ -696,6 +696,8 @@ function RunMonitor({
   const [badges, setBadges] = useState<Record<string, NodeBadge>>({});
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [rerunOpen, setRerunOpen] = useState(false);
+  // 小屏默认收起（悬浮层遮画布），≥md 默认展开
+  const [stepsOpen, setStepsOpen] = useState(() => window.innerWidth >= 768);
   const taskNode = useRef(new Map<string, string>()); // task_id → node key
 
   // run 详情到达时重建 task→node 映射
@@ -762,26 +764,43 @@ function RunMonitor({
         )}
       </header>
       {run.error && <p className="border-b border-line bg-danger/10 px-4 py-1.5 text-xs text-danger">{run.error}</p>}
-      <div className="flex min-h-0 flex-1">
-        <div className="hidden min-w-0 flex-1 md:block">
-          <FlowCanvas
-            nodes={runGraphNodes(run)}
-            inputs={run.graph?.inputs ?? []}
-            tools={tools}
-            badges={badges}
-            readOnly
-            onOpenParams={() => {}}
-            onChange={() => {}}
-            onNodeSelect={(key) => setSelectedNode(key)}
-          />
-        </div>
-        <aside className="w-full shrink-0 overflow-y-auto border-l border-line md:w-96">
-          <div className="flex flex-col gap-2 p-3">
-            {(run.nodes ?? []).map((n) => (
-              <StepCard key={n.key} node={n} badge={badges[n.key]} />
-            ))}
-          </div>
-        </aside>
+      <div className="relative min-h-0 flex-1">
+        <FlowCanvas
+          nodes={runGraphNodes(run)}
+          inputs={run.graph?.inputs ?? []}
+          tools={tools}
+          badges={badges}
+          readOnly
+          onOpenParams={() => {}}
+          onChange={() => {}}
+          onNodeSelect={(key) => setSelectedNode(key)}
+        />
+        {stepsOpen && (
+          <aside className="absolute bottom-4 right-4 top-4 z-10 flex w-80 flex-col overflow-hidden rounded-lg border border-line bg-raise/95 shadow-sm backdrop-blur">
+            <div className="flex items-center gap-2 border-b border-line px-3 py-2">
+              <p className="min-w-0 flex-1 text-xs font-medium">运行步骤</p>
+              <button type="button" title="收起步骤面板" onClick={() => setStepsOpen(false)} className="cursor-pointer text-muted hover:text-fg">
+                <PanelRightClose size={13} />
+              </button>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+              {(run.nodes ?? []).map((n) => (
+                <StepCard key={n.key} node={n} badge={badges[n.key]} />
+              ))}
+            </div>
+          </aside>
+        )}
+        {!stepsOpen && (
+          <button
+            type="button"
+            title="展开步骤面板"
+            onClick={() => setStepsOpen(true)}
+            className="absolute right-4 top-4 z-10 flex cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-raise/95 px-2.5 py-2 text-xs shadow-sm backdrop-blur transition-colors duration-150 hover:bg-raise-2"
+          >
+            <PanelRightOpen size={13} />
+            运行步骤
+          </button>
+        )}
       </div>
       {selectedNode && (
         <NodeRunPopup
