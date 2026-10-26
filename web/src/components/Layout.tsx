@@ -222,6 +222,8 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen">
+      {/* 左上暖光晕：与 body::before 主晕错相呼吸（theme.css .atmosphere-b） */}
+      <div aria-hidden className="atmosphere-b" />
       {/* 左侧导轨：lg 全宽（可手动收起），md 图标态 */}
       <aside
         className={`hidden shrink-0 flex-col border-r border-line bg-panel backdrop-blur-xl md:flex ${
