@@ -11,6 +11,7 @@
  *  - 音频分片在 start 之后发送即可（WS 保序，无需等 ready 应答）。
  */
 
+import type { MinutesNotes } from "./types";
 import type { LiveFinalPayload, LivePartialPayload, LiveSegment } from "./liveCaption";
 
 export type LiveEngine = "volcengine" | "local";
@@ -20,6 +21,10 @@ export type LiveServerMsg =
   | ({ type: "partial" } & LivePartialPayload)
   | ({ type: "final" } & LiveFinalPayload)
   | { type: "saved"; task_id: string }
+  /** 静音预告：超时无新词，倒计时结束仍无新词服务端自动收束；新语音或 keep_going 撤销 */
+  | { type: "silence"; countdown_ms: number }
+  /** 实时纪要快照（REPLACE 覆盖），final=true 为定格后的终稿全量重写 */
+  | { type: "minutes"; notes: MinutesNotes; final?: boolean }
   | { type: "error"; message: string };
 
 export interface LiveStartOptions {
@@ -28,6 +33,8 @@ export interface LiveStartOptions {
   hotwords?: string;
   /** 说话人分离（仅火山引擎生效） */
   speaker?: boolean;
+  /** 实时纪要（仅火山引擎+服务端有默认大模型凭证时生效） */
+  minutes?: boolean;
 }
 
 export class LiveClient {
@@ -107,6 +114,11 @@ export class LiveClient {
   /** 存为识别任务（定格后可用，可多次调用各生成新任务）。 */
   sendSave(): void {
     this.sendJSON({ type: "save" });
+  }
+
+  /** 继续记录：撤销静音自动收束倒计时。 */
+  sendKeepGoing(): void {
+    this.sendJSON({ type: "keep_going" });
   }
 
   /** 主动断开（幂等）：不再触发 onClose 回调。 */

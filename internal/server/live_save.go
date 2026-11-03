@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -21,10 +22,12 @@ import (
 //   - 产物:转写文本 asr/<uuid>.txt 恒有;火山会话分句非空再落 SRT 字幕 asr/<uuid>.srt;
 //   - Params: {version:"live",engine,duration_ms};Summary: 火山=segments/duration_ms/
 //     source/engine(与 asr 工具同形,另带 engine),本地=text/duration_ms/source/engine;
+//   - notes 非空时嵌入 Summary.refined.minutes(实时纪要快照,终稿未及完成则为最后
+//     增量版,历史详情可继续手动重跑加工);
 //   - Provider: 火山会话=volcengine、本地会话=local(历史列表按 provider 徽标区分)。
 //
 // 与引擎任务一致:先落库(任务+产物)再发 hub done 事件,历史列表实时刷新。
-func (s *Server) liveSave(userID, engine, prov string, res liveResult) (string, error) {
+func (s *Server) liveSave(userID, engine, prov string, res liveResult, notes map[string]any) (string, error) {
 	if res.Text == "" && len(res.Segments) == 0 {
 		return "", fmt.Errorf("会话无识别内容,无可保存结果")
 	}
@@ -79,6 +82,13 @@ func (s *Server) liveSave(userID, engine, prov string, res liveResult) (string, 
 		arts = append(arts, provider.Artifact{Kind: "subtitle", Path: srtRel, Format: "srt", Size: int64(len(srtContent))})
 	} else {
 		summary["text"] = res.Text
+	}
+	// 实时纪要快照随任务落盘(refined 键同 /api/refine 契约,任务详情纪要区直接可用)
+	if len(notes) > 0 {
+		summary["refined"] = map[string]any{
+			"minutes":    notes,
+			"updated_at": time.Now().Format(time.RFC3339),
+		}
 	}
 
 	paramsRaw, _ := json.Marshal(map[string]any{

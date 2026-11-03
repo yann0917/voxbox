@@ -6,10 +6,12 @@
 //
 //	客户端 → 服务端:
 //	  文本帧  {"type":"start","engine":"volcengine"|"local","language":"zh-CN"?,
-//	           "hotwords":"词1,词2"?,"speaker":false?}   开会(语言/热词/说话人可选)
+//	           "hotwords":"词1,词2"?,"speaker":false?,"minutes":false?}
+//	                                                     开会(语言/热词/说话人/实时纪要可选)
 //	  二进制帧 s16le mono 16k 原始 PCM 字节(任意分块,建议 ≤320ms/块)      推音频
 //	  文本帧  {"type":"stop"}                                    结束输入,服务端回 final
 //	  文本帧  {"type":"save"}                                    存为任务(final 后可用)
+//	  文本帧  {"type":"keep_going"}                              继续记录(撤销静音自动收束倒计时)
 //
 //	服务端 → 客户端(均文本帧 JSON):
 //	  {"type":"ready","engine":"..."}                            会话已建立
@@ -21,6 +23,11 @@
 //	                                                             degraded=true=会话异常中断但已保留部分文本
 //	                                                             (本地断流与火山中途故障降级,内容可保存但可能不完整)
 //	  {"type":"saved","task_id":"<uuid>"}                        已存任务(可多次 save,各生成新任务)
+//	  {"type":"silence","countdown_ms":n}                        静音预告:有过语音后超时无新词下发,
+//	                                                             倒计时结束仍无新词自动收束;新语音或
+//	                                                             keep_going 撤销(全程无语音直接收束,不发此帧)
+//	  {"type":"minutes","notes":{…},"final":true?}               实时纪要快照(火山会话+默认大模型可用),
+//	                                                             final=true=定格后的终稿全量重写
 //	  {"type":"error","message":"…"}                             错误;连接去留视阶段:start 构造/建立失败
 //	                                                             与音频推送失败保留连接(可重试 start /
 //	                                                             stop→save 降级),会话开启后的引擎终态
@@ -41,6 +48,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -60,13 +68,24 @@ const (
 // 超时按错误收束,连接不再悬挂。
 const liveWaitFinalTimeout = 90 * time.Second
 
+// 实时字幕静音自动收束(cicada MeetingEndWatch 口径):信号是「词」而非声音——以引擎
+// 增量文本为准,静音续命帧不产文本天然不计。全程无语音超阈值直接收束(nobodySpoke,
+// 不发预告帧);有过语音后再超阈值先预告倒计时,期间新语音或 keep_going 撤销,到期
+// 自动收束(已说内容照常定格保存)。阈值为包级变量供测试注入。
+var (
+	liveSilenceAfter     = 10 * time.Minute
+	liveSilenceCountdown = 60 * time.Second
+	liveSilenceCheck     = 5 * time.Second // 收束判定的轮询周期
+)
+
 // liveControlMsg 客户端控制消息。
 type liveControlMsg struct {
-	Type     string `json:"type"` // start|stop|save
+	Type     string `json:"type"` // start|stop|save|keep_going
 	Engine   string `json:"engine"`
 	Language string `json:"language"`
 	Hotwords string `json:"hotwords"`
 	Speaker  bool   `json:"speaker"`
+	Minutes  bool   `json:"minutes"` // 实时纪要(仅火山引擎+默认大模型可用时生效)
 }
 
 // 服务端 → 客户端消息形状。
@@ -98,6 +117,19 @@ type liveSavedMsg struct {
 type liveErrorMsg struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
+}
+
+// liveSilenceMsg 静音预告(自动收束倒计时)。
+type liveSilenceMsg struct {
+	Type        string `json:"type"`
+	CountdownMS int64  `json:"countdown_ms"`
+}
+
+// liveMinutesMsg 实时纪要快照(final=true 为定格终稿)。
+type liveMinutesMsg struct {
+	Type  string         `json:"type"`
+	Final bool           `json:"final,omitempty"`
+	Notes map[string]any `json:"notes"`
 }
 
 // liveConnState 会话状态机:idle →(start)streaming →(stop)finishing →(final)final。
@@ -152,6 +184,7 @@ func (s *Server) serveLiveConn(conn *websocket.Conn, userID string) {
 
 	var (
 		wg      sync.WaitGroup // 引擎泵
+		genWG   sync.WaitGroup // 实时纪要生成(与引擎泵分账:gen 推帧可能晚于引擎泵退出)
 		eng     liveEngine
 		engine  string // volcengine|local(错误消息与 save 用)
 		prov    string // 落库 provider
@@ -162,6 +195,16 @@ func (s *Server) serveLiveConn(conn *websocket.Conn, userID string) {
 		// pendingFinal 引擎终态早于客户端 stop 受理时挂起(引擎终态只能由 Finish 触发,
 		// 二者经不同通道到达存在时序差;stop 受理时补发 final,协议顺序恒为 stop→final)。
 		pendingFinal *liveFinal
+
+		// 静音自动收束状态(仅主循环读写;lastText 由引擎泵原子刷新)
+		startedAt       time.Time
+		lastText        atomic.Int64 // 最近一次新文本的 unix nano(0=全程无语音)
+		silenceArmed    bool
+		armAt           time.Time
+		silenceDeadline time.Time
+
+		// gen 实时纪要生成器(start 时按开关+引擎+凭证创建;nil=未启用)
+		gen *liveMinutesGen
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() {
@@ -170,6 +213,7 @@ func (s *Server) serveLiveConn(conn *websocket.Conn, userID string) {
 			eng.Close() // 幂等;引擎泵经 updates 关闭/ctx 逃逸收敛
 		}
 		wg.Wait()
+		genWG.Wait() // 纪要流随 ctx 取消退出后再关通道,防 push 撞上已关闭的 send
 		close(send)
 		<-writeDone // 写泵排空残余帧(终态 error/final)后再关连接,防帧丢失
 		_ = conn.Close()
@@ -189,6 +233,19 @@ func (s *Server) serveLiveConn(conn *websocket.Conn, userID string) {
 	}
 	fail := func(msg string) {
 		push(liveErrorMsg{Type: "error", Message: msg})
+	}
+
+	// settleFinishing 进入 finishing 并收敛在途终态(stop 受理与自动收束共用):
+	// 引擎终态早于收束动作到达时（pendingFinal 挂起中），此处立即补发 final，
+	// 协议顺序恒为 收束→final。
+	settleFinishing := func() {
+		state = liveStateFinishing
+		if pendingFinal != nil {
+			result = pendingFinal.res
+			push(liveFinalMsg{Type: "final", Text: result.Text, DurationMS: result.DurationMS, Segments: result.Segments, Degraded: result.Degraded})
+			state = liveStateFinal
+			pendingFinal = nil
+		}
 	}
 
 	// handleMsg 单条客户端消息处理(连接级终止只由 readDone/终态错误触发)。
@@ -222,14 +279,40 @@ func (s *Server) serveLiveConn(conn *websocket.Conn, userID string) {
 				}
 				eng, engine, prov, started = e, engName, provName, true
 				state = liveStateStreaming
-				// 引擎泵:增量转播;updates 关闭(会话终态)后 Wait 取终态投递 finalCh。
+				startedAt = time.Now()
+				// 实时纪要:开关+火山引擎+默认大模型凭证三者齐备才启用(本地引擎无时间戳
+				// 分句,纪要无从回链,不启用)
+				if ctrl.Minutes && engName == "volcengine" {
+					gen = newLiveMinutesGen(s)
+				}
+				if gen != nil {
+					genWG.Add(1)
+					go func() {
+						defer genWG.Done()
+						gen.run(ctx, push)
+					}()
+				}
+				// 引擎泵:增量转播(顺带刷新静音信号、喂纪要行集);updates 关闭(会话终态)
+				// 后请终稿重写并 Wait 取终态投递 finalCh。
 				wg.Add(1)
 				go func(e liveEngine) {
 					defer wg.Done()
+					prevText := 0
 					for u := range e.Updates() {
+						// 静音信号:合并文本长度增长才算「说了词」(unstable 抖动/静音续命帧不计)
+						if n := len(u.Committed) + len(u.Unstable); n > prevText {
+							prevText = n
+							lastText.Store(time.Now().UnixNano())
+						}
+						if gen != nil {
+							gen.observe(u)
+						}
 						if !push(livePartialMsg{Type: "partial", Committed: u.Committed, Unstable: u.Unstable, Segments: u.Segments}) {
 							return
 						}
+					}
+					if gen != nil {
+						gen.requestFinal() // 引擎终态:行集定格,终稿全量重写(与 Wait 收束并行)
 					}
 					wctx, wcancel := context.WithTimeout(context.Background(), liveWaitFinalTimeout)
 					defer wcancel()
@@ -247,13 +330,13 @@ func (s *Server) serveLiveConn(conn *websocket.Conn, userID string) {
 					fail("结束音频输入失败:" + err.Error())
 					return
 				}
-				state = liveStateFinishing
-				if pendingFinal != nil {
-					// 引擎终态已先到(stop 在途):立即收敛,无需再等 finalCh。
-					result = pendingFinal.res
-					push(liveFinalMsg{Type: "final", Text: result.Text, DurationMS: result.DurationMS, Segments: result.Segments, Degraded: result.Degraded})
-					state = liveStateFinal
-					pendingFinal = nil
+				settleFinishing()
+
+			case "keep_going":
+				// 撤销静音倒计时并重置静音计时(下一轮静音重新计满);不影响状态机
+				if state == liveStateStreaming {
+					silenceArmed = false
+					lastText.Store(time.Now().UnixNano())
 				}
 
 			case "save":
@@ -261,7 +344,11 @@ func (s *Server) serveLiveConn(conn *websocket.Conn, userID string) {
 					fail("请先停止识别(final 之后)再保存")
 					return
 				}
-				taskID, err := s.liveSave(userID, engine, prov, result)
+				var notes map[string]any
+				if gen != nil {
+					notes = gen.snapshot() // 终稿未及完成时为最后增量版,任务详情可再加工
+				}
+				taskID, err := s.liveSave(userID, engine, prov, result, notes)
 				if err != nil {
 					fail("保存任务失败:" + err.Error())
 					return
@@ -287,6 +374,9 @@ func (s *Server) serveLiveConn(conn *websocket.Conn, userID string) {
 		return
 	}
 
+	silenceCheck := time.NewTicker(liveSilenceCheck)
+	defer silenceCheck.Stop()
+
 	for {
 		// 控制消息优先排空:stop 与引擎终态可能同时就绪(select 随机),协议上 stop
 		// 恒先于 final 被受理,否则 final 会抢在 finishing 之前把连接按意外终止收掉。
@@ -299,6 +389,32 @@ func (s *Server) serveLiveConn(conn *websocket.Conn, userID string) {
 		select {
 		case <-readDone: // 连接已断:清理即收敛
 			return
+
+		case <-silenceCheck.C: // 静音自动收束判定(仅会话中;详见 liveSilenceAfter 注释)
+			if state == liveStateStreaming {
+				now := time.Now()
+				last := lastText.Load()
+				switch {
+				case last == 0 && now.Sub(startedAt) > liveSilenceAfter:
+					// 全程无语音(nobodySpoke):直接收束,final 空文本由前端「无可保存内容」承接
+					_ = eng.Finish()
+					settleFinishing()
+				case silenceArmed && last > 0 && time.Unix(0, last).After(armAt):
+					// 倒计时期间来了新语音:撤销预告
+					silenceArmed = false
+				case silenceArmed && now.After(silenceDeadline):
+					// 倒计时到期仍无新语音:自动收束(已说内容照常定格保存)
+					silenceArmed = false
+					_ = eng.Finish()
+					settleFinishing()
+				case !silenceArmed && last > 0 && now.Sub(time.Unix(0, last)) > liveSilenceAfter:
+					// 静音超阈值:预告倒计时
+					silenceArmed = true
+					armAt = now
+					silenceDeadline = now.Add(liveSilenceCountdown)
+					push(liveSilenceMsg{Type: "silence", CountdownMS: liveSilenceCountdown.Milliseconds()})
+				}
+			}
 
 		case fin := <-finalCh: // 引擎终态(stop 收束 或 会话中途结束)
 			if fin.err != nil {
