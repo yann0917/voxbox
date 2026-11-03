@@ -82,10 +82,11 @@ func postRefine(t *testing.T, ac *http.Client, url, body string) (string, string
 	return string(raw), resp.Header.Get("Content-Type")
 }
 
-// TestRefineSummaryFlow summary 模式全链路：SSE 事件顺序 delta→done（无 error），
-// system 为内置纪要提示词，user 转写行渲染生效（speaker_names 改名 + 妙记前缀原样），
-// 结果落 Summary.refined.summary 且其余键保留。
-func TestRefineSummaryFlow(t *testing.T) {
+// TestRefineMinutesFlow minutes 模式全链路：SSE 事件顺序 delta→done（无 error），
+// system 为内置纪要提示词，user 为行号转写（evidence 锚点形态：改名说话人/妙记前缀
+// 原样/千问 speaker_id 段齐全）；结果 evidence 行号解析为 t 后落 Summary.refined.minutes
+// （evidence 剔除、非法行号忽略），其余键保留；非法 JSON 原文兜底落键不报错。
+func TestRefineMinutesFlow(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	ts, s, ac := newTestServer(t)
 	refineFixture(t, s)
@@ -96,12 +97,17 @@ func TestRefineSummaryFlow(t *testing.T) {
 	var gotSystem, gotUser string
 	setRefineStream(t, func(system, user string, onDelta func(string)) error {
 		gotSystem, gotUser = system, user
-		onDelta("## 会议纪要")
-		onDelta("\n\n- 张三：确认方案")
+		onDelta("```json\n")
+		onDelta(`{"title":"评审会","summary":"讨论了方案。",` +
+			`"topics":[{"title":"方案评审","summary":"确认了方案","points":[{"text":"方案通过","evidence":["L3"]}],"evidence":["L2","L3"]}],` +
+			`"conclusions":[{"text":"方案定稿","owner":"张三","evidence":["L2"]}],` +
+			`"todos":[{"content":"交初稿","owner":"","due":"下周三","evidence":["L99","L2"]}],` +
+			`"terms":[{"name":"Qwen","note":"模型名","heard":["kwen"]}]}`)
+		onDelta("\n```")
 		return nil
 	})
 
-	body, ct := postRefine(t, ac, ts.URL, `{"task_id":"rf-asr","mode":"summary","provider":"qianwen","model":"qwen3.8-flash"}`)
+	body, ct := postRefine(t, ac, ts.URL, `{"task_id":"rf-asr","mode":"minutes","provider":"qianwen","model":"qwen3.8-flash"}`)
 	if !strings.HasPrefix(ct, "text/event-stream") {
 		t.Fatalf("Content-Type = %s, want text/event-stream", ct)
 	}
@@ -115,33 +121,75 @@ func TestRefineSummaryFlow(t *testing.T) {
 	if !strings.HasSuffix(strings.TrimSpace(body), `"done":true}`) {
 		t.Fatalf("流应以 done 事件收尾: %s", body)
 	}
-	// system/user 定形检查
-	if !strings.Contains(gotSystem, "纪要") {
+	// system/user 定形检查：行号转写为 evidence 锚点形态
+	if !strings.Contains(gotSystem, "evidence") || !strings.Contains(gotSystem, "会议纪要") {
 		t.Errorf("system 应为内置纪要提示词: %s", gotSystem)
 	}
-	if !strings.Contains(gotUser, "00:00:00 张三：大家好") {
-		t.Errorf("user 应含改名后的说话人行: %s", gotUser)
+	if !strings.Contains(gotUser, "[L1 00:00:00 张三] 大家好") {
+		t.Errorf("user 应含改名说话人的行号行: %s", gotUser)
 	}
-	if !strings.Contains(gotUser, "00:00:05 说话人2：好的") {
+	if !strings.Contains(gotUser, "[L2 00:00:05] 说话人2：好的") {
 		t.Errorf("妙记形态的自带前缀应原样保留: %s", gotUser)
 	}
-	if !strings.Contains(gotUser, "00:00:10 说话人2：散会") {
+	if !strings.Contains(gotUser, "[L3 00:00:10 说话人2] 散会") {
 		t.Errorf("千问形态的 speaker_id 段应补说话人前缀: %s", gotUser)
 	}
-	// Summary 落盘 refined
+	// Summary 落盘 refined.minutes：evidence→t（最早有效证据行），evidence 不落盘
 	sum := taskSummary(t, ac, ts.URL, "rf-asr")
 	refined, _ := sum["refined"].(map[string]any)
 	if refined == nil {
 		t.Fatalf("Summary 应有 refined 键: %v", sum)
 	}
-	if refined["summary"] != "## 会议纪要\n\n- 张三：确认方案" {
-		t.Errorf("refined.summary = %v", refined["summary"])
+	mn, ok := refined["minutes"].(map[string]any)
+	if !ok {
+		t.Fatalf("refined.minutes 应为对象: %v", refined["minutes"])
+	}
+	if mn["title"] != "评审会" || mn["summary"] != "讨论了方案。" {
+		t.Errorf("minutes title/summary = %v", mn)
+	}
+	topics, _ := mn["topics"].([]any)
+	tp, _ := topics[0].(map[string]any)
+	if tp["t"] != float64(5000) {
+		t.Errorf("topic t 应为最早证据行(L2=5000): %v", tp["t"])
+	}
+	if _, has := tp["evidence"]; has {
+		t.Errorf("落盘不应保留 evidence: %v", tp)
+	}
+	pts, _ := tp["points"].([]any)
+	pp, _ := pts[0].(map[string]any)
+	if pp["t"] != float64(10000) {
+		t.Errorf("point t 应为 L3=10000: %v", pp["t"])
+	}
+	cons, _ := mn["conclusions"].([]any)
+	cp, _ := cons[0].(map[string]any)
+	if cp["t"] != float64(5000) || cp["owner"] != "张三" {
+		t.Errorf("conclusion t/owner = %v", cp)
+	}
+	todos, _ := mn["todos"].([]any)
+	td, _ := todos[0].(map[string]any)
+	if td["t"] != float64(5000) {
+		t.Errorf("todo 的非法行号 L99 应忽略、取有效证据 L2=5000: %v", td["t"])
 	}
 	if at, _ := refined["updated_at"].(string); at == "" {
 		t.Errorf("refined.updated_at = %v", refined["updated_at"])
 	}
 	if sum["duration_ms"].(float64) != 11000 || sum["speaker_names"] == nil || sum["segments"] == nil {
 		t.Errorf("其余 Summary 键应保留: %v", sum)
+	}
+
+	// (b) 非法 JSON：原文兜底落键，流照常 done
+	setRefineStream(t, func(system, user string, onDelta func(string)) error {
+		onDelta("这次讨论没有形成纪要。")
+		return nil
+	})
+	body, _ = postRefine(t, ac, ts.URL, `{"task_id":"rf-asr","mode":"minutes","provider":"qianwen","model":"qwen3.8-flash"}`)
+	if strings.Contains(body, `"error"`) || !strings.Contains(body, `"done":true}`) {
+		t.Fatalf("非法 JSON 不应报错给前端: %s", body)
+	}
+	sum = taskSummary(t, ac, ts.URL, "rf-asr")
+	refined, _ = sum["refined"].(map[string]any)
+	if refined["minutes"] != "这次讨论没有形成纪要。" {
+		t.Errorf("非法 JSON 应原文落键: %v", refined["minutes"])
 	}
 }
 
@@ -316,7 +364,7 @@ func TestRefineStreamError(t *testing.T) {
 		onDelta("部分输出")
 		return errors.New("千问 API 错误: 余额不足")
 	})
-	body, _ := postRefine(t, ac, ts.URL, `{"task_id":"rf-asr","mode":"summary","provider":"qianwen","model":"qwen3.8-flash"}`)
+	body, _ := postRefine(t, ac, ts.URL, `{"task_id":"rf-asr","mode":"minutes","provider":"qianwen","model":"qwen3.8-flash"}`)
 	if !strings.Contains(body, `"error"`) || !strings.Contains(body, `"code":3`) {
 		t.Fatalf("流内错误应下发 code=3 的 error 事件: %s", body)
 	}
@@ -351,7 +399,7 @@ func TestRefineEmptyOutputNotPersisted(t *testing.T) {
 	if err := json.Unmarshal([]byte(tk.Summary), &seeded); err != nil {
 		t.Fatal(err)
 	}
-	seeded["refined"] = map[string]any{"summary": "旧纪要", "updated_at": oldAt}
+	seeded["refined"] = map[string]any{"mindmap": "旧导图", "summary": "旧纪要", "updated_at": oldAt}
 	b, _ := json.Marshal(seeded)
 	if err := s.svc.DB().UpdateTaskSummary("rf-asr", "alice-id", string(b)); err != nil {
 		t.Fatal(err)
@@ -361,7 +409,7 @@ func TestRefineEmptyOutputNotPersisted(t *testing.T) {
 		onDelta("  \n\t") // 空白输出（模型未返回有效内容）
 		return nil
 	})
-	body, _ := postRefine(t, ac, ts.URL, `{"task_id":"rf-asr","mode":"summary","provider":"qianwen","model":"qwen3.8-flash"}`)
+	body, _ := postRefine(t, ac, ts.URL, `{"task_id":"rf-asr","mode":"mindmap","provider":"qianwen","model":"qwen3.8-flash"}`)
 	if strings.Contains(body, `"error"`) || !strings.HasSuffix(strings.TrimSpace(body), `"done":true}`) {
 		t.Fatalf("空输出应照常 done 收尾且无 error: %s", body)
 	}
@@ -370,18 +418,22 @@ func TestRefineEmptyOutputNotPersisted(t *testing.T) {
 	if refined == nil {
 		t.Fatalf("refined 应保留: %v", sum)
 	}
+	if refined["mindmap"] != "旧导图" {
+		t.Errorf("空输出不应覆写旧加工结果: refined.mindmap = %v", refined["mindmap"])
+	}
 	if refined["summary"] != "旧纪要" {
-		t.Errorf("空输出不应覆写旧加工结果: refined.summary = %v", refined["summary"])
+		t.Errorf("其它模式旧结果应保留: refined.summary = %v", refined["summary"])
 	}
 	if refined["updated_at"] != oldAt {
 		t.Errorf("空输出不应刷新 updated_at: %v, want %v", refined["updated_at"], oldAt)
 	}
 }
 
-// TestRefineTextOnlySummary 无 segments 的纯文本任务(本地 R2T2/智谱形态):加工从
-// Summary.text 取全文(无时间码前缀),不再误报「任务无转写内容」;segments 为空数组
-// 同样回落(只装了空段不等于有转写)。缺 text 键(rf-empty)仍按无转写拒绝。
-func TestRefineTextOnlySummary(t *testing.T) {
+// TestRefineTextOnlyMinutes 无 segments 的纯文本任务(本地 R2T2/智谱形态)跑 minutes
+// 模式:从 Summary.text 取全文,行号转写为无时间码形态(不伪造时间戳),evidence 指向
+// 未计时行不产 t;segments 为空数组同样回落(只装了空段不等于有转写)。缺 text 键
+// (rf-empty)仍按无转写拒绝。
+func TestRefineTextOnlyMinutes(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	ts, s, ac := newTestServer(t)
 	refineFixture(t, s)
@@ -392,25 +444,35 @@ func TestRefineTextOnlySummary(t *testing.T) {
 	var gotUser string
 	setRefineStream(t, func(system, user string, onDelta func(string)) error {
 		gotUser = user
-		onDelta("纪要")
+		onDelta(`{"summary":"一段概述","conclusions":[{"text":"结论一","evidence":["L1"]}]}`)
 		return nil
 	})
-	body, ct := postRefine(t, ac, ts.URL, `{"task_id":"rf-text","mode":"summary","provider":"qianwen","model":"qwen3.8-flash"}`)
+	body, ct := postRefine(t, ac, ts.URL, `{"task_id":"rf-text","mode":"minutes","provider":"qianwen","model":"qwen3.8-flash"}`)
 	if !strings.HasPrefix(ct, "text/event-stream") {
 		t.Fatalf("Content-Type = %s, want text/event-stream", ct)
 	}
 	if strings.Contains(body, `"error"`) {
 		t.Fatalf("纯文本任务应可加工: %s", body)
 	}
-	if !strings.Contains(gotUser, "本地识别的整段转写全文") {
-		t.Errorf("user 应含 Summary.text 全文: %s", gotUser)
-	}
-	if strings.Contains(gotUser, "00:00:00") {
-		t.Errorf("text 回退不应伪造时间码前缀: %s", gotUser)
+	if !strings.Contains(gotUser, "[L1] 本地识别的整段转写全文") {
+		t.Errorf("user 应为 Summary.text 的无时间码行号行: %s", gotUser)
 	}
 	sum := taskSummary(t, ac, ts.URL, "rf-text")
-	if refined, _ := sum["refined"].(map[string]any); refined == nil || refined["summary"] != "纪要" {
-		t.Errorf("refined 应落盘且 text/engine 等键保留: %v", sum)
+	refined, _ := sum["refined"].(map[string]any)
+	if refined == nil {
+		t.Fatalf("refined 应落盘: %v", sum)
+	}
+	mn, ok := refined["minutes"].(map[string]any)
+	if !ok {
+		t.Fatalf("refined.minutes 应为对象: %v", refined["minutes"])
+	}
+	cons, _ := mn["conclusions"].([]any)
+	cp, _ := cons[0].(map[string]any)
+	if _, has := cp["t"]; has {
+		t.Errorf("未计时行的 evidence 不应产 t: %v", cp)
+	}
+	if cp["text"] != "结论一" {
+		t.Errorf("conclusion 内容应保留: %v", cp)
 	}
 	if sum["text"] != "本地识别的整段转写全文" || sum["engine"] != "audiocpp" {
 		t.Errorf("原 Summary 键应保留: %v", sum)
@@ -433,15 +495,16 @@ func TestRefineValidation(t *testing.T) {
 		want int
 	}{
 		{"未知模式", ac, `{"task_id":"rf-asr","mode":"nope",` + valid + `}`, CodeBadRequest},
+		{"已下线的 summary 模式", ac, `{"task_id":"rf-asr","mode":"summary",` + valid + `}`, CodeBadRequest},
 		{"custom 缺 instruction", ac, `{"task_id":"rf-asr","mode":"custom",` + valid + `}`, CodeBadRequest},
-		{"未知平台", ac, `{"task_id":"rf-asr","mode":"summary","provider":"foo","model":"m"}`, CodeBadRequest},
-		{"白名单外模型", ac, `{"task_id":"rf-asr","mode":"summary","provider":"qianwen","model":"gpt-4o"}`, CodeBadRequest},
-		{"任务不存在", ac, `{"task_id":"no-task","mode":"summary",` + valid + `}`, CodeNotFound},
-		{"越权同报不存在", acBob, `{"task_id":"rf-asr","mode":"summary",` + valid + `}`, CodeNotFound},
-		{"非加工工具", ac, `{"task_id":"rf-tts","mode":"summary",` + valid + `}`, CodeBadRequest},
-		{"任务未成功", ac, `{"task_id":"rf-failed","mode":"summary",` + valid + `}`, CodeBadRequest},
-		{"无转写内容", ac, `{"task_id":"rf-empty","mode":"summary",` + valid + `}`, CodeBadRequest},
-		{"凭证未配置", ac, `{"task_id":"rf-asr","mode":"summary",` + valid + `}`, CodeBadCredential},
+		{"未知平台", ac, `{"task_id":"rf-asr","mode":"minutes","provider":"foo","model":"m"}`, CodeBadRequest},
+		{"白名单外模型", ac, `{"task_id":"rf-asr","mode":"minutes","provider":"qianwen","model":"gpt-4o"}`, CodeBadRequest},
+		{"任务不存在", ac, `{"task_id":"no-task","mode":"minutes",` + valid + `}`, CodeNotFound},
+		{"越权同报不存在", acBob, `{"task_id":"rf-asr","mode":"minutes",` + valid + `}`, CodeNotFound},
+		{"非加工工具", ac, `{"task_id":"rf-tts","mode":"minutes",` + valid + `}`, CodeBadRequest},
+		{"任务未成功", ac, `{"task_id":"rf-failed","mode":"minutes",` + valid + `}`, CodeBadRequest},
+		{"无转写内容", ac, `{"task_id":"rf-empty","mode":"minutes",` + valid + `}`, CodeBadRequest},
+		{"凭证未配置", ac, `{"task_id":"rf-asr","mode":"minutes",` + valid + `}`, CodeBadCredential},
 	} {
 		_, e := doJSON(t, tc.ac, http.MethodPost, ts.URL+"/api/refine", tc.body)
 		if e.Code != tc.want {

@@ -560,7 +560,7 @@ func TestLiveSaveSummaryRefineEligible(t *testing.T) {
 		Text: "你好世界", DurationMS: 1500,
 		Segments: []liveSegment{{Text: "你好", StartMS: 0, EndMS: 800, Speaker: "0"}, {Text: "世界", StartMS: 900, EndMS: 1500}},
 	}
-	idV, err := s.liveSave("u-live", "volcengine", "volcengine", resVolc)
+	idV, err := s.liveSave("u-live", "volcengine", "volcengine", resVolc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,7 +573,7 @@ func TestLiveSaveSummaryRefineEligible(t *testing.T) {
 
 	// 本地形:text 无 segments。
 	resLocal := liveResult{Text: "本地实时文本", DurationMS: 900}
-	idL, err := s.liveSave("u-live", "local", "local", resLocal)
+	idL, err := s.liveSave("u-live", "local", "local", resLocal, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -878,5 +878,241 @@ func TestLiveVolcZeroTextFailureError(t *testing.T) {
 	m := expectType(t, ws, "error")
 	if !strings.Contains(m["message"].(string), "实时识别会话结束") {
 		t.Errorf("error = %v(零文本错误应照常透传)", m)
+	}
+}
+
+// ---- 静音自动收束(cicada MeetingEndWatch 口径) ----
+
+// shrinkSilence 缩短静音阈值注入(测试结束还原)。
+func shrinkSilence(t *testing.T, after, countdown, check time.Duration) {
+	t.Helper()
+	oAfter, oCountdown, oCheck := liveSilenceAfter, liveSilenceCountdown, liveSilenceCheck
+	liveSilenceAfter, liveSilenceCountdown, liveSilenceCheck = after, countdown, check
+	t.Cleanup(func() { liveSilenceAfter, liveSilenceCountdown, liveSilenceCheck = oAfter, oCountdown, oCheck })
+}
+
+// TestLiveSilenceNobodySpoke 全程无语音超阈值:直接收束(不发 silence 预告帧),
+// final 空文本由前端「无可保存内容」承接。
+func TestLiveSilenceNobodySpoke(t *testing.T) {
+	ts, s, ac := newTestServer(t)
+	shrinkSilence(t, 120*time.Millisecond, 60*time.Second, 20*time.Millisecond)
+	eng := newFakeLiveEngine()
+	s.newLiveEngine = func(p liveControlMsg) (liveEngine, string, string, error) {
+		return eng, "volcengine", "volcengine", nil
+	}
+	ws := dialLiveWS(t, ts, sessionCookieHeader(t, ac, ts))
+	sendJSON(t, ws, `{"type":"start","engine":"volcengine"}`)
+	expectType(t, ws, "ready")
+
+	time.Sleep(400 * time.Millisecond) // 越过 liveSilenceAfter:主循环已自动 Finish 进 finishing
+	eng.finishWith(liveResult{Text: "", DurationMS: 0}, nil)
+	final := expectType(t, ws, "final") // 若误发 silence 预告会在此失败
+	if final["text"] != "" {
+		t.Errorf("nobodySpoke 的 final 应为空文本: %v", final)
+	}
+}
+
+// TestLiveSilenceAutoFinish 有过语音后静音超阈值:先发 silence 预告,倒计时到期
+// 无人应答自动收束;已说内容照常定格、可保存。
+func TestLiveSilenceAutoFinish(t *testing.T) {
+	ts, s, ac := newTestServer(t)
+	shrinkSilence(t, 80*time.Millisecond, 150*time.Millisecond, 20*time.Millisecond)
+	eng := newFakeLiveEngine()
+	s.newLiveEngine = func(p liveControlMsg) (liveEngine, string, string, error) {
+		return eng, "volcengine", "volcengine", nil
+	}
+	ws := dialLiveWS(t, ts, sessionCookieHeader(t, ac, ts))
+	sendJSON(t, ws, `{"type":"start","engine":"volcengine"}`)
+	expectType(t, ws, "ready")
+
+	// 有过语音(词),随后静音;partial 回执确认文本已被计为活动。
+	eng.upd <- liveUpdate{Committed: "你好", Segments: []liveSegment{{Text: "你好", StartMS: 0, EndMS: 800}}}
+	expectType(t, ws, "partial")
+	silence := expectType(t, ws, "silence")
+	if silence["countdown_ms"].(float64) != 150 {
+		t.Errorf("silence.countdown_ms = %v, want 150", silence["countdown_ms"])
+	}
+
+	time.Sleep(400 * time.Millisecond) // 倒计时到期:服务端已自动 Finish 进 finishing
+	eng.finishWith(liveResult{Text: "你好", DurationMS: 800}, nil)
+	final := expectType(t, ws, "final")
+	if final["text"] != "你好" {
+		t.Errorf("自动收束的 final 应保留已说内容: %v", final)
+	}
+	sendJSON(t, ws, `{"type":"save"}`)
+	if saved := expectType(t, ws, "saved"); saved["task_id"] == "" {
+		t.Errorf("saved = %v", saved)
+	}
+}
+
+// TestLiveSilenceKeepGoing 静音预告里 keep_going:撤销倒计时(原 deadline 过后会话
+// 仍在),静音计时重置(满 again 后重新预告)。
+func TestLiveSilenceKeepGoing(t *testing.T) {
+	ts, s, ac := newTestServer(t)
+	// countdown 拉长:原 deadline 永不在测试窗口内到期,把「到期自动收束」与
+	// 「keep_going 撤销」拆到两个用例互不干扰。
+	shrinkSilence(t, 80*time.Millisecond, 2*time.Second, 20*time.Millisecond)
+	eng := newFakeLiveEngine()
+	s.newLiveEngine = func(p liveControlMsg) (liveEngine, string, string, error) {
+		return eng, "volcengine", "volcengine", nil
+	}
+	ws := dialLiveWS(t, ts, sessionCookieHeader(t, ac, ts))
+	sendJSON(t, ws, `{"type":"start","engine":"volcengine"}`)
+	expectType(t, ws, "ready")
+
+	eng.upd <- liveUpdate{Committed: "你好", Segments: []liveSegment{{Text: "你好", StartMS: 0, EndMS: 800}}}
+	expectType(t, ws, "partial")
+	expectType(t, ws, "silence")
+
+	sendJSON(t, ws, `{"type":"keep_going"}`)
+	time.Sleep(300 * time.Millisecond)
+	// keep_going 重置静音计时:满 again 后应有第二次预告;若 keep_going 未生效,
+	// 会话已在原 deadline 自动收束,不会再发 silence 帧。
+	expectTypeSkip(t, ws, "silence", "partial")
+
+	sendJSON(t, ws, `{"type":"stop"}`)
+	eng.finishWith(liveResult{Text: "你好", DurationMS: 800}, nil)
+	final := expectTypeSkip(t, ws, "final", "partial", "silence")
+	if final["text"] != "你好" {
+		t.Errorf("keep_going 后应可正常收束: %v", final)
+	}
+}
+
+// ---- 实时纪要 ----
+
+// TestLiveMinutesFlow 实时纪要全链路:minutes 开关+火山引擎+凭证齐备 → 增量分句
+// 滚动生成纪要(minutes 帧带 t 回链、无 evidence);引擎终态后终稿全量重写
+// (final=true,不回显旧纪要);save 嵌入 Summary.refined.minutes。
+func TestLiveMinutesFlow(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ts, s, ac := newTestServer(t)
+	if _, e := doJSON(t, ac, http.MethodPut, ts.URL+"/api/settings/providers/qianwen",
+		`{"fields":{"api_key":"sk-live-minutes-test"}}`); e.Code != CodeOK {
+		t.Fatalf("配置假凭证 code = %d (%s)", e.Code, e.Message)
+	}
+	origEvery := liveMinutesEvery
+	liveMinutesEvery = 30 * time.Millisecond
+	t.Cleanup(func() { liveMinutesEvery = origEvery })
+
+	var users []string
+	var mu sync.Mutex
+	calls := setRefineStream(t, func(system, user string, onDelta func(string)) error {
+		mu.Lock()
+		users = append(users, user)
+		mu.Unlock()
+		onDelta(`{"summary":"概述","conclusions":[{"text":"确认开场","evidence":["L1"]}]}`)
+		return nil
+	})
+
+	eng := newFakeLiveEngine()
+	s.newLiveEngine = func(p liveControlMsg) (liveEngine, string, string, error) {
+		if !p.Minutes {
+			t.Errorf("start 应携带 minutes 开关")
+		}
+		return eng, "volcengine", "volcengine", nil
+	}
+	ws := dialLiveWS(t, ts, sessionCookieHeader(t, ac, ts))
+	sendJSON(t, ws, `{"type":"start","engine":"volcengine","minutes":true}`)
+	expectType(t, ws, "ready")
+
+	eng.upd <- liveUpdate{Committed: "你好", Segments: []liveSegment{{Text: "你好", StartMS: 0, EndMS: 800, Speaker: "0"}}}
+	expectType(t, ws, "partial")
+	m := expectTypeSkip(t, ws, "minutes", "partial")
+	if m["final"] == true {
+		t.Errorf("首次 minutes 应为增量快照: %v", m)
+	}
+	notes, _ := m["notes"].(map[string]any)
+	cons, _ := notes["conclusions"].([]any)
+	c0, _ := cons[0].(map[string]any)
+	if c0["t"] != float64(0) { // L1 的 start_ms=0
+		t.Errorf("evidence L1 应解析为 t=0: %v", c0)
+	}
+	if _, has := c0["evidence"]; has {
+		t.Errorf("minutes 帧不应携带 evidence: %v", c0)
+	}
+
+	// stop:引擎终态 → 终稿全量重写(final=true)与定格 final 先后到达(顺序不保证),
+	// 无序收齐两帧再分别断言。
+	sendJSON(t, ws, `{"type":"stop"}`)
+	eng.finishWith(liveResult{Text: "你好", DurationMS: 800,
+		Segments: []liveSegment{{Text: "你好", StartMS: 0, EndMS: 800, Speaker: "0"}}}, nil)
+	var minutesFinal, fin map[string]any
+	for minutesFinal == nil || fin == nil {
+		mm := readLiveMsg(t, ws)
+		switch mm["type"] {
+		case "minutes":
+			minutesFinal = mm
+		case "final":
+			fin = mm
+		case "partial": // 残余增量,合法时序
+		default:
+			t.Fatalf("意外帧: %v", mm)
+		}
+	}
+	if minutesFinal["final"] != true {
+		t.Errorf("终稿 minutes.final 应为 true: %v", minutesFinal)
+	}
+	if fin["text"] != "你好" {
+		t.Errorf("final = %v", fin)
+	}
+
+	sendJSON(t, ws, `{"type":"save"}`)
+	saved := expectType(t, ws, "saved")
+	taskID, _ := saved["task_id"].(string)
+	if taskID == "" {
+		t.Fatalf("saved = %v", saved)
+	}
+	tk, err := s.svc.DB().GetTask(taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sum map[string]any
+	_ = json.Unmarshal([]byte(tk.Summary), &sum)
+	refined, _ := sum["refined"].(map[string]any)
+	mn, ok := refined["minutes"].(map[string]any)
+	if !ok {
+		t.Fatalf("save 应嵌入 refined.minutes 对象: %v", sum)
+	}
+	if mn["summary"] != "概述" {
+		t.Errorf("refined.minutes = %v", mn)
+	}
+	// 终稿调用为全量重写:回全部行号转写,不回显旧纪要
+	mu.Lock()
+	lastUser := users[len(users)-1]
+	mu.Unlock()
+	if !strings.Contains(lastUser, "[L1") || strings.Contains(lastUser, "当前纪要") {
+		t.Errorf("终稿应为全量重写: user=%q", lastUser)
+	}
+	if *calls < 2 {
+		t.Errorf("至少应有增量+终稿两次生成调用, got %d", *calls)
+	}
+}
+
+// TestLiveMinutesGate 无默认大模型凭证:实时纪要静默关闭(不产 minutes 帧),
+// 字幕链路不受影响。
+func TestLiveMinutesGate(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ts, s, ac := newTestServer(t)
+	origEvery := liveMinutesEvery
+	liveMinutesEvery = 30 * time.Millisecond
+	t.Cleanup(func() { liveMinutesEvery = origEvery })
+
+	eng := newFakeLiveEngine()
+	s.newLiveEngine = func(p liveControlMsg) (liveEngine, string, string, error) {
+		return eng, "volcengine", "volcengine", nil
+	}
+	ws := dialLiveWS(t, ts, sessionCookieHeader(t, ac, ts))
+	sendJSON(t, ws, `{"type":"start","engine":"volcengine","minutes":true}`)
+	expectType(t, ws, "ready")
+
+	eng.upd <- liveUpdate{Committed: "你好", Segments: []liveSegment{{Text: "你好", StartMS: 0, EndMS: 800}}}
+	expectType(t, ws, "partial")
+	time.Sleep(150 * time.Millisecond) // 若误启用,这里会产出 minutes 帧
+
+	sendJSON(t, ws, `{"type":"stop"}`)
+	eng.finishWith(liveResult{Text: "你好", DurationMS: 800}, nil)
+	fin := expectTypeSkip(t, ws, "final", "partial") // 多出 minutes 帧会在此失败
+	if fin["text"] != "你好" {
+		t.Errorf("final = %v", fin)
 	}
 }

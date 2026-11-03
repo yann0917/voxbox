@@ -108,9 +108,9 @@ export function TaskDetailPanel({ d, rerunPending, onRerun }: TaskDetailPanelPro
         </div>
       )}
 
-      {/* 纪要区（ASR 且有转写内容时）：说话人改名统计 + AI 提炼 + 就稿问答，引用 chip 复用同一跳播。
+      {/* 纪要区（识别/妙记且有转写内容时）：说话人改名统计 + AI 提炼 + 就稿问答，引用 chip 复用同一跳播。
           无 segments 的纯文本任务以 Summary.text 兜底成单段。key=任务 id：切换任务即重置改名/加工/问答的本会话状态 */}
-      {task.tool === "asr" && notebookSegments.length > 0 && (
+      {(task.tool === "asr" || task.tool === "minutes") && notebookSegments.length > 0 && (
         <NotebookSection key={task.id} task={task} segments={notebookSegments} onSeek={playSrc ? (ms) => seekTo(ms, track) : undefined} />
       )}
 

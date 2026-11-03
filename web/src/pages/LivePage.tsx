@@ -7,10 +7,12 @@ import {
   CircleAlert,
   FileText,
   Mic,
+  NotebookPen,
   Save,
   Square,
 } from "lucide-react";
 import { useMe } from "../lib/auth";
+import { useDefaultAssistantModel } from "../lib/assistant";
 import {
   captureSupport,
   micErrorMessage,
@@ -29,6 +31,8 @@ import {
   type LiveCaptionState,
 } from "../lib/liveCaption";
 import { useModels } from "../lib/models";
+import type { MinutesNotes } from "../lib/types";
+import { MinutesView } from "../components/notebook/MinutesView";
 import { DictFill } from "../components/DictFill";
 import { Button, Card, CardBody, CardHeader, EmptyState, Input, PageHeader, Select, Switch, Tabs, useToast } from "../ui";
 
@@ -57,6 +61,10 @@ export default function LivePage() {
   const [error, setError] = useState("");
   const [warn, setWarn] = useState("");
   const [saving, setSaving] = useState(false);
+  // 实时纪要：开关默认开（需默认大模型；服务端以凭证兜底）；快照随 minutes 帧滚动替换
+  const [wantMinutes, setWantMinutes] = useState(true);
+  const [liveNotes, setLiveNotes] = useState<{ notes: MinutesNotes; final: boolean } | null>(null);
+  const [silenceCountdown, setSilenceCountdown] = useState<number | null>(null);
 
   const clientRef = useRef<LiveClient | null>(null);
   const captureRef = useRef<LiveCaptureSession | null>(null);
@@ -77,6 +85,9 @@ export default function LivePage() {
     modelsData?.items.some(
       (m) => m.kind === "asr" && m.family === "confucius4_r2t2" && m.status === "installed",
     ) ?? false;
+  // 实时纪要依赖「AI 默认大模型」（undefined=配置加载中；null=未选，引导去设置页）
+  const defaultModel = useDefaultAssistantModel();
+  const minutesReady = engine === "volcengine" && defaultModel != null;
   const capture = captureSupport();
 
   /* 计时：只在会话进行中走表，停止后冻结（火山的计费口径即此刻时长） */
@@ -122,6 +133,8 @@ export default function LivePage() {
     setCaption(emptyLiveCaption);
     setFinalInfo(null);
     setElapsedMs(0);
+    setLiveNotes(null);
+    setSilenceCountdown(null);
     hasTextRef.current = false;
   };
 
@@ -163,8 +176,17 @@ export default function LivePage() {
         break; // 会话确认；音频随开始指令入队即传，无需等应答
       case "partial":
         if (phaseRef.current === "final") break; // 定格后的残余增量不覆盖定格文本（防御服务端排序回归）
-        if ((m.committed ?? "").length > 0 || (m.unstable ?? "").length > 0) hasTextRef.current = true;
+        if ((m.committed ?? "").length > 0 || (m.unstable ?? "").length > 0) {
+          hasTextRef.current = true;
+          setSilenceCountdown(null); // 有新语音即撤销静音预告（与服务端判定同口径）
+        }
         setCaption((c) => applyLivePartial(c, m));
+        break;
+      case "silence":
+        setSilenceCountdown(m.countdown_ms > 0 ? m.countdown_ms : 60000);
+        break;
+      case "minutes":
+        setLiveNotes({ notes: m.notes, final: m.final === true });
         break;
       case "final": {
         captureRef.current?.stop(); // 残余采集不再上送
@@ -236,6 +258,8 @@ export default function LivePage() {
         speaker: engine === "volcengine" ? speaker : undefined,
         // 语种仅本地引擎可选手动固定（火山自动检测够稳）；ISO 码由引擎解析为模型规范名
         language: engine === "local" && language ? language : undefined,
+        // 实时纪要仅火山引擎；未选默认大模型时不请求（服务端另有凭证兜底）
+        minutes: engine === "volcengine" && wantMinutes && defaultModel != null,
       });
       startedAtRef.current = Date.now();
       setElapsedMs(0);
@@ -249,7 +273,14 @@ export default function LivePage() {
     captureRef.current?.stop();
     captureRef.current = null;
     clientRef.current?.sendStop();
+    setSilenceCountdown(null);
     setPhaseSafe("finishing");
+  };
+
+  /** 静音预告里选择继续：撤销服务端倒计时并本地收起横幅。 */
+  const keepGoing = () => {
+    setSilenceCountdown(null);
+    clientRef.current?.sendKeepGoing();
   };
 
   const saveResult = () => {
@@ -359,6 +390,23 @@ export default function LivePage() {
                   <Switch checked={speaker} onChange={setSpeaker} disabled={locked} />
                   <span className="text-sm text-fg-2">区分说话人</span>
                 </label>
+                <label className="flex shrink-0 cursor-pointer items-center gap-2">
+                  <Switch
+                    checked={wantMinutes && minutesReady}
+                    onChange={setWantMinutes}
+                    disabled={locked || !minutesReady}
+                  />
+                  <span className="text-sm text-fg-2">实时纪要</span>
+                </label>
+                {engine === "volcengine" && defaultModel === null && (
+                  <span className="text-[11px] text-muted">
+                    实时纪要需先在
+                    <Link to="/settings" className="text-accent hover:opacity-80">
+                      设置页
+                    </Link>
+                    选择 AI 默认大模型
+                  </span>
+                )}
               </>
             ) : (
               <Select
@@ -384,6 +432,22 @@ export default function LivePage() {
           </div>
         </CardBody>
       </Card>
+
+      {/* 静音预告：长时间无语音，服务端倒计时结束将自动收束（继续记录可撤销） */}
+      {silenceCountdown !== null && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--radius-sm)] border border-line bg-raise-2 px-3 py-2.5">
+          <p className="flex min-w-0 flex-1 items-start gap-1.5 text-xs text-warn">
+            <AlertTriangle size={13} strokeWidth={1.75} className="mt-0.5 shrink-0" />
+            <span className="min-w-0 break-words">
+              已经 10 分钟没有听到说话，{Math.max(1, Math.round(silenceCountdown / 1000))}{" "}
+              秒后会自动停止识别；说点什么或点击继续记录即可保持会话。
+            </span>
+          </p>
+          <Button size="sm" variant="secondary" onClick={keepGoing}>
+            继续记录
+          </Button>
+        </div>
+      )}
 
       {/* 错误/警示：全宽横条，紧跟控制条 */}
       {(error || warn) && (
@@ -501,6 +565,20 @@ export default function LivePage() {
             )}
           </CardBody>
         </Card>
+
+      {/* 实时纪要：随会话滚动整理，定格后保留（保存的任务详情里可继续加工） */}
+      {liveNotes && (
+        <Card className="mt-4">
+          <CardHeader
+            title="实时纪要"
+            icon={<NotebookPen size={15} strokeWidth={1.75} />}
+            aside={<span className="micro">{liveNotes.final ? "终稿" : "边听边整理"}</span>}
+          />
+          <CardBody>
+            <MinutesView notes={liveNotes.notes} />
+          </CardBody>
+        </Card>
+      )}
     </>
   );
 }
