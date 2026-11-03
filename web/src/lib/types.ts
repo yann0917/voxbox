@@ -105,8 +105,54 @@ export interface RefineEvent {
   description?: string;
 }
 
-/** 任务 Summary.refined（/api/refine 按模式合并落盘）：todos/events 在 LLM 返回
- *  合法 JSON 时为数组、解析失败时为原文字符串（二义，渲染侧须 Array.isArray 分支）。 */
+/** 会议纪要条目：t 为 evidence 转写行号解析出的开始时间（毫秒），无法定位时缺省 */
+export interface MinutesPoint {
+  text: string;
+  t?: number;
+}
+
+/** 议题：points 为要点列表（各带可回链时间戳） */
+export interface MinutesTopic {
+  title: string;
+  summary?: string;
+  points?: MinutesPoint[];
+  t?: number;
+}
+
+/** 结论/待办共用形态（待办多一个 due 原文） */
+export interface MinutesConclusion {
+  text: string;
+  owner?: string;
+  t?: number;
+}
+
+export interface MinutesTodo {
+  content: string;
+  owner?: string;
+  due?: string;
+  t?: number;
+}
+
+/** 术语表：heard 为转写中的听错写法（无听错不收录该术语） */
+export interface MinutesTerm {
+  name: string;
+  note?: string;
+  heard?: string[];
+}
+
+/** 结构化会议纪要（refine minutes 模式 / live 实时纪要，evidence 已由后端解析为 t） */
+export interface MinutesNotes {
+  title?: string;
+  summary?: string;
+  topics?: MinutesTopic[];
+  conclusions?: MinutesConclusion[];
+  todos?: MinutesTodo[];
+  terms?: MinutesTerm[];
+}
+
+/** 任务 Summary.refined（/api/refine 按模式合并落盘）：todos/events/minutes 在 LLM
+ *  返回合法 JSON 时为结构化值、解析失败时为原文字符串（二义，渲染侧须分支判断）；
+ *  summary 为旧版自由文本总结（已被 minutes 模式取代，存量只读兼容）。 */
 export interface Refined {
   summary?: string;
   todos?: RefineTodo[] | string;
@@ -114,6 +160,8 @@ export interface Refined {
   /** 思维导图（mindmap 模式）：嵌套无序列表 markdown，Mindmap 组件渲染 */
   mindmap?: string;
   custom?: string;
+  /** 会议纪要（minutes 模式）：结构化对象，解析失败时为原文字符串 */
+  minutes?: MinutesNotes | string;
   /** 最近一次加工时间（RFC3339），跨模式共用 */
   updated_at?: string;
 }

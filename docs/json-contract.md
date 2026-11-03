@@ -50,6 +50,19 @@ Web 控制台 REST 的任务对象（`GET /api/tasks`）携带同一份 `params`
 | translate | `translation`（译文正文）`source_language` `target_language` `char_count` `terms_count` `prompt_tokens` `completion_tokens` `total_tokens`，自动检测时附 `detected_source_language` |
 | minutes | `minutes_title` `summary_text` `translation_text` `features` `sentences` `speakers_count` `duration_ms` `upstream_task_id` `segments[]{text,start_ms,end_ms}`（text 带说话人前缀）`todos[]{content,executor[],start_time}` `chapters[]{title,summary,start_time,end_time}` |
 
+## summary.refined 键位（录音笔记加工层）
+
+`asr` / `minutes` 任务的 `summary.refined` 由 `/api/refine` 按模式合并写入（同模式重跑覆盖、跨模式共存）；实时字幕保存的任务也可携带 `minutes`（live 实时纪要快照，形状同下，终稿未及完成时为最后增量版）。
+
+| 键 | 形状 | 说明 |
+|---|---|---|
+| minutes | 对象 `{title?,summary?,topics?,conclusions?,todos?,terms?}` | 结构化会议纪要。`topics[]{title,summary?,t?,points[]{text,t?}}`、`conclusions[]{text,owner?,t?}`、`todos[]{content,owner?,due?,t?}`、`terms[]{name,note?,heard[]}`；`t` 为条目在录音中的开始时间（毫秒，由服务端把 LLM 的 evidence 转写行号解析注入，无法定位时缺省）；解析失败时为原文字符串 |
+| todos | 数组 `[{content,owner,due}]` | 待办（字段为原文）；解析失败时为原文字符串 |
+| events | 数组 `[{title,start,end,description}]` | 日历事件（start/end 为 "YYYY-MM-DD HH:mm"）；解析失败时为原文字符串 |
+| mindmap / custom | 字符串 | 自由文本（mindmap 为嵌套无序列表 markdown） |
+| summary | 字符串 | 旧版自由文本总结（已被 minutes 模式取代，存量只读保留） |
+| updated_at | RFC3339 | 最近一次加工时间（跨模式共用） |
+
 ## 消费方
 
 - **CLI / 脚本**：`voxbox <tool> ... --json`，以退出码判断成败后直接解析 stdout。

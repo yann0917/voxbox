@@ -15,14 +15,19 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useDefaultAssistantModel } from "../../lib/assistant";
+import { downloadBlob } from "../../lib/download";
 import { downloadICS, icsEventCount } from "../../lib/ics";
-import type { RefineEvent, RefineTodo, Refined } from "../../lib/types";
+import type { MinutesNotes, RefineEvent, RefineTodo, Refined } from "../../lib/types";
 import { Mindmap } from "./Mindmap";
+import { MinutesView } from "./MinutesView";
 import { Button, Card, CardBody, CardHeader, Field, IconButton, Markdown, Textarea, useToast } from "../../ui";
 import {
   asEvents,
+  asMinutes,
   asTodos,
+  buildMinutesMarkdown,
   parseRefinedArray,
+  parseRefinedObject,
   REFINE_MODES,
   refinedAtText,
   safeFilename,
@@ -38,23 +43,26 @@ export interface RefinePanelProps {
   /** 持久化回显：任务 Summary.refined。父级在任务详情到达后才挂载本组件，
    *  回显直接从该 prop 派生（不做异步拉取）；本会话新跑的结果以本地覆盖优先。 */
   refined?: Refined;
+  /** 纪要条目时间戳 chip 点击跳播（接线方并入轨标题/时长副标题）；无回放源不传 */
+  onSeek?: (ms: number) => void;
 }
 
 const MODE_ICONS: Record<RefineMode, LucideIcon> = {
-  summary: NotebookPen,
+  minutes: NotebookPen,
   mindmap: Network,
   todos: ListTodo,
   events: CalendarRange,
   custom: Sparkles,
 };
 
-/** 加工区：文字稿交给大模型二次加工——总结/待办/事件/自定义四种方式，
- *  SSE 流式出稿；结果按模式共存展示（同模式重跑覆盖），事件可导出 .ics。 */
-export function RefinePanel({ taskId, title, refined }: RefinePanelProps) {
+/** 加工区：文字稿交给大模型二次加工——纪要/导图/待办/事件/自定义五种方式，
+ *  SSE 流式出稿；结果按模式共存展示（同模式重跑覆盖），事件可导出 .ics、
+ *  纪要可导出 .md，纪要条目的时间戳 chip 点击跳回原话。 */
+export function RefinePanel({ taskId, title, refined, onSeek }: RefinePanelProps) {
   const { toast } = useToast();
   // undefined=配置加载中（保守禁用）；null=未选默认模型（引导去设置页）
   const defaultModel = useDefaultAssistantModel();
-  const [mode, setMode] = useState<RefineMode>("summary");
+  const [mode, setMode] = useState<RefineMode>("minutes");
   const [instruction, setInstruction] = useState("");
   const [running, setRunning] = useState(false);
   const [streamText, setStreamText] = useState("");
@@ -114,6 +122,11 @@ export function RefinePanel({ taskId, title, refined }: RefinePanelProps) {
           ...cur,
           [m]: arr ? (m === "todos" ? asTodos(arr) : asEvents(arr)) : acc,
         }));
+        setRunAt(new Date().toISOString());
+      } else if (m === "minutes") {
+        // 解析失败存原文（与后端落盘兜底同口径），结果块据此给「重试」入口
+        const obj = parseRefinedObject(acc);
+        setOverrides((cur) => ({ ...cur, [m]: obj ? asMinutes(obj) : acc }));
         setRunAt(new Date().toISOString());
       } else {
         setOverrides((cur) => ({ ...cur, [m]: acc.trim() }));
@@ -218,7 +231,7 @@ export function RefinePanel({ taskId, title, refined }: RefinePanelProps) {
         {running && (
           <div className="rounded-[var(--radius-sm)] border border-line bg-inset px-3 py-2.5">
             {streamText ? (
-              mode === "todos" || mode === "events" ? (
+              mode === "todos" || mode === "events" || mode === "minutes" ? (
                 <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-fg-2">
                   {streamText}
                 </pre>
@@ -259,6 +272,7 @@ export function RefinePanel({ taskId, title, refined }: RefinePanelProps) {
                 docTitle={title}
                 running={running}
                 modelMissing={defaultModel === null}
+                onSeek={onSeek}
                 onRerun={() => {
                   setMode(m);
                   void start(m);
@@ -267,6 +281,26 @@ export function RefinePanel({ taskId, title, refined }: RefinePanelProps) {
               />
             );
           })}
+          {/* 旧版自由文本总结（summary 模式已被纪要取代）：存量结果只读兼容，
+              不可重跑——需要新版结构化纪要时跑一次「纪要」加工即可 */}
+          {typeof refined?.summary === "string" && refined.summary.trim() !== "" && (
+            <div className="space-y-2 rounded-[var(--radius-md)] border border-line bg-raise-2/30 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="micro flex items-center gap-1.5">
+                  <NotebookPen size={12} strokeWidth={1.75} />
+                  总结（旧版）
+                </p>
+                <IconButton
+                  size="sm"
+                  label="复制总结结果"
+                  onClick={() => copyText(refined.summary as string, "总结结果")}
+                >
+                  <Copy size={13} strokeWidth={1.75} />
+                </IconButton>
+              </div>
+              <Markdown>{refined.summary}</Markdown>
+            </div>
+          )}
         </div>
       </CardBody>
     </Card>
@@ -274,8 +308,9 @@ export function RefinePanel({ taskId, title, refined }: RefinePanelProps) {
 }
 
 /** 单模式结果块：文本模式走 markdown 渲染；todos/events 结构化列表（事件可导出
- *  日历）；持久值为原文字符串 = 上次解析失败，按原文展示并给重试入口。
- *  （mode 与 value 的配对由构造方保证：字符串仅 summary/custom/todos·events 兜底） */
+ *  日历）；minutes 结构化纪要（可导出 Markdown、时间戳 chip 回链原话）；持久值为
+ *  原文字符串 = 上次解析失败，按原文展示并给重试入口。
+ *  （mode 与 value 的配对由构造方保证：字符串仅 mindmap/custom/todos·events·minutes 兜底） */
 function ResultBlock({
   mode,
   label,
@@ -283,22 +318,32 @@ function ResultBlock({
   docTitle,
   running,
   modelMissing,
+  onSeek,
   onRerun,
   onCopy,
 }: {
   mode: RefineMode;
   label: string;
   value: ModeValue;
-  /** 任务标题（事件批量导出的文件名） */
+  /** 任务标题（事件批量导出/纪要导出的文件名） */
   docTitle: string;
   running: boolean;
   /** 未配置默认大模型：重新加工是点了也不会有结果的死按钮，禁用并提示 */
   modelMissing: boolean;
+  /** 纪要时间戳 chip 跳播（无回放源不传） */
+  onSeek?: (ms: number) => void;
   onRerun: () => void;
   onCopy: (text: string) => void;
 }) {
   const Icon = MODE_ICONS[mode];
   const rerunTitle = modelMissing ? "先在设置页选好「AI 默认大模型」再加工" : undefined;
+  const exportMinutes = () => {
+    downloadBlob(
+      buildMinutesMarkdown(value as MinutesNotes, docTitle),
+      `${safeFilename(docTitle || "会议纪要")}.md`,
+      "text/markdown;charset=utf-8",
+    );
+  };
   return (
     <div className="space-y-2 rounded-[var(--radius-md)] border border-line bg-raise-2/30 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -307,9 +352,14 @@ function ResultBlock({
           {label}
         </p>
         <div className="flex items-center gap-0.5">
-          {(mode === "summary" || mode === "mindmap" || mode === "custom") && typeof value === "string" && (
+          {(mode === "mindmap" || mode === "custom") && typeof value === "string" && (
             <IconButton size="sm" label={`复制${label}结果`} onClick={() => onCopy(value)}>
               <Copy size={13} strokeWidth={1.75} />
+            </IconButton>
+          )}
+          {mode === "minutes" && typeof value !== "string" && (
+            <IconButton size="sm" label="导出 Markdown" onClick={exportMinutes}>
+              <Download size={13} strokeWidth={1.75} />
             </IconButton>
           )}
           <IconButton
@@ -323,7 +373,7 @@ function ResultBlock({
         </div>
       </div>
       {typeof value === "string" ? (
-        mode === "todos" || mode === "events" ? (
+        mode === "todos" || mode === "events" || mode === "minutes" ? (
           <RawFallback
             label={label}
             text={value}
@@ -338,6 +388,8 @@ function ResultBlock({
         )
       ) : mode === "todos" ? (
         <TodoList todos={value as RefineTodo[]} />
+      ) : mode === "minutes" ? (
+        <MinutesView notes={value as MinutesNotes} onSeek={onSeek} />
       ) : (
         <EventList events={value as RefineEvent[]} docTitle={docTitle} />
       )}

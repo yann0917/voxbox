@@ -34,7 +34,7 @@ export function NotebookSection({ task, segments, onSeek }: NotebookSectionProps
           onSpeakerNamesChange={setSpeakerNames}
         />
       )}
-      <RefinePanel taskId={task.id} title={task.title ?? ""} refined={task.summary?.refined} />
+      <RefinePanel taskId={task.id} title={task.title ?? ""} refined={task.summary?.refined} onSeek={onSeek} />
       <ChatPanel segments={segments} speakerLabel={speakerLabel} onSeek={onSeek} />
     </div>
   );
