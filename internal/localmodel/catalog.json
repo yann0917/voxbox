@@ -44,34 +44,34 @@
     "kind": "engine",
     "name": "audio.cpp 引擎",
     "summary": "Qwen3-TTS 本地合成与 R2T2 本地识别运行时(macOS Metal / CPU)",
-    "revision": "v0.9.2",
-    "size_bytes": 31972675,
+    "revision": "v0.9.5",
+    "size_bytes": 38669821,
     "requirements": { "device": "metal" },
     "license": "MIT",
     "license_url": "https://github.com/0xShug0/audio.cpp",
     "archive": "tar.gz",
-    "archive_sha256": "827239e1d5824f8294cce461661dc7f20f933869bd333dfc60ba3c089f29faab",
+    "archive_sha256": "286e4e266212b2cd4012418268f4f972440bdd984cf5decfe6b427b543ccb5fd",
     "binaries": ["audiocpp_server", "audiocpp_cli"],
     "assets": {
       "darwin/arm64": {
-        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.2/audio-v0.9.2-bin-macos-arm64-metal.tar.gz",
-        "size_bytes": 31972675,
-        "sha256": "827239e1d5824f8294cce461661dc7f20f933869bd333dfc60ba3c089f29faab"
+        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.5/audio-v0.9.5-bin-macos-arm64-metal.tar.gz",
+        "size_bytes": 38669821,
+        "sha256": "286e4e266212b2cd4012418268f4f972440bdd984cf5decfe6b427b543ccb5fd"
       },
       "darwin/amd64": {
-        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.2/audio-v0.9.2-bin-macos-x64-metal.tar.gz",
-        "size_bytes": 33862576,
-        "sha256": "b199add8ab8d53f81769367b9869a021eae838fa6104c9b05a012ec7899774d8"
+        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.5/audio-v0.9.5-bin-macos-x64-metal.tar.gz",
+        "size_bytes": 41188439,
+        "sha256": "f20abf2f90fc044c4e87274e2b19b167621bbc687b7434f631d606687b4ab10d"
       },
       "windows/amd64": {
-        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.2/audio-v0.9.2-bin-windows-x64-cpu-portable.zip",
-        "size_bytes": 28114705,
-        "sha256": "4bea04239d753d2d0a294580ad4af2a0fa81b0de244a1b9146650c7f9fa4e84d"
+        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.5/audio-v0.9.5-bin-windows-x64-cpu-portable.zip",
+        "size_bytes": 33663926,
+        "sha256": "9f470c3b254205d044e91e84d609424f528734cd06b74968ab0e4868a30b839a"
       },
       "linux/amd64": {
-        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.2/audio-v0.9.2-bin-ubuntu-x64-cpu-portable.tar.gz",
-        "size_bytes": 59857917,
-        "sha256": "72bfb07f46bb8f4cc0217a604619dbb78cfc388dfa4e639feb412ca7e2410980"
+        "url": "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.5/audio-v0.9.5-bin-ubuntu-x64-cpu-portable.tar.gz",
+        "size_bytes": 72971964,
+        "sha256": "4e413b1d4ebfd322f56bb79d9b967034fd0948d820f99734def01635402f6e75"
       }
     }
   },
