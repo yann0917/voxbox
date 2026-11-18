@@ -18,10 +18,12 @@ mkdir -p "$bin_dir"
 
 case "$triple" in
   aarch64-apple-darwin)
-    ff_zip="https://www.osxexperts.net/ffmpeg9arm.zip"
-    fp_zip="https://www.osxexperts.net/ffprobe9arm.zip"
-    ff_sha="591260c945d0eef150e3bf82b0ef988bd36a9cecc18ff05d6679617159f0a95e"
-    fp_sha="e11c17e8200b3ee4c4c186d245e2b4053f01d56957336c1817fca0b997469106"
+    # 0.3.9 重钉（2026-11-18）:上游把 ffmpeg9arm.zip 换版为 ffmpeg902arm.zip（9.0.2,
+    # 旧 URL 已下线致 CI curl 18）;哈希与 osxexperts 公布值本机实测吻合
+    ff_zip="https://www.osxexperts.net/ffmpeg902arm.zip"
+    fp_zip="https://www.osxexperts.net/ffprobe902arm.zip"
+    ff_sha="6deb2860c3dc0c08e0f96bab119196c024103046fa3cc7ef72e3a77797d8553c"
+    fp_sha="8d56278ec2ba80f35138e7dceccb1a72eff951156691d8c733066ebd7628d3f2"
     ;;
   x86_64-apple-darwin)
     ff_zip="https://www.osxexperts.net/ffmpeg80intel.zip"
