@@ -20,6 +20,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   zhipu: "智谱",
   xiaomi: "小米",
   openrouter: "OpenRouter",
+  deepseek: "DeepSeek",
 };
 
 type TabKey = "all" | "favorites";
@@ -82,7 +83,8 @@ function adaptVoices(provider: string, raw: unknown[]): PickerVoice[] {
       });
     case "xiaomi":
     case "openrouter":
-      // xiaomi/openrouter 后端直接吐 {value,label} 枚举形态
+    case "deepseek":
+      // xiaomi/openrouter/deepseek 后端直接吐 {value,label} 枚举形态
       return raw.map((v) => {
         const r = v as { value?: string; id?: string; label: string };
         return { id: r.value ?? r.id ?? "", label: r.label, raw: r };

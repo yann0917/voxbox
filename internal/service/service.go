@@ -20,6 +20,7 @@ import (
 	"github.com/yann0917/voxbox/internal/pronunciation"
 	"github.com/yann0917/voxbox/internal/provider"
 	"github.com/yann0917/voxbox/internal/provider/audiotool"
+	"github.com/yann0917/voxbox/internal/provider/deepseek"
 	"github.com/yann0917/voxbox/internal/provider/downloader"
 	"github.com/yann0917/voxbox/internal/provider/gsgc"
 	"github.com/yann0917/voxbox/internal/provider/local"
@@ -123,6 +124,9 @@ func newWithRoot(cfg *config.Config) (*Service, error) {
 		return nil, err
 	}
 	if err := minimax.RegisterAll(reg, *cfg, dataDir); err != nil {
+		return nil, err
+	}
+	if err := deepseek.RegisterAll(reg, *cfg, dataDir); err != nil {
 		return nil, err
 	}
 	if err := gsgc.RegisterAll(reg, *cfg, dataDir); err != nil {

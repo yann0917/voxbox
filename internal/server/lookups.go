@@ -5,6 +5,7 @@ package server
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/yann0917/voxbox/internal/config"
+	"github.com/yann0917/voxbox/internal/provider/deepseek"
 	"github.com/yann0917/voxbox/internal/provider/local"
 	"github.com/yann0917/voxbox/internal/provider/minimax"
 	"github.com/yann0917/voxbox/internal/provider/openrouter"
@@ -59,6 +60,10 @@ func (s *Server) listVoices(c *gin.Context) {
 	case "xiaomi":
 		// 小米 MiMo：静态预置音色表（官方无音色列表端点），供音色选择弹框使用
 		ok(c, gin.H{"voices": xiaomi.VoiceOptions()})
+		return
+	case "deepseek":
+		// DeepSeek：静态官方音色表（stella/tide，编译期常量表，与工具 ParamSpecs 同源）
+		ok(c, gin.H{"voices": deepseek.VoiceOptions()})
 		return
 	case "minimax":
 		// MiniMax：有 key 拉运行时接口（系统+复刻+文生音色），无 key 回落静态系统音色表

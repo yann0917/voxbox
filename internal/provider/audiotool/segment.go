@@ -26,6 +26,16 @@ func HasExec(name string) bool {
 	return lookPath(name) == nil
 }
 
+// TranscodeWAV 任意音频输入转 24kHz 单声道 16bit PCM WAV（语音识别上游仅收
+// 16bit PCM WAV 时的统一转码规格：兼容采样率区间内体积最小，120 秒约 5.5MB）。
+// dst 须为 .wav 后缀的本地路径。
+func TranscodeWAV(ctx context.Context, src, dst string) error {
+	if err := ensureFFmpeg(); err != nil {
+		return err
+	}
+	return runFFmpeg(ctx, []string{"-i", src, "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", dst}, 0, nil)
+}
+
 // SegmentAudioFile 用 ffmpeg segment muxer 把音频按 segSec 秒一段流拷贝切分
 // （不重编码、无质量损失；mp3 等帧级编码按帧边界落刀），分段写入新建临时目录，
 // 返回（临时目录, 按序分段路径）。调用方用完负责 os.RemoveAll(dir)。
