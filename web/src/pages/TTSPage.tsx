@@ -12,11 +12,12 @@ import XiaomiTTSPanel from "./tts/XiaomiTTSPanel";
 import ZhipuTTSPanel from "./tts/ZhipuTTSPanel";
 import OpenRouterTTSPanel from "./tts/OpenRouterTTSPanel";
 import MinimaxTTSPanel from "./tts/MinimaxTTSPanel";
+import DeepSeekTTSPanel from "./tts/DeepSeekTTSPanel";
 import LocalTTSPanel from "./tts/LocalTTSPanel";
 
 type TabKey = "sync" | "stream" | "long";
-/** 合成引擎：火山三通道 / 千问非流式 / 小米 MiMo / 智谱 / OpenRouter / MiniMax / 本地推理（/tts?engine=…，默认火山） */
-type Engine = "volcengine" | "qianwen" | "xiaomi" | "zhipu" | "openrouter" | "minimax" | "local";
+/** 合成引擎：火山三通道 / 千问非流式 / 小米 MiMo / 智谱 / OpenRouter / MiniMax / DeepSeek / 本地推理（/tts?engine=…，默认火山） */
+type Engine = "volcengine" | "qianwen" | "xiaomi" | "zhipu" | "openrouter" | "minimax" | "deepseek" | "local";
 
 const CHANNEL_ICONS: Record<TabKey, ReactNode> = {
   sync: <AudioLines size={13} strokeWidth={1.75} />,
@@ -37,6 +38,7 @@ const ENGINE_TABS: TabItem<Engine>[] = [
   { value: "zhipu", label: "智谱" },
   { value: "openrouter", label: "OpenRouter" },
   { value: "minimax", label: "MiniMax" },
+  { value: "deepseek", label: "DeepSeek" },
   { value: "local", label: "本地推理" },
 ];
 
@@ -47,7 +49,7 @@ export default function TTSPage() {
   const [params, setParams] = useSearchParams();
   const engineParam = params.get("engine");
   const engine: Engine =
-    engineParam === "qianwen" || engineParam === "xiaomi" || engineParam === "zhipu" || engineParam === "openrouter" || engineParam === "minimax" || engineParam === "local"
+    engineParam === "qianwen" || engineParam === "xiaomi" || engineParam === "zhipu" || engineParam === "openrouter" || engineParam === "minimax" || engineParam === "deepseek" || engineParam === "local"
       ? engineParam
       : "volcengine";
   // undefined = 设置未加载完成，与未配置同走引导卡（保守态）
@@ -56,6 +58,7 @@ export default function TTSPage() {
   const zhipuReady = useProviderConfigured("zhipu");
   const openrouterReady = useProviderConfigured("openrouter");
   const minimaxReady = useProviderConfigured("minimax");
+  const deepseekReady = useProviderConfigured("deepseek");
 
   const tab: TabKey = TTS_CHANNELS.some((c) => c.key === params.get("tab"))
     ? (params.get("tab") as TabKey)
@@ -155,6 +158,19 @@ export default function TTSPage() {
               <p className="text-sm text-fg-2">尚未配置 MiniMax 凭证。</p>
               <Link to="/settings" className="text-xs text-accent hover:opacity-80">
                 去设置页配置 MiniMax API Key →
+              </Link>
+            </CardBody>
+          </Card>
+        )
+      ) : engine === "deepseek" ? (
+        deepseekReady ? (
+          <DeepSeekTTSPanel />
+        ) : (
+          <Card>
+            <CardBody className="space-y-2">
+              <p className="text-sm text-fg-2">尚未配置 DeepSeek 凭证。</p>
+              <Link to="/settings" className="text-xs text-accent hover:opacity-80">
+                去设置页配置 DeepSeek API Key →
               </Link>
             </CardBody>
           </Card>

@@ -1,7 +1,9 @@
-// Package deepseek DeepSeek 开放平台（api.deepseek.com）provider：目前仅承载 AI 助手的
+// Package deepseek DeepSeek 开放平台（api.deepseek.com）provider：AI 助手的
 // 文本大模型（POST /responses，OpenAI Responses 风格流式协议）与联网工具（网页搜索
-// /v1/tools/search、网页抓取 /v1/tools/fetch），无语音能力，故不注册任务工具、不进
-// 工具注册表。Bearer API Key 鉴权，BaseURL 固定官方。
+// /v1/tools/search、网页抓取 /v1/tools/fetch），以及语音合成（/v1/tools/tts）、
+// 语音识别（/v1/tools/asr）任务工具（与 assistant 共用凭证，同一个 API Key）。
+// Bearer API Key 鉴权，BaseURL 固定官方。OCR（/v1/tools/ocr）未接入：voxbox 无
+// 文档/图片转文字消费方，立项时再补。
 package deepseek
 
 import (

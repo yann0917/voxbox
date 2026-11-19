@@ -68,8 +68,8 @@ const URL_HINT: Record<"standard" | "idle" | "flash", string> = {
   flash: "公网音频地址（wav/mp3/ogg/spx/amr/aac/m4a），最大 100MB / 2 小时",
 };
 
-/** 识别引擎：火山引擎（一句话/标准/闲时/极速） / 千问平台文件转写 / 小米 MiMo 同步转写 / 智谱短音频 / MiniMax 识别 / 本地推理（sherpa-onnx） */
-type Engine = "volcengine" | "qianwen" | "xiaomi" | "zhipu" | "minimax" | "local";
+/** 识别引擎：火山引擎（一句话/标准/闲时/极速） / 千问平台文件转写 / 小米 MiMo 同步转写 / 智谱短音频 / MiniMax 识别 / DeepSeek 同步转写 / 本地推理（sherpa-onnx） */
+type Engine = "volcengine" | "qianwen" | "xiaomi" | "zhipu" | "minimax" | "deepseek" | "local";
 
 /** 引擎页签：恒可点（TabItem 无 disabled），未配置凭证时切过去渲染设置引导卡（与 TTSPage 同款） */
 const ENGINE_TABS: TabItem<Engine>[] = [
@@ -78,6 +78,7 @@ const ENGINE_TABS: TabItem<Engine>[] = [
   { value: "xiaomi", label: "小米 MiMo" },
   { value: "zhipu", label: "智谱" },
   { value: "minimax", label: "MiniMax" },
+  { value: "deepseek", label: "DeepSeek" },
   { value: "local", label: "本地推理" },
 ];
 
@@ -116,6 +117,11 @@ const ZP_MAX_BYTES = 25 * 1024 * 1024;
  *  前端仅拦截整文件上限（与服务端 200MB 预算一致） */
 const MM_EXTS = ["wav", "aiff", "flac", "m4a", "mp3", "aac", "opus", "ogg"];
 const MM_MAX_BYTES = 200 * 1024 * 1024;
+
+/** DeepSeek 引擎：官方直收 16bit PCM WAV / Ogg Opus；mp3/m4a/flac/aac 由服务端
+ *  ffmpeg 自动转码，超 120 秒/8MiB 由服务端自动分段，前端仅拦整文件上限（200MB） */
+const DS_EXTS = ["wav", "ogg", "mp3", "m4a", "flac", "aac"];
+const DS_MAX_BYTES = 200 * 1024 * 1024;
 
 /** MiniMax 识别语种（BCP-47，官方走请求头）；含「自动识别」（空值 = 混合语种识别） */
 const MM_LANGUAGES: { value: string; label: string }[] = [
@@ -260,6 +266,7 @@ export default function ASRPage() {
   const xiaomiReady = useProviderConfigured("xiaomi");
   const zhipuReady = useProviderConfigured("zhipu");
   const minimaxReady = useProviderConfigured("minimax");
+  const deepseekReady = useProviderConfigured("deepseek");
   // 本地就绪查询（引擎+模型依赖链一次判定）：异步查询单独取，不能塞进同步三元链；
   // 渲染层在 engineReady 判定之前先挡 isLoading（避免加载中闪「未安装」引导卡）
   const localReady = useLocalReady("asr");
@@ -284,17 +291,20 @@ export default function ASRPage() {
           ? zhipuReady
           : engine === "minimax"
             ? minimaxReady
-            : engine === "local"
-              ? localReady.data?.ready === true
-              : true;
+            : engine === "deepseek"
+              ? deepseekReady
+              : engine === "local"
+                ? localReady.data?.ready === true
+                : true;
 
   /* 本地上传白名单：火山一句话版（WS 直发）mp3/wav/ogg/pcm；标准/闲时/极速与千问（对象存储
      中转，按 URL 扩展名推断格式）白名单一致 wav/mp3/ogg/spx/amr/aac/m4a；极速版另有 100MB 上限。 */
   const isXiaomi = engine === "xiaomi";
   const isZhipu = engine === "zhipu";
   const isMinimax = engine === "minimax";
+  const isDeepseek = engine === "deepseek";
   const sentenceFile = engine === "volcengine" && version === "sentence";
-  const allowedExts = isMinimax ? MM_EXTS : isZhipu ? ZP_EXTS : isXiaomi ? MI_EXTS : engine === "local" ? LOCAL_EXTS : sentenceFile ? SENTENCE_EXTS : URL_VERSION_EXTS;
+  const allowedExts = isMinimax ? MM_EXTS : isZhipu ? ZP_EXTS : isXiaomi ? MI_EXTS : isDeepseek ? DS_EXTS : engine === "local" ? LOCAL_EXTS : sentenceFile ? SENTENCE_EXTS : URL_VERSION_EXTS;
 
   /* WS 事件驱动当前任务进度；终态拉详情拿产物与 summary.segments */
   useEffect(() => {
@@ -373,8 +383,8 @@ export default function ASRPage() {
     if (v === "qianwen") {
       if (!storageEnabled) setMode("url");
       else setMode((m) => (m === "recording" ? "upload" : m));
-    } else if (v === "xiaomi" || v === "zhipu" || v === "minimax") {
-      // 小米/智谱/MiniMax 本地上传直传、URL 直下，两通道恒可用；录音 Tab 不提供，回落上传
+    } else if (v === "xiaomi" || v === "zhipu" || v === "minimax" || v === "deepseek") {
+      // 小米/智谱/MiniMax/DeepSeek 本地上传直传、URL 直下，两通道恒可用；录音 Tab 不提供，回落上传
       setMode((m) => (m === "recording" ? "upload" : m));
     } else if (v === "local") {
       // 本地引擎只有本地上传/录音通道（URL 直下不支持；sherpa 只吃 wav 本地文件）
@@ -400,6 +410,10 @@ export default function ASRPage() {
         // MiniMax 同步转写：仅语种（BCP-47 提示，空串 = 混合语种识别），音频经
         // file_ids/artifact_input 通道进 Files；说话人分离/时间戳由服务端 verbose_json 固定开启
         params = { language: language.trim() };
+      } else if (engine === "deepseek") {
+        // DeepSeek 同步转写：无语种参数（21 语种按音频自动识别）、无热词，音频经
+        // file_ids/artifact_input 通道进 Files；非 16bit PCM WAV 由服务端自动转码
+        params = {};
       } else if (engine === "local") {
         // 本地识别：model 驱动后端路由（sensevoice→sherpa / r2t2→audiocpp；缺省向后兼容）；
         // 语言枚举是 sherpa 口径（auto/zh/en/ja/ko/yue），空串归一 auto；r2t2 语种自动
@@ -483,11 +497,13 @@ export default function ASRPage() {
             ? `不支持的格式 .${ext || "未知"}：智谱引擎仅支持 mp3 / wav（≤30 秒）`
             : isXiaomi
               ? `不支持的格式 .${ext || "未知"}：小米引擎仅支持 mp3 / wav`
-              : engine === "local"
-                ? `不支持的格式 .${ext || "未知"}：本地引擎支持 mp3 / wav / m4a / flac / ogg（非 wav 自动转码）`
-                : sentenceFile
-                  ? `不支持的格式 .${ext || "未知"}：仅支持 mp3 / wav / ogg / pcm`
-                  : `不支持的格式 .${ext || "未知"}：支持 wav / mp3 / ogg / spx / amr / aac / m4a`,
+              : isDeepseek
+                ? `不支持的格式 .${ext || "未知"}：DeepSeek 引擎支持 wav / ogg / mp3 / m4a / flac / aac`
+                : engine === "local"
+                  ? `不支持的格式 .${ext || "未知"}：本地引擎支持 mp3 / wav / m4a / flac / ogg（非 wav 自动转码）`
+                  : sentenceFile
+                    ? `不支持的格式 .${ext || "未知"}：仅支持 mp3 / wav / ogg / pcm`
+                    : `不支持的格式 .${ext || "未知"}：支持 wav / mp3 / ogg / spx / amr / aac / m4a`,
       );
       return;
     }
@@ -505,6 +521,10 @@ export default function ASRPage() {
     }
     if (isMinimax && f.size > MM_MAX_BYTES) {
       setFileError(`音频超出 200MB（当前 ${(f.size / 1024 / 1024).toFixed(0)}MB），MiniMax 引擎不支持自动分段该体量；更长录音请改用火山引擎`);
+      return;
+    }
+    if (isDeepseek && f.size > DS_MAX_BYTES) {
+      setFileError(`音频超出 200MB（当前 ${(f.size / 1024 / 1024).toFixed(0)}MB），DeepSeek 引擎不支持自动分段该体量；更长录音请改用火山引擎`);
       return;
     }
     setFileError("");
@@ -595,16 +615,18 @@ export default function ASRPage() {
         ? "公网音频地址（mp3/wav），同步转写，≤25MB / 30 秒"
         : isMinimax
           ? "公网音频地址（官方 8 种格式），同步转写，超 500 秒/50MB 自动分段"
-          : version === "sentence"
-            ? undefined
-            : URL_HINT[version];
+          : isDeepseek
+            ? "公网音频地址，同步转写，超 120 秒/8MB 自动分段（非 wav/ogg 自动转码）"
+            : version === "sentence"
+              ? undefined
+              : URL_HINT[version];
   const seekTrack = { title: playTitle, sub: playSub };
 
   return (
     <>
       <PageHeader
         title="语音识别"
-        description="多引擎音频转文字（火山 / 千问 / 小米 / 智谱 / MiniMax），输出分句时间戳与 SRT 字幕"
+        description="多引擎音频转文字（火山 / 千问 / 小米 / 智谱 / MiniMax / DeepSeek），输出分句时间戳与 SRT 字幕"
         actions={
           <Link
             to="/history"
@@ -644,10 +666,22 @@ export default function ASRPage() {
         <Card>
           <CardBody className="space-y-2">
             <p className="text-sm text-fg-2">
-              尚未配置{engine === "qianwen" ? "千问平台" : engine === "xiaomi" ? "小米 MiMo" : "智谱开放平台"}凭证。
+              尚未配置
+              {engine === "qianwen"
+                ? "千问平台"
+                : engine === "xiaomi"
+                  ? "小米 MiMo"
+                  : engine === "minimax"
+                    ? "MiniMax"
+                    : engine === "deepseek"
+                      ? "DeepSeek"
+                      : "智谱开放平台"}
+              凭证。
             </p>
             <Link to="/settings" className="text-xs text-accent hover:opacity-80">
-              去设置页配置{engine === "qianwen" ? "千问" : engine === "xiaomi" ? "小米" : "智谱"} API Key →
+              去设置页配置
+              {engine === "qianwen" ? "千问" : engine === "xiaomi" ? "小米" : engine === "minimax" ? "MiniMax" : engine === "deepseek" ? "DeepSeek" : "智谱"}{" "}
+              API Key →
             </Link>
           </CardBody>
         </Card>
@@ -685,6 +719,7 @@ export default function ASRPage() {
                       {isXiaomi && " 小米引擎直接读取本地产物转写（mp3/wav）。"}
                       {isZhipu && " 智谱引擎直传本地产物转写（mp3/wav，≤30 秒）。"}
                       {isMinimax && " MiniMax 引擎直传本地产物转写（官方 8 种格式）。"}
+                      {isDeepseek && " DeepSeek 引擎直读本地产物转写（非 wav/ogg 自动转码）。"}
                     </p>
                   </div>
                 ) : (
@@ -734,6 +769,11 @@ export default function ASRPage() {
                     ) : isXiaomi ? (
                       <p className="text-xs text-muted">
                         mimo-v2.5-asr 同步转写：返回纯文本（无时间戳，不产 SRT）；本地文件直读，无需对象存储。
+                      </p>
+                    ) : isDeepseek ? (
+                      <p className="text-xs text-muted">
+                        同步转写 21 语种自动识别（无需指定）：返回纯文本（无时间戳，不产 SRT）；官方直收 16bit PCM
+                        WAV / Ogg Opus，其余格式自动转码，超 120 秒/8MB 自动分段。
                       </p>
                     ) : isMinimax ? (
                       <p className="text-xs text-muted">
@@ -822,7 +862,7 @@ export default function ASRPage() {
                             { value: "upload" as const, label: "本地上传", icon: <Upload size={13} strokeWidth={1.75} /> },
                             { value: "recording" as const, label: "麦克风录音", icon: <Mic size={13} strokeWidth={1.75} /> },
                           ]
-                        ) : isXiaomi || isZhipu || isMinimax
+                        ) : isXiaomi || isZhipu || isMinimax || isDeepseek
                           ? [
                               { value: "url" as const, label: "音频 URL", icon: <Link2 size={13} strokeWidth={1.75} /> },
                               { value: "upload" as const, label: "本地上传", icon: <Upload size={13} strokeWidth={1.75} /> },
@@ -889,9 +929,11 @@ export default function ASRPage() {
                                     ? "仅支持 mp3 / wav，25MB 内、30 秒内（multipart 直传）"
                                     : isMinimax
                                       ? "支持 wav / aiff / flac / m4a / mp3 / aac / opus / ogg（超 500 秒/50MB 自动分段）"
-                                      : engine === "local"
-                                        ? "支持 mp3 / wav / m4a / flac / ogg（非 wav 自动转码，任意采样率）"
-                                        : "支持 wav / mp3 / ogg / spx / amr / aac / m4a；提交后自动经对象存储中转"}
+                                      : isDeepseek
+                                        ? "支持 wav / ogg / mp3 / m4a / flac / aac（非 wav/ogg 自动转码，超 120 秒/8MB 自动分段）"
+                                        : engine === "local"
+                                          ? "支持 mp3 / wav / m4a / flac / ogg（非 wav 自动转码，任意采样率）"
+                                          : "支持 wav / mp3 / ogg / spx / amr / aac / m4a；提交后自动经对象存储中转"}
                               </p>
                             </>
                           )}
@@ -1014,7 +1056,7 @@ export default function ASRPage() {
                 aside={<span className="micro">{engine} · asr</span>}
               />
               <CardBody className="space-y-4">
-                {isZhipu || (engine === "local" && localModel !== "sensevoice-int8") ? null : (
+                {isZhipu || isDeepseek || (engine === "local" && localModel !== "sensevoice-int8") ? null : (
                 <Field
                   label="语言"
                   hint={

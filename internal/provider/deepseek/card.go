@@ -8,21 +8,22 @@ import (
 	"github.com/yann0917/voxbox/internal/provider"
 )
 
-// ProviderCard 设置页「DeepSeek」凭证卡声明。无语音任务工具，ReRegister 为空操作
-// （卡装配层强制非空，此处显式给空实现）。
+// ProviderCard 设置页「DeepSeek」凭证卡声明。语音合成/识别任务工具与 AI 助手共用
+// 同一个 API Key，保存后热重载覆盖重注册。
 func ProviderCard() provider.ProviderInfo {
 	return provider.ProviderInfo{
 		Name:  "deepseek",
-		Title: "DeepSeek · 大模型 / 联网搜索",
+		Title: "DeepSeek · 大模型 / 语音 / 联网搜索",
 		Description: "DeepSeek 开放平台（deepseek.com）：deepseek-flash 与 deepseek-v4-pro 文本大模型（AI 助手可用），" +
-			"并为助手提供网页搜索与网页抓取的联网能力（按成功调用计费，约 ¥5/千次）。" +
+			"网页搜索与抓取的联网能力（按成功调用计费，约 ¥5/千次），" +
+			"以及语音合成（stella/tide 双音色，限时 ¥1.5/万字符）与语音识别（21 语种，限时 ¥0.39/小时音频）。" +
 			"API Key 在 platform.deepseek.com 创建。",
 		Kind:  provider.KindCloud,
 		Order: 19, // 千问(20)之上：用户指定的设置页排列位置
 		Fields: []provider.CredentialField{
 			{Key: "api_key", Label: "API Key", Kind: provider.FieldSecret, Required: true,
 				ConfigKey: "deepseek.api_key", Placeholder: "platform.deepseek.com 创建",
-				Hint: "大模型对话与联网搜索共用，Bearer 鉴权"},
+				Hint: "大模型对话、联网搜索与语音合成/识别共用，Bearer 鉴权"},
 		},
 		Values: func(cfg *config.Config) map[string]string {
 			return map[string]string{"api_key": cfg.Deepseek.APIKey}
@@ -33,7 +34,7 @@ func ProviderCard() provider.ProviderInfo {
 				nc.Deepseek.APIKey = v
 			}
 		},
-		ReRegister: func(_ *provider.Registry, _ config.Config, _ string) {},
+		ReRegister: ReRegisterAll,
 		Sync:       func(dst, src *config.Config) { dst.Deepseek = src.Deepseek },
 		Test:       ProbeDeepseek,
 	}
