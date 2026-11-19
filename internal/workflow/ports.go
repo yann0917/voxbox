@@ -39,6 +39,7 @@ var ports = map[string]ToolSpec{
 	"xiaomi.asr":         {In: []InPort{audioIn}, OutKinds: []string{"transcript"}, Chainable: true},
 	"zhipu.asr":          {In: []InPort{audioIn}, OutKinds: []string{"transcript"}, Chainable: true},
 	"minimax.asr":        {In: []InPort{audioIn}, OutKinds: []string{"transcript", "subtitle"}, Chainable: true},
+	"deepseek.asr":       {In: []InPort{audioIn}, OutKinds: []string{"transcript"}, Chainable: true},
 	"local.asr":          {In: []InPort{audioIn}, OutKinds: []string{"transcript", "subtitle"}, Chainable: true},
 
 	// ---- 合成/翻译/播客：吃文本参数，出音频/译文 ----
@@ -53,6 +54,7 @@ var ports = map[string]ToolSpec{
 	"openrouter.tts":        {OutKinds: []string{"audio"}, Chainable: true},
 	"minimax.tts":           {OutKinds: []string{"audio"}, Chainable: true},
 	"minimax.tts_long":      {OutKinds: []string{"audio"}, Chainable: true},
+	"deepseek.tts":          {OutKinds: []string{"audio"}, Chainable: true},
 	"local.tts":             {OutKinds: []string{"audio"}, Chainable: true},
 
 	// ---- 分离 ----
